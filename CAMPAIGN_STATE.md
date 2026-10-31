@@ -33,9 +33,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001.
+- Banked: RM-001, RM-002.
 - In progress: none.
-- Next: RM-002 in roadmap order.
+- Next: RM-003 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -73,3 +73,13 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   venv B — passed. Root cause not proven; recorded here so RM-014 (flake
   quarantine) inherits the observation. No code changed in this slice;
   the founding tree (`~/workspace/ravens`) needs no sync.
+- **RM-002 — Manual-only CI. BANKED 2026-10-31. Class: UNIT (inspection).**
+  `.github/workflows/ci.yml` added: installs `./muninn ./huginn` from the
+  repo and runs both suites. Trigger block verified by parsed-YAML
+  inspection: `on` is exactly `{workflow_dispatch: null}` — no push,
+  pull_request, schedule, or any other automatic trigger (the words appear
+  only in an explanatory comment). Local full suites re-run green after
+  the change: muninn 36 passed, huginn 27 passed. The workflow itself has
+  never been dispatched, so a GitHub-hosted run is NOT PROVEN — only the
+  file and its triggers are proven. No package code changed; founding
+  tree needs no sync.

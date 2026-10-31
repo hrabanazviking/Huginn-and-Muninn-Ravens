@@ -1,0 +1,38 @@
+name: ravens-ci
+
+# Manual-only (RM-002): this workflow runs ONLY when a human dispatches it
+# from the Actions tab. It never fires on push, pull_request, schedule, or
+# any other automatic trigger — Volmarr's standing rule for all his repos.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: muninn + huginn suites (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install both packages from this repo
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./muninn ./huginn "pytest>=7,<9"
+
+      - name: Run the muninn suite (installed package)
+        run: python -m pytest muninn/tests -q
+
+      - name: Run the huginn suite (installed package)
+        run: python -m pytest huginn/tests -q
