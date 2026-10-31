@@ -41,7 +41,7 @@ import logging
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any
 
@@ -105,6 +105,12 @@ CREATE TABLE IF NOT EXISTS deleted_nodes (
 
 
 def _now() -> str:
+    """The package's one stored-timestamp source (RM-012).
+
+    Every timestamp written to the store comes from here: UTC,
+    ISO-8601, offset-aware. Monotonicity on top of the raw clock
+    is :meth:`HebbianMemory._tick`'s job.
+    """
     return datetime.now(UTC).isoformat()
 
 
@@ -229,6 +235,8 @@ class HebbianMemory:
             config = replace(config, **overrides)
         self.config = config
         self._lock = threading.RLock()
+        self._ts_lock = threading.Lock()
+        self._last_ts: datetime | None = None
         self._closed = False
         self._db_path = config.resolved_path()
         conn, report = open_store(
@@ -243,7 +251,48 @@ class HebbianMemory:
         #: True when the store had to be restored from a rolling backup.
         self.recovered_from_backup = report.recovered_from_backup
         with self._lock:
+            self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
+
+    # ─── timestamp discipline (RM-012) ────────────────────────────────
+
+    def _seed_last_ts_locked(self) -> None:
+        """Seed the monotonic guard from the store's own history.
+
+        A store reopened after the system clock moved backwards
+        must still never issue a timestamp at or before one it
+        already carries.
+        """
+        peaks: list[str] = []
+        for sql in (
+            "SELECT MAX(activated_at) FROM activation_log",
+            "SELECT MAX(updated_at) FROM nodes",
+            "SELECT MAX(last_coactivated_at) FROM hebbian_connections",
+            "SELECT MAX(last_activated_at) FROM node_activation",
+            "SELECT MAX(deleted_at) FROM deleted_nodes",
+        ):
+            row = self._conn.execute(sql).fetchone()
+            if row and row[0]:
+                peaks.append(str(row[0]))
+        if peaks:
+            self._last_ts = max(datetime.fromisoformat(p) for p in peaks)
+
+    def _tick(self) -> str:
+        """Next stored timestamp: ``_now()``, monotonic (RM-012).
+
+        If the system clock has moved backwards — or has not
+        moved at all since the last issue — the result is the
+        last issued timestamp plus one microsecond, so stored
+        timestamps (above all the activation log) are strictly
+        increasing in issue order no matter what the wall clock
+        does.
+        """
+        candidate = datetime.fromisoformat(_now())
+        with self._ts_lock:
+            if self._last_ts is not None and candidate <= self._last_ts:
+                candidate = self._last_ts + timedelta(microseconds=1)
+            self._last_ts = candidate
+        return candidate.isoformat()
 
     # ─── lifecycle ────────────────────────────────────────────────────
 
@@ -432,7 +481,9 @@ class HebbianMemory:
         emotional_valence = _check_valence(emotional_valence)
         with self._lock:
             self._get_conn()
-            total = self._log_activation_locked(memory_id, emotional_valence, str(source), _now())
+            total = self._log_activation_locked(
+                memory_id, emotional_valence, str(source), self._tick()
+            )
             self._conn.commit()
             return total
 
@@ -454,7 +505,7 @@ class HebbianMemory:
             raise MuninnValidationError("memory_ids must be a list of ints")
         ids = list(dict.fromkeys(_check_memory_id(m) for m in memory_ids))
         emotional_valence = _check_valence(emotional_valence)
-        at = _now()
+        at = self._tick()
         with self._lock:
             self._get_conn()
             for mid in ids:
@@ -495,7 +546,7 @@ class HebbianMemory:
             raise MuninnValidationError("pass strength or delta, not both")
         if strength is not None and not 0.0 <= float(strength) <= 1.0:
             raise MuninnValidationError("strength must be in [0, 1]")
-        at = _now()
+        at = self._tick()
         with self._lock:
             self._get_conn()
             for x, y in ((a, b), (b, a)):
@@ -656,7 +707,7 @@ class HebbianMemory:
             meta_text = json.dumps(metadata or {}, sort_keys=True, default=str)
         except (TypeError, ValueError) as exc:
             raise MuninnValidationError("metadata must be JSON-serializable") from exc
-        at = _now()
+        at = self._tick()
         with self._lock:
             self._get_conn()
             cur = self._conn.execute(
@@ -789,7 +840,7 @@ class HebbianMemory:
             )
             rows_out = rows_out[:top_k]
             if touch:
-                at = _now()
+                at = self._tick()
                 for node in rows_out:
                     self._log_activation_locked(
                         node.id, node.emotional_valence, "retrieve:touch", at
@@ -861,7 +912,7 @@ class HebbianMemory:
                 updates["category"] = str(fields.get("memory_type", fields.get("category")))
             if not updates:
                 return True
-            updates["updated_at"] = _now()
+            updates["updated_at"] = self._tick()
             assignments = ", ".join(f"{k} = ?" for k in updates)
             try:
                 self._conn.execute(
@@ -901,7 +952,7 @@ class HebbianMemory:
             # forgotten, so heal prunes any later stray edge to it.
             self._conn.execute(
                 "INSERT OR REPLACE INTO deleted_nodes (memory_id, deleted_at) VALUES (?, ?)",
-                (memory_id, _now()),
+                (memory_id, self._tick()),
             )
             self._conn.commit()
             return removed
@@ -948,7 +999,7 @@ class HebbianMemory:
             )
             self._conn.execute(
                 "INSERT OR REPLACE INTO deleted_nodes (memory_id, deleted_at) VALUES (?, ?)",
-                (victim, _now()),
+                (victim, self._tick()),
             )
         self._conn.commit()
         logger.warning("muninn: backpressure pruned %d lowest-value nodes", len(victims))

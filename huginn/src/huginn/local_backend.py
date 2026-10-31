@@ -20,7 +20,7 @@ import json
 import logging
 import sqlite3
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ._db import open_store
@@ -66,6 +66,12 @@ CREATE TABLE IF NOT EXISTS doc_vectors (
 
 
 def _now() -> str:
+    """The backend's one stored-timestamp source (RM-012).
+
+    Every timestamp written to the store comes from here: UTC,
+    ISO-8601, offset-aware. Monotonicity on top of the raw clock
+    is :meth:`LocalBackend._tick`'s job.
+    """
     return datetime.now(UTC).isoformat()
 
 
@@ -82,6 +88,8 @@ class LocalBackend:
         self.config = config
         self._embedder = embedder
         self._lock = threading.RLock()
+        self._ts_lock = threading.Lock()
+        self._last_ts: datetime | None = None
         self._closed = False
         self._db_path = config.resolved_local_path()
         conn, report = open_store(
@@ -95,7 +103,33 @@ class LocalBackend:
         self.open_report = report
         self.recovered_from_backup = report.recovered_from_backup
         with self._lock:
+            self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
+
+    # ─── timestamp discipline (RM-012) ────────────────────────────────
+
+    def _seed_last_ts_locked(self) -> None:
+        """Seed the monotonic guard from the store's own history,
+        so a reopen after a backwards clock move still issues
+        timestamps strictly after everything already stored."""
+        row = self._conn.execute("SELECT MAX(updated_at) FROM documents").fetchone()
+        if row and row[0]:
+            self._last_ts = datetime.fromisoformat(str(row[0]))
+
+    def _tick(self) -> str:
+        """Next stored timestamp: ``_now()``, monotonic (RM-012).
+
+        A backwards (or stalled) system clock yields the last
+        issued timestamp plus one microsecond instead, so a
+        document's ``updated_at`` can never precede its
+        ``created_at`` and updates never travel back in time.
+        """
+        candidate = datetime.fromisoformat(_now())
+        with self._ts_lock:
+            if self._last_ts is not None and candidate <= self._last_ts:
+                candidate = self._last_ts + timedelta(microseconds=1)
+            self._last_ts = candidate
+        return candidate.isoformat()
 
     # ─── lifecycle ────────────────────────────────────────────────────
 
@@ -196,7 +230,7 @@ class LocalBackend:
     ) -> int:
         counts = term_counts(tokenize(content))
         content_hash = _content_hash(content, category)
-        at = _now()
+        at = self._tick()
         with self._lock:
             conn = self._ensure_open()
             target_id: int | None = None

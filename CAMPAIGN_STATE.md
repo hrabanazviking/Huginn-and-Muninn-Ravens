@@ -36,9 +36,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
-- Banked (Part II): RM-011.
+- Banked (Part II): RM-011, RM-012.
 - In progress: none.
-- Next: RM-012 in roadmap order (Part II — Stability).
+- Next: RM-013 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -317,3 +317,38 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   re-verification required. Founding tree (`~/workspace/ravens`)
   NEEDS A SYNC: the tie-break pins are package-source changes
   there (extends the RM-008 sync note).
+- **RM-012 — Timestamp discipline. BANKED 2026-10-31. Class: UNIT.**
+  Record: `docs/TIMESTAMPS.md`. Both packages already drew every
+  stored timestamp from one helper (muninn `core._now`, huginn
+  local `local_backend._now`; the Qdrant backend stores no
+  timestamps; the remaining `datetime.now` calls are in-memory
+  only — MemoryNode defaults, RetrievalResult.timestamp) — this
+  slice pins that fact in docs and adds the missing half: a
+  monotonicity guard. New `_tick()` in both stores issues
+  `_now()` when the clock is healthy and last-issued + 1µs
+  when it stalls or runs backwards; on open the guard is
+  seeded from the store's own stored maximum (muninn: max
+  across activation_log / nodes / wiring / node_activation /
+  tombstones; huginn: documents.updated_at), so a reopen after
+  a clock rollback still issues strictly after stored history.
+  All muninn stored-timestamp call sites (activate,
+  activate_batch, associate, remember, retrieve-touch, update,
+  forget, backpressure) and huginn's upsert now go through
+  `_tick()`. Acceptance proven by new `tests/test_timestamps.py`
+  in both packages: a format scan over every stored timestamp
+  column (UTC, ISO-8601, `+00:00`), and clock-skew tests
+  patching the helper with a backwards-running clock — muninn's
+  activation log stays strictly increasing in row order,
+  including across a reopen; huginn's `updated_at` never
+  precedes `created_at`; a healthy clock's readings pass
+  through untouched (one test expectation was corrected during
+  the build: with a frozen clock the second issue is correctly
+  +1µs, so the first log row sits past the frozen reading —
+  the guard was right, the test was wrong). Full suites green:
+  muninn **70 passed** (66+4), huginn **60 passed** (57+3);
+  ruff + mypy floors still clean (one E501 + one B905 from the
+  build fixed in-slice). No public API signature or schema
+  change (RM-003 freeze + RM-004 snapshot green), so no
+  Bifröst re-verification required. Founding tree NEEDS A
+  SYNC for the `_tick` guard (package sources; extends the
+  RM-008/RM-011 sync note).

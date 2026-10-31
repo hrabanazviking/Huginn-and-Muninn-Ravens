@@ -149,3 +149,23 @@ has an entry here with its Class and Commit fields present.
   timestamp columns are listed in the audit and in the tests),
   in-process and in child processes under `PYTHONHASHSEED` 0
   and 42. Suites: muninn **66 passed**, huginn **57 passed**.
+
+## RM-012 — Timestamp discipline
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record in `docs/TIMESTAMPS.md`: one stored-
+  timestamp helper per package (Muninn `core._now`, Huginn
+  local `local_backend._now`; Qdrant stores none), all UTC
+  ISO-8601. A monotonic guard (`_tick` in both stores) issues
+  last-issued + 1µs whenever the wall clock stalls or runs
+  backwards, seeded on open from the store's own stored
+  maximum. Acceptance: `tests/test_timestamps.py` in both
+  packages — format scan over every stored timestamp column,
+  and clock-skew tests that patch the helper with a
+  backwards-running clock: Muninn's activation log stays
+  strictly increasing (including across a reopen), a Huginn
+  document's `updated_at` never precedes its `created_at`,
+  and a healthy clock's readings pass through untouched.
+  Suites: muninn **70 passed**, huginn **60 passed**; ruff +
+  mypy floors still clean.
