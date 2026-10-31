@@ -1,0 +1,442 @@
+"""Huginn's local backend: a fully capable retrieval store with zero
+infrastructure — one WAL SQLite file and a maintained inverted term
+index.
+
+Scoring modes (honestly labelled):
+* ``tfidf`` (default): TF-IDF cosine over the inverted index.
+  Lexical semantics — weighted word overlap. Candidate documents come
+  from the term postings; no full scans, no N+1.
+* embedder mode (``hashing`` / ``sentence-transformers``): vectors are
+  stored per document and scored by dense cosine. The scan is linear
+  over stored vectors — the right shape for a personal memory store
+  (thousands of documents); very large corpora belong on Qdrant.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import sqlite3
+import threading
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from ._db import open_store
+from .config import HuginnConfig
+from .errors import HuginnStorageError, HuginnValidationError
+from .text import Embedder, cosine, dense_cosine, sparse_tfidf, term_counts, tokenize
+
+logger = logging.getLogger("huginn.local")
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general',
+    importance INTEGER NOT NULL DEFAULT 5,
+    tags TEXT NOT NULL DEFAULT '[]',
+    emotional_valence REAL NOT NULL DEFAULT 0.0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(content_hash, category)
+);
+CREATE TABLE IF NOT EXISTS doc_terms (
+    doc_id INTEGER NOT NULL,
+    term TEXT NOT NULL,
+    tf INTEGER NOT NULL,
+    PRIMARY KEY (doc_id, term)
+);
+CREATE INDEX IF NOT EXISTS idx_terms_term ON doc_terms(term);
+CREATE TABLE IF NOT EXISTS corpus_stats (
+    term TEXT PRIMARY KEY,
+    doc_freq INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS doc_vectors (
+    doc_id INTEGER PRIMARY KEY,
+    vector TEXT NOT NULL
+);
+"""
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _content_hash(content: str, category: str) -> str:
+    return hashlib.sha256(f"{category}\x00{content}".encode()).hexdigest()
+
+
+class LocalBackend:
+    """SQLite + inverted-index retrieval store."""
+
+    kind = "local"
+
+    def __init__(self, config: HuginnConfig, embedder: Optional[Embedder] = None):
+        self.config = config
+        self._embedder = embedder
+        self._lock = threading.RLock()
+        self._closed = False
+        self._db_path = config.resolved_local_path()
+        conn, report = open_store(
+            self._db_path,
+            busy_timeout_ms=config.busy_timeout_ms,
+            backup_keep=config.backup_keep,
+            auto_backup=config.auto_backup,
+            schema_sql=SCHEMA_SQL,
+        )
+        self._conn = conn
+        self.open_report = report
+        self.recovered_from_backup = report.recovered_from_backup
+        with self._lock:
+            self.last_heal_report = self._heal_locked()
+
+    # ─── lifecycle ────────────────────────────────────────────────────
+
+    def _ensure_open(self) -> sqlite3.Connection:
+        if self._closed:
+            raise HuginnStorageError("Huginn local backend is closed")
+        return self._conn
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            try:
+                self._conn.close()
+            except sqlite3.Error:
+                pass
+
+    # ─── index maintenance (lock held) ────────────────────────────────
+
+    def _index_terms_locked(self, doc_id: int, counts: Dict[str, int]) -> None:
+        if counts:
+            self._conn.executemany(
+                "INSERT INTO doc_terms (doc_id, term, tf) VALUES (?, ?, ?)",
+                [(doc_id, term, tf) for term, tf in counts.items()],
+            )
+            self._conn.executemany(
+                "INSERT INTO corpus_stats (term, doc_freq) VALUES (?, 1)"
+                " ON CONFLICT(term) DO UPDATE SET doc_freq = doc_freq + 1",
+                [(term,) for term in counts],
+            )
+
+    def _deindex_terms_locked(self, doc_id: int) -> None:
+        rows = self._conn.execute(
+            "SELECT term FROM doc_terms WHERE doc_id = ?", (doc_id,)
+        ).fetchall()
+        if rows:
+            self._conn.executemany(
+                "UPDATE corpus_stats SET doc_freq = doc_freq - 1 WHERE term = ?",
+                [(r[0],) for r in rows],
+            )
+            self._conn.execute("DELETE FROM corpus_stats WHERE doc_freq <= 0")
+            self._conn.execute("DELETE FROM doc_terms WHERE doc_id = ?", (doc_id,))
+
+    def _heal_locked(self) -> Dict[str, Any]:
+        """Repair term-index drift: orphans pruned, doc_freq recounted."""
+        report = {"orphan_terms_pruned": 0, "orphan_vectors_pruned": 0, "doc_freq_fixed": 0}
+        cur = self._conn.execute(
+            "DELETE FROM doc_terms WHERE doc_id NOT IN (SELECT id FROM documents)"
+        )
+        report["orphan_terms_pruned"] = cur.rowcount
+        cur = self._conn.execute(
+            "DELETE FROM doc_vectors WHERE doc_id NOT IN (SELECT id FROM documents)"
+        )
+        report["orphan_vectors_pruned"] = cur.rowcount
+        expected = {
+            r[0]: int(r[1])
+            for r in self._conn.execute(
+                "SELECT term, COUNT(*) FROM doc_terms GROUP BY term"
+            ).fetchall()
+        }
+        current = {
+            r[0]: int(r[1])
+            for r in self._conn.execute("SELECT term, doc_freq FROM corpus_stats").fetchall()
+        }
+        for term in set(expected) | set(current):
+            if expected.get(term) != current.get(term):
+                report["doc_freq_fixed"] += 1
+                if term in expected:
+                    self._conn.execute(
+                        "INSERT OR REPLACE INTO corpus_stats (term, doc_freq) VALUES (?, ?)",
+                        (term, expected[term]),
+                    )
+                else:
+                    self._conn.execute("DELETE FROM corpus_stats WHERE term = ?", (term,))
+        self._conn.commit()
+        if report["doc_freq_fixed"] or report["orphan_terms_pruned"]:
+            logger.warning("huginn: local heal repaired %s", report)
+        return report
+
+    def heal(self) -> Dict[str, Any]:
+        with self._lock:
+            self._ensure_open()
+            self.last_heal_report = self._heal_locked()
+            return dict(self.last_heal_report)
+
+    # ─── writes ───────────────────────────────────────────────────────
+
+    def upsert(
+        self,
+        content: str,
+        *,
+        category: str,
+        importance: int,
+        tags: List[str],
+        emotional_valence: float,
+        memory_id: Optional[int] = None,
+    ) -> int:
+        counts = term_counts(tokenize(content))
+        content_hash = _content_hash(content, category)
+        at = _now()
+        with self._lock:
+            conn = self._ensure_open()
+            target_id: Optional[int] = None
+            if memory_id is not None:
+                row = conn.execute(
+                    "SELECT id, content_hash, category FROM documents WHERE id = ?",
+                    (memory_id,),
+                ).fetchone()
+                if row is not None:
+                    target_id = int(row["id"])
+                else:
+                    clash = conn.execute(
+                        "SELECT id FROM documents WHERE content_hash = ? AND category = ?",
+                        (content_hash, category),
+                    ).fetchone()
+                    if clash is not None:
+                        raise HuginnValidationError(
+                            f"memory_id {memory_id} is free but this content already "
+                            f"lives at id {int(clash['id'])}; upsert there instead"
+                        )
+            if target_id is None:
+                row = conn.execute(
+                    "SELECT id FROM documents WHERE content_hash = ? AND category = ?",
+                    (content_hash, category),
+                ).fetchone()
+                if row is not None:
+                    target_id = int(row["id"])
+            if target_id is not None:
+                self._deindex_terms_locked(target_id)
+                conn.execute("DELETE FROM doc_vectors WHERE doc_id = ?", (target_id,))
+                conn.execute(
+                    "UPDATE documents SET content = ?, content_hash = ?, category = ?,"
+                    " importance = ?, tags = ?, emotional_valence = ?, updated_at = ?"
+                    " WHERE id = ?",
+                    (
+                        content, content_hash, category, importance,
+                        json.dumps(tags), emotional_valence, at, target_id,
+                    ),
+                )
+                doc_id = target_id
+            elif memory_id is not None:
+                cur = conn.execute(
+                    "INSERT INTO documents"
+                    " (id, content, content_hash, category, importance, tags,"
+                    "  emotional_valence, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        memory_id, content, content_hash, category, importance,
+                        json.dumps(tags), emotional_valence, at, at,
+                    ),
+                )
+                doc_id = int(cur.lastrowid)
+            else:
+                cur = conn.execute(
+                    "INSERT INTO documents"
+                    " (content, content_hash, category, importance, tags,"
+                    "  emotional_valence, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        content, content_hash, category, importance,
+                        json.dumps(tags), emotional_valence, at, at,
+                    ),
+                )
+                doc_id = int(cur.lastrowid)
+            self._index_terms_locked(doc_id, counts)
+            if self._embedder is not None:
+                vector = self._embedder.embed(content)
+                conn.execute(
+                    "INSERT OR REPLACE INTO doc_vectors (doc_id, vector) VALUES (?, ?)",
+                    (doc_id, json.dumps(vector)),
+                )
+            conn.commit()
+            return doc_id
+
+    def delete(self, memory_id: int) -> bool:
+        with self._lock:
+            conn = self._ensure_open()
+            self._deindex_terms_locked(memory_id)
+            conn.execute("DELETE FROM doc_vectors WHERE doc_id = ?", (memory_id,))
+            cur = conn.execute("DELETE FROM documents WHERE id = ?", (memory_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    # ─── reads (pure) ─────────────────────────────────────────────────
+
+    def _row_to_doc(self, row: sqlite3.Row, score: Optional[float] = None) -> Dict[str, Any]:
+        doc = {
+            "id": int(row["id"]),
+            "content": row["content"],
+            "category": row["category"],
+            "importance": int(row["importance"]),
+            "tags": json.loads(row["tags"] or "[]"),
+            "emotional_valence": float(row["emotional_valence"]),
+        }
+        if score is not None:
+            doc["score"] = float(score)
+        return doc
+
+    def get(self, memory_id: int) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            row = self._ensure_open().execute(
+                "SELECT * FROM documents WHERE id = ?", (memory_id,)
+            ).fetchone()
+        return self._row_to_doc(row) if row else None
+
+    def count(self) -> int:
+        with self._lock:
+            return int(
+                self._ensure_open().execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+            )
+
+    def search(
+        self,
+        query_text: str,
+        *,
+        limit: int,
+        category: Optional[str],
+        min_importance: int,
+    ) -> List[Dict[str, Any]]:
+        with self._lock:
+            conn = self._ensure_open()
+            if self._embedder is not None:
+                return self._search_vectors_locked(conn, query_text, limit, category, min_importance)
+            return self._search_tfidf_locked(conn, query_text, limit, category, min_importance)
+
+    def _candidate_docs_locked(
+        self,
+        conn: sqlite3.Connection,
+        doc_ids: List[int],
+        category: Optional[str],
+        min_importance: int,
+    ) -> Dict[int, sqlite3.Row]:
+        if not doc_ids:
+            return {}
+        placeholders = ",".join("?" * len(doc_ids))
+        sql = f"SELECT * FROM documents WHERE id IN ({placeholders})"
+        params: List[Any] = list(doc_ids)
+        if category:
+            sql += " AND category = ?"
+            params.append(category)
+        if min_importance > 1:
+            sql += " AND importance >= ?"
+            params.append(min_importance)
+        return {int(r["id"]): r for r in conn.execute(sql, params).fetchall()}
+
+    def _search_tfidf_locked(
+        self,
+        conn: sqlite3.Connection,
+        query_text: str,
+        limit: int,
+        category: Optional[str],
+        min_importance: int,
+    ) -> List[Dict[str, Any]]:
+        q_counts = term_counts(tokenize(query_text))
+        if not q_counts:
+            return []
+        total_docs = int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
+        if total_docs == 0:
+            return []
+        placeholders = ",".join("?" * len(q_counts))
+        candidate_ids = [
+            int(r[0])
+            for r in conn.execute(
+                f"SELECT DISTINCT doc_id FROM doc_terms WHERE term IN ({placeholders})",
+                list(q_counts),
+            ).fetchall()
+        ]
+        docs = self._candidate_docs_locked(conn, candidate_ids, category, min_importance)
+        if not docs:
+            return []
+        # Full term sets for the surviving candidates (needed for norms).
+        doc_ids = list(docs)
+        ph = ",".join("?" * len(doc_ids))
+        term_rows = conn.execute(
+            f"SELECT doc_id, term, tf FROM doc_terms WHERE doc_id IN ({ph})",
+            doc_ids,
+        ).fetchall()
+        per_doc: Dict[int, Dict[str, int]] = {}
+        all_terms = set(q_counts)
+        for doc_id, term, tf in term_rows:
+            per_doc.setdefault(int(doc_id), {})[term] = int(tf)
+            all_terms.add(term)
+        # One batched doc_freq lookup for every involved term.
+        tph = ",".join("?" * len(all_terms))
+        df = {
+            r[0]: int(r[1])
+            for r in conn.execute(
+                f"SELECT term, doc_freq FROM corpus_stats WHERE term IN ({tph})",
+                list(all_terms),
+            ).fetchall()
+        }
+        query_vec = sparse_tfidf(q_counts, df, total_docs)
+        scored = []
+        for doc_id, counts in per_doc.items():
+            doc_vec = sparse_tfidf(counts, df, total_docs)
+            score = cosine(query_vec, doc_vec)
+            if score > 0.0:
+                scored.append((score, doc_id))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]
+
+    def _search_vectors_locked(
+        self,
+        conn: sqlite3.Connection,
+        query_text: str,
+        limit: int,
+        category: Optional[str],
+        min_importance: int,
+    ) -> List[Dict[str, Any]]:
+        assert self._embedder is not None
+        query_vec = self._embedder.embed(query_text)
+        rows = conn.execute("SELECT doc_id, vector FROM doc_vectors").fetchall()
+        candidate_ids = [int(r["doc_id"]) for r in rows]
+        docs = self._candidate_docs_locked(conn, candidate_ids, category, min_importance)
+        vectors = {int(r["doc_id"]): json.loads(r["vector"]) for r in rows}
+        scored = []
+        for doc_id in docs:
+            score = dense_cosine(query_vec, vectors[doc_id])
+            if score > 0.0:
+                scored.append((score, doc_id))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]
+
+    # ─── health ───────────────────────────────────────────────────────
+
+    def health(self) -> Dict[str, Any]:
+        with self._lock:
+            conn = self._ensure_open()
+            try:
+                row = conn.execute("PRAGMA quick_check").fetchone()
+                integrity = str(row[0]) if row else "unknown"
+            except sqlite3.Error:
+                integrity = "failed"
+            documents = int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
+            terms = int(conn.execute("SELECT COUNT(*) FROM corpus_stats").fetchone()[0])
+        return {
+            "status": "healthy" if integrity == "ok" else "degraded",
+            "backend": "local",
+            "db_path": str(self._db_path),
+            "integrity": integrity,
+            "recovered_from_backup": self.recovered_from_backup,
+            "documents": documents,
+            "vocabulary": terms,
+        }

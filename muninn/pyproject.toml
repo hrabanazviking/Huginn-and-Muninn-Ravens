@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "muninn"
+version = "1.0.0"
+description = "Muninn — Hebbian associative memory: nodes, co-activation wiring, decay and consolidation in one crash-proof SQLite store"
+readme = "INTERFACE.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Volmarr Wyrd" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7,<9"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

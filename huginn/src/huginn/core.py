@@ -1,0 +1,486 @@
+"""Huginn — the Thought Raven: retrieval that flies out and returns
+with what is relevant.
+
+Modern, auditable form of the ancestors' design (NorseSagaEngine
+``yggdrasil/ravens/huginn.py``): query analysis, flights
+(:meth:`HuginnMemory.fly`), multi-hop retrieval, and TF-IDF semantic
+search — over a real memory store this time: Qdrant when it is
+genuinely available, otherwise Huginn's own local store, which is
+fully capable with zero infrastructure.
+
+Backend honesty:
+* ``backend="auto"`` (the default, and what Bifröst gets with
+  ``HuginnMemory(config=None)``): Qdrant is probed lazily on first
+  use with a short timeout. Any failure — no server, no client
+  package — falls back to the local backend *permanently for this
+  object*, and ``health()`` reports ``status="degraded"`` with the
+  reason. A missing Qdrant never crashes the caller.
+* ``backend="qdrant"`` is explicit: failures raise
+  :class:`HuginnBackendError`, loudly.
+* ``backend="local"`` never touches the network.
+
+Read honesty: ``search``, ``get`` and ``fly`` are pure reads. Huginn
+has no reinforcing read at all — reinforcement is Muninn's job.
+
+Scoring honesty: the local backend's default score is TF-IDF cosine —
+*lexical* semantics (weighted word overlap). The Qdrant backend's
+default embedder is deterministic feature hashing (lexical overlap in
+vector form); true neural embeddings need
+``embedder="sentence-transformers"`` (the ``embeddings`` extra).
+``health()`` always names the effective embedder.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+from .config import HuginnConfig
+from .errors import (
+    HuginnBackendError,
+    HuginnConfigurationError,
+    HuginnError,
+    HuginnValidationError,
+)
+from .local_backend import LocalBackend
+from .qdrant_backend import QdrantBackend
+from .text import (
+    STOPWORDS,
+    Embedder,
+    HashingEmbedder,
+    SentenceTransformerEmbedder,
+    sparse_tfidf,
+    cosine,
+    term_counts,
+    tokenize,
+)
+
+logger = logging.getLogger("huginn")
+
+MAX_RESULTS_CAP = 50
+MAX_QUERY_CHARS = 1000
+
+
+# ─── Ancestor query analysis ──────────────────────────────────────────
+
+def analyze_query(query: str) -> Dict[str, Any]:
+    """Analyze a query the ancestor's way.
+
+    Returns ``query_type``, ``key_terms`` (stopwords removed),
+    ``strategy``, ``recommended_hops`` and ``word_count``.
+    """
+    safe_query = (query or "").strip()[:MAX_QUERY_CHARS]
+    query_lower = safe_query.lower()
+    words = query_lower.split()
+
+    query_type = "factual"
+    if any(w in query_lower for w in ["why", "how", "explain"]):
+        query_type = "explanatory"
+    elif any(w in query_lower for w in ["find", "search", "where"]):
+        query_type = "search"
+    elif any(w in query_lower for w in ["list", "all", "show"]):
+        query_type = "enumeration"
+    elif any(w in query_lower for w in ["compare", "difference", "vs"]):
+        query_type = "comparison"
+
+    key_terms = [w for w in words if w not in STOPWORDS and len(w) > 2]
+
+    if query_type == "comparison":
+        strategy, hop_count = "multi_hop", 2
+    elif query_type == "enumeration":
+        strategy, hop_count = "broad", 1
+    elif len(key_terms) > 3:
+        strategy, hop_count = "focused", 1
+    else:
+        strategy, hop_count = "standard", 1
+
+    return {
+        "query_type": query_type,
+        "key_terms": key_terms,
+        "strategy": strategy,
+        "recommended_hops": hop_count,
+        "word_count": len(words),
+    }
+
+
+def semantic_search(
+    query: str, documents: List[str], top_k: int = 3
+) -> List[Tuple[int, float]]:
+    """TF-IDF semantic search over caller-supplied documents.
+
+    The ancestor's signature, reimplemented on stdlib sparse TF-IDF
+    (no sklearn). Returns ``(index, score)`` pairs, best first,
+    positive scores only.
+    """
+    if not documents:
+        return []
+    doc_counts = [term_counts(tokenize(doc)) for doc in documents]
+    df: Dict[str, int] = {}
+    for counts in doc_counts:
+        for term in counts:
+            df[term] = df.get(term, 0) + 1
+    total = len(documents)
+    query_vec = sparse_tfidf(term_counts(tokenize(query)), df, total)
+    scored = []
+    for idx, counts in enumerate(doc_counts):
+        score = cosine(query_vec, sparse_tfidf(counts, df, total))
+        if score > 0.0:
+            scored.append((idx, score))
+    scored.sort(key=lambda item: item[1], reverse=True)
+    bounded = max(1, min(int(top_k), len(documents)))
+    return [(idx, float(score)) for idx, score in scored[:bounded]]
+
+
+@dataclass
+class RetrievalResult:
+    """The result of one Huginn flight — the ancestor's shape."""
+
+    query: str
+    results: List[Dict[str, Any]]
+    relevance_scores: List[float]
+    source_realm: str
+    retrieval_time: float
+    compressed: bool
+    error: Optional[str] = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+def _check_importance(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HuginnValidationError(f"importance must be an int in [1, 10], got {value!r}")
+    if not 1 <= value <= 10:
+        raise HuginnValidationError(f"importance must be in [1, 10], got {value}")
+    return value
+
+
+def _check_valence(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise HuginnValidationError(f"emotional_valence must be a number in [-1, 1], got {value!r}")
+    v = float(value)
+    if not -1.0 <= v <= 1.0:
+        raise HuginnValidationError(f"emotional_valence must be in [-1, 1], got {v}")
+    return v
+
+
+def _check_memory_id(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HuginnValidationError(f"memory_id must be an int, got {type(value).__name__}")
+    if value < 0:
+        raise HuginnValidationError(f"memory_id must be >= 0, got {value}")
+    return value
+
+
+class HuginnMemory:
+    """Semantic memory: upsert and search, over Qdrant or local store.
+
+    Constructed exactly as Bifröst constructs it — ``HuginnMemory()``
+    or ``HuginnMemory(config=None)`` — construction is cheap and lazy:
+    no file is opened, no server is contacted, until the first
+    operation. Thread-safe.
+    """
+
+    def __init__(self, config: HuginnConfig | None = None, **overrides: Any):
+        if config is None:
+            config = HuginnConfig(**overrides)
+        elif overrides:
+            from dataclasses import replace
+
+            config = replace(config, **overrides)
+        self.config = config
+        self._lock = threading.RLock()
+        self._backend: LocalBackend | QdrantBackend | None = None
+        self._embedder: Embedder | None = None
+        self._embedder_name: str | None = None
+        self._fallback_reason: str | None = None
+        self._closed = False
+        self._flight_history: List[RetrievalResult] = []
+
+    # ─── lazy construction (Slice 86 ground 3) ────────────────────────
+
+    def _make_embedder(self, name: str) -> Embedder:
+        if name == "hashing":
+            return HashingEmbedder(dim=self.config.vector_dim)
+        if name == "sentence-transformers":
+            return SentenceTransformerEmbedder(model=self.config.st_model)
+        raise HuginnConfigurationError(f"no vector embedder named {name!r}")
+
+    def _ensure_backend(self) -> LocalBackend | QdrantBackend:
+        if self._closed:
+            raise HuginnBackendError("HuginnMemory is closed")
+        if self._backend is not None:
+            return self._backend
+        with self._lock:
+            if self._backend is not None:
+                return self._backend
+            wanted = self.config.backend
+            if wanted == "local":
+                self._backend = self._build_local()
+                return self._backend
+            if wanted == "qdrant":
+                backend = self._build_qdrant()
+                backend.ping()  # explicit: unreachable raises, loudly
+                self._backend = backend
+                return self._backend
+            # auto: try Qdrant once; any failure → local, permanently.
+            try:
+                backend = self._build_qdrant()
+                backend.ping()
+                self._backend = backend
+                logger.info("huginn: auto backend selected Qdrant at %s", self.config.qdrant_url)
+            except Exception as exc:
+                self._fallback_reason = f"qdrant unavailable: {exc}"
+                logger.info("huginn: auto backend fell back to local (%s)", exc)
+                self._backend = self._build_local()
+            return self._backend
+
+    def _build_local(self) -> LocalBackend:
+        embedder: Embedder | None = None
+        if self.config.embedder != "tfidf":
+            embedder = self._make_embedder(self.config.embedder)
+            self._embedder = embedder
+            self._embedder_name = self.config.embedder
+        else:
+            self._embedder_name = "tfidf"
+        return LocalBackend(self.config, embedder=embedder)
+
+    def _build_qdrant(self) -> QdrantBackend:
+        name = self.config.embedder
+        if name == "tfidf":
+            name = "hashing"  # Qdrant needs fixed-space vectors
+        embedder = self._make_embedder(name)
+        self._embedder = embedder
+        self._embedder_name = name
+        return QdrantBackend(self.config, embedder=embedder)
+
+    # ─── contract API (Bifröst) ───────────────────────────────────────
+
+    def upsert_memory(
+        self,
+        content: str,
+        category: str = "general",
+        importance: int = 5,
+        tags: Optional[List[str]] = None,
+        emotional_valence: float = 0.0,
+        *,
+        memory_id: Optional[int] = None,
+    ) -> int:
+        """Store (or replace) one memory; returns its id (WRITE).
+
+        Idempotent: the same content in the same category is the same
+        memory. Pass ``memory_id`` to align the id with an external
+        store (Bifröst merges backends by id).
+        """
+        if not isinstance(content, str) or not content.strip():
+            raise HuginnValidationError("content must be a non-empty string")
+        importance = _check_importance(importance)
+        emotional_valence = _check_valence(emotional_valence)
+        if memory_id is not None:
+            memory_id = _check_memory_id(memory_id)
+        clean_tags = [str(t) for t in (tags or [])]
+        backend = self._ensure_backend()
+        return backend.upsert(
+            content,
+            category=str(category),
+            importance=importance,
+            tags=clean_tags,
+            emotional_valence=emotional_valence,
+            memory_id=memory_id,
+        )
+
+    def search(
+        self,
+        query_text: str,
+        limit: int = 10,
+        category: Optional[str] = None,
+        min_importance: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """Semantic search. PURE READ.
+
+        Returns dicts with ``id, content, category, importance, tags,
+        emotional_valence, score`` — best first. A blank query is an
+        honest empty result, not an error.
+        """
+        if not isinstance(query_text, str):
+            raise HuginnValidationError("query_text must be a string")
+        if not query_text.strip():
+            return []
+        limit = max(1, min(int(limit), 1000))
+        if isinstance(min_importance, bool) or not isinstance(min_importance, int):
+            raise HuginnValidationError("min_importance must be an int")
+        backend = self._ensure_backend()
+        return backend.search(
+            query_text,
+            limit=limit,
+            category=category,
+            min_importance=min_importance,
+        )
+
+    def get(self, memory_id: int) -> Optional[Dict[str, Any]]:
+        """One memory by id, or None. PURE READ."""
+        memory_id = _check_memory_id(memory_id)
+        return self._ensure_backend().get(memory_id)
+
+    def delete(self, memory_id: int) -> bool:
+        """Remove one memory (WRITE). True when something was removed."""
+        memory_id = _check_memory_id(memory_id)
+        return self._ensure_backend().delete(memory_id)
+
+    def health(self) -> Dict[str, Any]:
+        """Backend health; never raises for backend trouble.
+
+        ``status`` is ``"healthy"``, ``"degraded"`` (auto mode fell
+        back to local — with ``fallback_reason``), or ``"unhealthy"``
+        (explicit backend failing).
+        """
+        try:
+            backend = self._ensure_backend()
+            info = backend.health()
+        except HuginnError as exc:
+            return {
+                "status": "unhealthy",
+                "backend_configured": self.config.backend,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
+        info = dict(info)
+        if self._fallback_reason:
+            info["status"] = "degraded"
+            info["fallback_reason"] = self._fallback_reason
+        info["embedder"] = self._embedder_name
+        info["backend_configured"] = self.config.backend
+        return info
+
+    def stats(self) -> Dict[str, Any]:
+        """Statistics (Bifröst calls health() for this; both exist)."""
+        info = self.health()
+        return info
+
+    def close(self) -> None:
+        """Close the backend if one was built. Idempotent."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._backend is not None:
+                try:
+                    self._backend.close()
+                except Exception:
+                    pass
+                self._backend = None
+
+    def __enter__(self) -> "HuginnMemory":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    # ─── ancestor flight semantics ────────────────────────────────────
+
+    def analyze_query(self, query: str) -> Dict[str, Any]:
+        """The ancestor's query analysis (see module function)."""
+        return analyze_query(query)
+
+    def fly(
+        self, query: str, max_results: int = 5, compress: bool = True
+    ) -> RetrievalResult:
+        """Send Huginn flying over this store. PURE READ.
+
+        Returns a :class:`RetrievalResult` — on backend failure the
+        flight comes home empty with ``error`` set, as the ancestor's
+        flights did, rather than crashing the thinker.
+        """
+        start = time.time()
+        bounded = max(1, min(int(max_results), MAX_RESULTS_CAP))
+        safe_query = (query or "").strip()[:MAX_QUERY_CHARS]
+        error: Optional[str] = None
+        results: List[Dict[str, Any]] = []
+        try:
+            results = self.search(safe_query, limit=bounded)
+        except HuginnError as exc:
+            error = str(exc)
+        if compress:
+            results = [self._compress_result(r) for r in results]
+        backend_kind = self._backend.kind if self._backend is not None else "unresolved"
+        flight = RetrievalResult(
+            query=query,
+            results=results,
+            relevance_scores=[float(r.get("score", 0.0)) for r in results],
+            source_realm=f"huginn:{backend_kind}",
+            retrieval_time=time.time() - start,
+            compressed=compress,
+            error=error,
+        )
+        with self._lock:
+            self._flight_history.append(flight)
+            if len(self._flight_history) > 100:
+                self._flight_history = self._flight_history[-50:]
+        return flight
+
+    @staticmethod
+    def _compress_result(result: Dict[str, Any]) -> Dict[str, Any]:
+        """Ancestor compression: long strings truncated, long lists cut."""
+        comp: Dict[str, Any] = {}
+        for key, value in result.items():
+            if isinstance(value, str) and len(value) > 200:
+                comp[key] = value[:200] + "..."
+            elif isinstance(value, list) and len(value) > 5:
+                comp[key] = value[:5]
+            else:
+                comp[key] = value
+        return comp
+
+    def multi_hop_retrieve(
+        self,
+        initial_query: str,
+        hop_count: int = 2,
+        max_results_per_hop: int = 3,
+    ) -> List[RetrievalResult]:
+        """Chained flights: each hop's findings seed the next query."""
+        flights: List[RetrievalResult] = []
+        current_query = (initial_query or "").strip()[:MAX_QUERY_CHARS]
+        bounded_hops = max(1, min(int(hop_count), 5))
+        for _ in range(bounded_hops):
+            flight = self.fly(current_query, max_results=max_results_per_hop)
+            flights.append(flight)
+            if not flight.results:
+                break
+            concepts = self._extract_concepts(flight.results)
+            if not concepts:
+                break
+            current_query = f"{initial_query} {' '.join(concepts[:3])}"
+        return flights
+
+    @staticmethod
+    def _extract_concepts(results: List[Dict[str, Any]]) -> List[str]:
+        concepts = set()
+        for result in results:
+            content = result.get("content", "")
+            if isinstance(content, str):
+                for word in content.lower().split():
+                    if len(word) > 4 and word.isalpha():
+                        concepts.add(word)
+        return sorted(concepts)[:10]
+
+    def get_flight_stats(self) -> Dict[str, Any]:
+        """Statistics over this object's flights. PURE READ."""
+        with self._lock:
+            history = list(self._flight_history)
+        if not history:
+            return {"total_flights": 0}
+        total_time = sum(f.retrieval_time for f in history)
+        total_results = sum(len(f.results) for f in history)
+        realm_counts: Dict[str, int] = {}
+        for flight in history:
+            realm_counts[flight.source_realm] = realm_counts.get(flight.source_realm, 0) + 1
+        return {
+            "total_flights": len(history),
+            "total_results_retrieved": total_results,
+            "total_flight_time": total_time,
+            "avg_flight_time": total_time / len(history),
+            "avg_results_per_flight": total_results / len(history),
+            "realm_visits": realm_counts,
+        }
