@@ -60,5 +60,5 @@ def test_schema_matches_golden_snapshot(tmp_path):
 
 
 def test_golden_table_count():
-    tables = [l for l in _golden_lines() if l.startswith("table|")]
+    tables = [line for line in _golden_lines() if line.startswith("table|")]
     assert len(tables) == 5  # roadmap RM-004: huginn local five tables

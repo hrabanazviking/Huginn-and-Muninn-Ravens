@@ -34,7 +34,7 @@ BASELINE = json.loads((SCRIPTS / "baseline.json").read_text())
 
 
 def _flat_baseline():
-    return {op: 100.0 for op in bench.HEADLINE_OPS}
+    return dict.fromkeys(bench.HEADLINE_OPS, 100.0)
 
 
 def test_baseline_file_shape():
@@ -76,15 +76,15 @@ def test_gate_passes_on_identical_numbers():
 
 def test_gate_passes_within_threshold():
     base = _flat_baseline()
-    current = {op: 124.0 for op in bench.HEADLINE_OPS}  # +24% < 25%
+    current = dict.fromkeys(bench.HEADLINE_OPS, 124.0)  # +24% < 25%
     assert bench.compare_to_baseline(current, base) == []
-    faster = {op: 50.0 for op in bench.HEADLINE_OPS}
+    faster = dict.fromkeys(bench.HEADLINE_OPS, 50.0)
     assert bench.compare_to_baseline(faster, base) == []
 
 
 def test_gate_fails_beyond_threshold():
     base = _flat_baseline()
-    current = {op: 100.0 for op in bench.HEADLINE_OPS}
+    current = dict.fromkeys(bench.HEADLINE_OPS, 100.0)
     current["search"] = 126.0  # +26% > 25%
     regressions = bench.compare_to_baseline(current, base)
     assert [r["operation"] for r in regressions] == ["search"]
@@ -93,14 +93,14 @@ def test_gate_fails_beyond_threshold():
 
 def test_gate_threshold_is_configurable():
     base = _flat_baseline()
-    current = {op: 140.0 for op in bench.HEADLINE_OPS}  # +40%
+    current = dict.fromkeys(bench.HEADLINE_OPS, 140.0)  # +40%
     assert bench.compare_to_baseline(current, base, threshold=0.5) == []
     assert bench.compare_to_baseline(current, base, threshold=0.25)
 
 
 def test_gate_missing_operation_is_a_failure_not_a_pass():
     base = _flat_baseline()
-    current = {op: 100.0 for op in bench.HEADLINE_OPS}
+    current = dict.fromkeys(bench.HEADLINE_OPS, 100.0)
     del current["search_filtered"]
     regressions = bench.compare_to_baseline(current, base)
     assert [(r["operation"], r["reason"]) for r in regressions] == [

@@ -15,10 +15,41 @@ dependencies = []
 [project.optional-dependencies]
 qdrant = ["qdrant-client>=1.9,<2"]
 embeddings = ["sentence-transformers>=2.2,<6"]
-dev = ["pytest>=7,<9"]
+dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# ─── RM-008 lint/type floor ─────────────────────────────────────────
+# Dev-only tooling (the `dev` extra above; bounded >=floor,<next_major
+# per the roadmap's dependency law). See docs/LINT_AND_TYPES.md at the
+# repo root for the ratchet road.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_return_any = true
+no_implicit_optional = true
+warn_unused_configs = true
+
+# The two optional extras are imported lazily, inside functions, and
+# are not installed in the type-check environment; their absence is a
+# configuration fact (HuginnConfigurationError at runtime), not a code
+# finding. These overrides are scoped to exactly those two third-party
+# modules; remove them when the extras join the type env. If a future
+# slice imports a submodule directly (qdrant_client.models, ...), add
+# the matching "module.*" entry here in the same commit.
+[[tool.mypy.overrides]]
+module = ["qdrant_client", "sentence_transformers"]
+ignore_missing_imports = true

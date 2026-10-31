@@ -13,10 +13,11 @@ in the same category is one point (idempotent, like the local store).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .config import HuginnConfig
 from .errors import HuginnBackendError, HuginnConfigurationError
@@ -117,9 +118,9 @@ class QdrantBackend:
         *,
         category: str,
         importance: int,
-        tags: List[str],
+        tags: list[str],
         emotional_valence: float,
-        memory_id: Optional[int] = None,
+        memory_id: int | None = None,
     ) -> int:
         content_hash = _content_hash(content, category)
         point_id = int(memory_id) if memory_id is not None else _derived_id(content_hash)
@@ -173,7 +174,7 @@ class QdrantBackend:
 
     # ─── reads ────────────────────────────────────────────────────────
 
-    def get(self, memory_id: int) -> Optional[Dict[str, Any]]:
+    def get(self, memory_id: int) -> dict[str, Any] | None:
         with self._lock:
             self.ping()
             self._ensure_collection()
@@ -190,10 +191,10 @@ class QdrantBackend:
                 return None
             return self._point_to_doc(points[0])
 
-    def _point_to_doc(self, point: Any, score: Optional[float] = None) -> Dict[str, Any]:
+    def _point_to_doc(self, point: Any, score: float | None = None) -> dict[str, Any]:
         payload = getattr(point, "payload", None) or {}
         doc = {
-            "id": int(getattr(point, "id")),
+            "id": int(point.id),
             "content": payload.get("content", ""),
             "category": payload.get("category", ""),
             "importance": int(payload.get("importance", 5)),
@@ -204,7 +205,7 @@ class QdrantBackend:
             doc["score"] = float(score)
         return doc
 
-    def _build_filter(self, category: Optional[str], min_importance: int) -> Any:
+    def _build_filter(self, category: str | None, min_importance: int) -> Any:
         conditions = []
         models = self._models
         if category:
@@ -230,9 +231,9 @@ class QdrantBackend:
         query_text: str,
         *,
         limit: int,
-        category: Optional[str],
+        category: str | None,
         min_importance: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         with self._lock:
             self.ping()
             self._ensure_collection()
@@ -274,7 +275,7 @@ class QdrantBackend:
             except Exception as exc:
                 raise HuginnBackendError(f"Qdrant count failed: {exc}") from exc
 
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         with self._lock:
             self.ping()
             documents = self.count()
@@ -292,8 +293,6 @@ class QdrantBackend:
                 return
             self._closed = True
             if self._client is not None:
-                try:
+                with contextlib.suppress(Exception):
                     self._client.close()
-                except Exception:
-                    pass
                 self._client = None

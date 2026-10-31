@@ -61,7 +61,7 @@ def test_schema_matches_golden_snapshot(tmp_path):
 
 
 def test_golden_table_count():
-    tables = [l for l in _golden_lines() if l.startswith("table|")]
+    tables = [line for line in _golden_lines() if line.startswith("table|")]
     assert len(tables) == 6  # roadmap RM-004: muninn six tables
-    names = {l.split("|")[1] for l in tables}
+    names = {line.split("|")[1] for line in tables}
     assert {"activation_log", "hebbian_connections"} <= names

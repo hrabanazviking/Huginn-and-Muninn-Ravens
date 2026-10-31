@@ -32,12 +32,13 @@ vector form); true neural embeddings need
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 from .config import HuginnConfig
 from .errors import (
@@ -53,8 +54,8 @@ from .text import (
     Embedder,
     HashingEmbedder,
     SentenceTransformerEmbedder,
-    sparse_tfidf,
     cosine,
+    sparse_tfidf,
     term_counts,
     tokenize,
 )
@@ -67,7 +68,7 @@ MAX_QUERY_CHARS = 1000
 
 # ─── Ancestor query analysis ──────────────────────────────────────────
 
-def analyze_query(query: str) -> Dict[str, Any]:
+def analyze_query(query: str) -> dict[str, Any]:
     """Analyze a query the ancestor's way.
 
     Returns ``query_type``, ``key_terms`` (stopwords removed),
@@ -108,8 +109,8 @@ def analyze_query(query: str) -> Dict[str, Any]:
 
 
 def semantic_search(
-    query: str, documents: List[str], top_k: int = 3
-) -> List[Tuple[int, float]]:
+    query: str, documents: list[str], top_k: int = 3
+) -> list[tuple[int, float]]:
     """TF-IDF semantic search over caller-supplied documents.
 
     The ancestor's signature, reimplemented on stdlib sparse TF-IDF
@@ -119,7 +120,7 @@ def semantic_search(
     if not documents:
         return []
     doc_counts = [term_counts(tokenize(doc)) for doc in documents]
-    df: Dict[str, int] = {}
+    df: dict[str, int] = {}
     for counts in doc_counts:
         for term in counts:
             df[term] = df.get(term, 0) + 1
@@ -140,13 +141,13 @@ class RetrievalResult:
     """The result of one Huginn flight — the ancestor's shape."""
 
     query: str
-    results: List[Dict[str, Any]]
-    relevance_scores: List[float]
+    results: list[dict[str, Any]]
+    relevance_scores: list[float]
     source_realm: str
     retrieval_time: float
     compressed: bool
-    error: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    error: str | None = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 def _check_importance(value: Any) -> int:
@@ -154,7 +155,7 @@ def _check_importance(value: Any) -> int:
         raise HuginnValidationError(f"importance must be an int in [1, 10], got {value!r}")
     if not 1 <= value <= 10:
         raise HuginnValidationError(f"importance must be in [1, 10], got {value}")
-    return value
+    return int(value)
 
 
 def _check_valence(value: Any) -> float:
@@ -171,7 +172,7 @@ def _check_memory_id(value: Any) -> int:
         raise HuginnValidationError(f"memory_id must be an int, got {type(value).__name__}")
     if value < 0:
         raise HuginnValidationError(f"memory_id must be >= 0, got {value}")
-    return value
+    return int(value)
 
 
 class HuginnMemory:
@@ -197,7 +198,7 @@ class HuginnMemory:
         self._embedder_name: str | None = None
         self._fallback_reason: str | None = None
         self._closed = False
-        self._flight_history: List[RetrievalResult] = []
+        self._flight_history: list[RetrievalResult] = []
 
     # ─── lazy construction (Slice 86 ground 3) ────────────────────────
 
@@ -263,10 +264,10 @@ class HuginnMemory:
         content: str,
         category: str = "general",
         importance: int = 5,
-        tags: Optional[List[str]] = None,
+        tags: list[str] | None = None,
         emotional_valence: float = 0.0,
         *,
-        memory_id: Optional[int] = None,
+        memory_id: int | None = None,
     ) -> int:
         """Store (or replace) one memory; returns its id (WRITE).
 
@@ -295,9 +296,9 @@ class HuginnMemory:
         self,
         query_text: str,
         limit: int = 10,
-        category: Optional[str] = None,
+        category: str | None = None,
         min_importance: int = 1,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Semantic search. PURE READ.
 
         Returns dicts with ``id, content, category, importance, tags,
@@ -319,7 +320,7 @@ class HuginnMemory:
             min_importance=min_importance,
         )
 
-    def get(self, memory_id: int) -> Optional[Dict[str, Any]]:
+    def get(self, memory_id: int) -> dict[str, Any] | None:
         """One memory by id, or None. PURE READ."""
         memory_id = _check_memory_id(memory_id)
         return self._ensure_backend().get(memory_id)
@@ -329,7 +330,7 @@ class HuginnMemory:
         memory_id = _check_memory_id(memory_id)
         return self._ensure_backend().delete(memory_id)
 
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         """Backend health; never raises for backend trouble.
 
         ``status`` is ``"healthy"``, ``"degraded"`` (auto mode fell
@@ -354,7 +355,7 @@ class HuginnMemory:
         info["backend_configured"] = self.config.backend
         return info
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Statistics (Bifröst calls health() for this; both exist)."""
         info = self.health()
         return info
@@ -366,13 +367,11 @@ class HuginnMemory:
                 return
             self._closed = True
             if self._backend is not None:
-                try:
+                with contextlib.suppress(Exception):
                     self._backend.close()
-                except Exception:
-                    pass
                 self._backend = None
 
-    def __enter__(self) -> "HuginnMemory":
+    def __enter__(self) -> HuginnMemory:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -380,7 +379,7 @@ class HuginnMemory:
 
     # ─── ancestor flight semantics ────────────────────────────────────
 
-    def analyze_query(self, query: str) -> Dict[str, Any]:
+    def analyze_query(self, query: str) -> dict[str, Any]:
         """The ancestor's query analysis (see module function)."""
         return analyze_query(query)
 
@@ -396,8 +395,8 @@ class HuginnMemory:
         start = time.time()
         bounded = max(1, min(int(max_results), MAX_RESULTS_CAP))
         safe_query = (query or "").strip()[:MAX_QUERY_CHARS]
-        error: Optional[str] = None
-        results: List[Dict[str, Any]] = []
+        error: str | None = None
+        results: list[dict[str, Any]] = []
         try:
             results = self.search(safe_query, limit=bounded)
         except HuginnError as exc:
@@ -421,9 +420,9 @@ class HuginnMemory:
         return flight
 
     @staticmethod
-    def _compress_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    def _compress_result(result: dict[str, Any]) -> dict[str, Any]:
         """Ancestor compression: long strings truncated, long lists cut."""
-        comp: Dict[str, Any] = {}
+        comp: dict[str, Any] = {}
         for key, value in result.items():
             if isinstance(value, str) and len(value) > 200:
                 comp[key] = value[:200] + "..."
@@ -438,9 +437,9 @@ class HuginnMemory:
         initial_query: str,
         hop_count: int = 2,
         max_results_per_hop: int = 3,
-    ) -> List[RetrievalResult]:
+    ) -> list[RetrievalResult]:
         """Chained flights: each hop's findings seed the next query."""
-        flights: List[RetrievalResult] = []
+        flights: list[RetrievalResult] = []
         current_query = (initial_query or "").strip()[:MAX_QUERY_CHARS]
         bounded_hops = max(1, min(int(hop_count), 5))
         for _ in range(bounded_hops):
@@ -455,7 +454,7 @@ class HuginnMemory:
         return flights
 
     @staticmethod
-    def _extract_concepts(results: List[Dict[str, Any]]) -> List[str]:
+    def _extract_concepts(results: list[dict[str, Any]]) -> list[str]:
         concepts = set()
         for result in results:
             content = result.get("content", "")
@@ -465,7 +464,7 @@ class HuginnMemory:
                         concepts.add(word)
         return sorted(concepts)[:10]
 
-    def get_flight_stats(self) -> Dict[str, Any]:
+    def get_flight_stats(self) -> dict[str, Any]:
         """Statistics over this object's flights. PURE READ."""
         with self._lock:
             history = list(self._flight_history)
@@ -473,7 +472,7 @@ class HuginnMemory:
             return {"total_flights": 0}
         total_time = sum(f.retrieval_time for f in history)
         total_results = sum(len(f.results) for f in history)
-        realm_counts: Dict[str, int] = {}
+        realm_counts: dict[str, int] = {}
         for flight in history:
             realm_counts[flight.source_realm] = realm_counts.get(flight.source_realm, 0) + 1
         return {

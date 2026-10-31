@@ -19,7 +19,8 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from typing import Iterable, Protocol, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Protocol
 
 # The ancestor Huginn's stopword set — kept verbatim for fidelity.
 STOPWORDS = frozenset({
@@ -147,7 +148,9 @@ class SentenceTransformerEmbedder:
 def dense_cosine(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    # strict=False is deliberate: a stored vector written under another
+    # embedder/dimension must not crash a read; the overlap is scored.
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0.0 or nb == 0.0:

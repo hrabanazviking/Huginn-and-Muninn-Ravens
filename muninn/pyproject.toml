@@ -13,10 +13,31 @@ authors = [{ name = "Volmarr Wyrd" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7,<9"]
+dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# ─── RM-008 lint/type floor ─────────────────────────────────────────
+# Dev-only tooling (the `dev` extra above; bounded >=floor,<next_major
+# per the roadmap's dependency law). Runtime stays dependency-free.
+# The ratchet road — what raises next, and the current level — is
+# recorded in docs/LINT_AND_TYPES.md at the repo root.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_return_any = true
+no_implicit_optional = true
+warn_unused_configs = true

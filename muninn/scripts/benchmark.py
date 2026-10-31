@@ -30,13 +30,10 @@ import statistics
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from muninn import HebbianMemory  # noqa: E402
-from muninn.config import MuninnConfig  # noqa: E402
 
 DEFAULT_THRESHOLD = 0.25
 BASELINE_PATH = Path(__file__).resolve().parent / "baseline.json"
@@ -69,7 +66,7 @@ def environment_block():
     except (AttributeError, OSError):
         load = None
     return {
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
         "machine": platform.machine(),
         "system": platform.system(),
         "platform": platform.platform(),
@@ -104,10 +101,7 @@ def compare_to_baseline(current, baseline, threshold=DEFAULT_THRESHOLD):
             continue
         base = float(baseline[op])
         cur = float(current[op])
-        if base > 0:
-            change = (cur - base) / base
-        else:
-            change = 0.0 if cur == 0 else float("inf")
+        change = (cur - base) / base if base > 0 else (0.0 if cur == 0 else float("inf"))
         if change > threshold:
             regressions.append(
                 {
@@ -135,6 +129,11 @@ def _bench_ms(label, fn, repeat=1):
 
 def run_benchmark(workload):
     """Run the headline operations; return (results_ms, details)."""
+    # Imported here, after the sys.path bootstrap above, so the script
+    # also runs from a bare checkout with nothing installed.
+    from muninn import HebbianMemory
+    from muninn.config import MuninnConfig
+
     tmp = tempfile.mkdtemp(prefix="muninn-bench-")
     mem = HebbianMemory(MuninnConfig(db_path=str(Path(tmp) / "bench.db")))
     n_nodes = workload["n_nodes"]

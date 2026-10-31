@@ -32,12 +32,10 @@ import statistics
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from huginn import HuginnConfig, HuginnMemory  # noqa: E402
 
 DEFAULT_THRESHOLD = 0.25
 BASELINE_PATH = Path(__file__).resolve().parent / "baseline.json"
@@ -56,10 +54,11 @@ HEADLINE_OPS = (
     "search_filtered",
 )
 
-WORDS = (
-    "raven wolf river stone fire ice saga rune ship sea storm wolf "
-    "memory thought wisdom eye well tree root branch leaf song sword"
-).split()
+WORDS = [
+    "raven", "wolf", "river", "stone", "fire", "ice", "saga", "rune",
+    "ship", "sea", "storm", "wolf", "memory", "thought", "wisdom", "eye",
+    "well", "tree", "root", "branch", "leaf", "song", "sword",
+]
 
 
 def doc_text(i):
@@ -74,7 +73,7 @@ def environment_block():
     except (AttributeError, OSError):
         load = None
     return {
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
         "machine": platform.machine(),
         "system": platform.system(),
         "platform": platform.platform(),
@@ -110,10 +109,7 @@ def compare_to_baseline(current, baseline, threshold=DEFAULT_THRESHOLD):
             continue
         base = float(baseline[op])
         cur = float(current[op])
-        if base > 0:
-            change = (cur - base) / base
-        else:
-            change = 0.0 if cur == 0 else float("inf")
+        change = (cur - base) / base if base > 0 else (0.0 if cur == 0 else float("inf"))
         if change > threshold:
             regressions.append(
                 {
@@ -129,6 +125,10 @@ def compare_to_baseline(current, baseline, threshold=DEFAULT_THRESHOLD):
 
 def run_benchmark(workload):
     """Run the headline operations; return (results_ms, details)."""
+    # Imported here, after the sys.path bootstrap above, so the script
+    # also runs from a bare checkout with nothing installed.
+    from huginn import HuginnConfig, HuginnMemory
+
     tmp = tempfile.mkdtemp(prefix="huginn-bench-")
     h = HuginnMemory(
         HuginnConfig(backend="local", local_db_path=str(Path(tmp) / "bench.db"))

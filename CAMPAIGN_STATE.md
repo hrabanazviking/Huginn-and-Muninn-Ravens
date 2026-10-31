@@ -33,9 +33,10 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007.
+- Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
+  RM-008.
 - In progress: none.
-- Next: RM-008 in roadmap order.
+- Next: RM-009 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -183,3 +184,56 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   local per-version runs are the evidence. No package code, API,
   or schema change, so no Bifröst re-verification required;
   founding tree needs no sync (CI + tests only).
+- **RM-008 — Lint/type floor. BANKED 2026-10-31. Class: UNIT.**
+  Both packages now carry the floor in their own pyproject.toml:
+  ruff (families E, W, F, I, UP, B, SIM, C4; line-length 100;
+  target py311; scope src+tests+scripts) and mypy ratchet level 1
+  (python 3.11; disallow_untyped_defs, disallow_incomplete_defs,
+  check_untyped_defs, warn_return_any, no_implicit_optional,
+  warn_unused_configs). Tools are dev-extra only, bounded
+  `ruff>=0.6,<1`, `mypy>=1.11,<2` — no runtime dependency added.
+  First run under the floor: **196 ruff findings + 9 mypy
+  findings, all fixed in code, none suppressed** — annotation
+  modernisation (typing.Dict/List/Optional → builtins/`|`,
+  timezone.utc → datetime.UTC), import sorting, unused imports
+  out; four `Any`-returning validators now return `int(value)`;
+  three `int(cur.lastrowid)` sites now raise the package storage
+  error loudly when an insert reports success without a row id;
+  four try/except-pass close paths are `contextlib.suppress`;
+  `zip()` gained explicit `strict=` (True in the qdrant fake;
+  deliberate commented False in `dense_cosine`, whose stored
+  vectors must never crash a pure read). Also removed **10
+  pre-existing `noqa`** (7× E731 lambdas in the qdrant fake →
+  `@staticmethod` factories; 3× E402 benchmark-script imports →
+  moved into the single using function): grep now finds no
+  `noqa` and no `# type: ignore` in either tree. The one mypy
+  configuration exception is scoped and pinned: huginn overrides
+  `ignore_missing_imports` for exactly `qdrant_client` +
+  `sentence_transformers` (optional extras, lazily imported, not
+  in the type env). Floor pinned by new `tests/
+  test_lint_type_floor.py` in both packages (acceptance proven: a
+  scratch copy with line-length lowered 100→88 and
+  warn_return_any flipped off fails both pins, 2 failed / 1
+  passed / 1 skipped); manual CI gained install + ruff + mypy
+  steps (still workflow_dispatch only). Clean run recorded in
+  docs/LINT_AND_TYPES.md (new): ruff 0.15.22 **All checks
+  passed!**; mypy 1.20.2 **Success: no issues found** — muninn
+  5 files, huginn 8 files. Full suites green (installed packages,
+  venv, TMPDIR redirected — /tmp was 100% full this tick, which
+  had caused two spurious muninn robustness failures in a first
+  system-python run; both pass cleanly with TMPDIR on the
+  workspace disk): muninn **58 passed** (54+4), huginn
+  **49 passed** (44+5). No public API or schema change (RM-003
+  freeze + RM-004 snapshot tests green), so no Bifröst
+  re-verification required. A GitHub-hosted run of the new CI
+  steps is NOT PROVEN (never dispatched). Founding tree
+  (`~/workspace/ravens`) NEEDS A SYNC: package sources there are
+  now behind this repo (annotation modernisation, the loud
+  lastrowid guards, suppress rewrites — behaviour identical
+  except the guard's loud error in a previously-TypeError path)
+  plus both pyprojects (dev extras + floor config). Ratchet road
+  named in docs/LINT_AND_TYPES.md: next mypy raise is
+  warn_redundant_casts + strict_equality (a further set of
+  findings measured on muninn this tick), then
+  disallow_untyped_calls; ruff BLE/S/PLR families evaluated
+  case-by-case later.

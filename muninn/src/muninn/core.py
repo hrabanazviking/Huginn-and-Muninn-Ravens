@@ -34,15 +34,16 @@ opt-in: ``retrieve(..., touch=True)``.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import combinations
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ._db import open_store, take_backup
 from .config import MuninnConfig
@@ -104,7 +105,7 @@ CREATE TABLE IF NOT EXISTS deleted_nodes (
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _check_memory_id(value: Any) -> int:
@@ -112,7 +113,7 @@ def _check_memory_id(value: Any) -> int:
         raise MuninnValidationError(f"memory_id must be an int, got {type(value).__name__}")
     if value < 0:
         raise MuninnValidationError(f"memory_id must be >= 0, got {value}")
-    return value
+    return int(value)
 
 
 def _check_importance(value: Any) -> int:
@@ -120,7 +121,7 @@ def _check_importance(value: Any) -> int:
         raise MuninnValidationError(f"importance must be an int in [1, 10], got {value!r}")
     if not 1 <= value <= 10:
         raise MuninnValidationError(f"importance must be in [1, 10], got {value}")
-    return value
+    return int(value)
 
 
 def _check_valence(value: Any) -> float:
@@ -155,18 +156,18 @@ class MemoryNode:
     memory_type: str = "fact"
     importance: int = 5
     emotional_valence: float = 0.0
-    tags: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
     access_count: int = 0
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def category(self) -> str:
         """Alias for ``memory_type`` (Bifröst-era vocabulary)."""
         return self.memory_type
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "content": self.content,
@@ -183,14 +184,14 @@ class MemoryNode:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MemoryNode":
+    def from_dict(cls, data: dict[str, Any]) -> MemoryNode:
         def _dt(key: str) -> datetime:
             raw = data.get(key)
             if isinstance(raw, datetime):
                 return raw
             if raw:
                 return datetime.fromisoformat(str(raw))
-            return datetime.now(timezone.utc)
+            return datetime.now(UTC)
 
         return cls(
             id=int(data["id"]),
@@ -264,12 +265,10 @@ class HebbianMemory:
             if self._closed:
                 return
             self._closed = True
-            try:
+            with contextlib.suppress(sqlite3.Error):
                 self._conn.close()
-            except sqlite3.Error:
-                pass
 
-    def __enter__(self) -> "HebbianMemory":
+    def __enter__(self) -> HebbianMemory:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -295,7 +294,8 @@ class HebbianMemory:
         )
         lr = self.config.learning_rate
         self._conn.execute(
-            "INSERT INTO node_activation (memory_id, total_activations, confidence, last_activated_at)"
+            "INSERT INTO node_activation (memory_id, total_activations, confidence,"
+            " last_activated_at)"
             " VALUES (?, 1, 1.0, ?)"
             " ON CONFLICT(memory_id) DO UPDATE SET"
             "   total_activations = total_activations + 1,"
@@ -338,7 +338,7 @@ class HebbianMemory:
             )
         return created
 
-    def _heal_locked(self) -> Dict[str, Any]:
+    def _heal_locked(self) -> dict[str, Any]:
         """Repair structural drift. Caller holds the lock; commits."""
         report = {
             "self_edges_pruned": 0,
@@ -437,11 +437,11 @@ class HebbianMemory:
 
     def activate_batch(
         self,
-        memory_ids: List[int],
+        memory_ids: list[int],
         *,
         emotional_valence: float = 0.0,
         source: str = "api",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Log activations for a co-active set AND wire every pair (WRITE).
 
         This is the Hebbian operation Bifröst's reinforcement calls:
@@ -528,7 +528,8 @@ class HebbianMemory:
                     )
             self._conn.commit()
             row = self._conn.execute(
-                "SELECT strength FROM hebbian_connections WHERE memory_a_id = ? AND memory_b_id = ?",
+                "SELECT strength FROM hebbian_connections"
+                " WHERE memory_a_id = ? AND memory_b_id = ?",
                 (a, b),
             ).fetchone()
             return float(row[0]) if row else 0.0
@@ -537,7 +538,7 @@ class HebbianMemory:
 
     def get_associations(
         self, memory_id: int, min_strength: float = 0.0, limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Associations of a memory, strongest first. PURE READ.
 
         Each dict: ``memory_id`` (the other end), ``strength``,
@@ -580,13 +581,13 @@ class HebbianMemory:
 
     def spread_activation(
         self,
-        seed_ids: List[int],
+        seed_ids: list[int],
         *,
         depth: int = 2,
         attenuation: float = 0.5,
         min_strength: float = 0.0,
         limit: int = 1000,
-    ) -> Dict[int, float]:
+    ) -> dict[int, float]:
         """Activation spreading over the wiring. PURE READ.
 
         Seeds start at 1.0; each hop multiplies by edge strength and
@@ -597,12 +598,12 @@ class HebbianMemory:
         if not 0.0 < float(attenuation) <= 1.0:
             raise MuninnValidationError("attenuation must be in (0, 1]")
         depth = max(0, min(int(depth), 10))
-        levels: Dict[int, float] = {sid: 1.0 for sid in seeds}
+        levels: dict[int, float] = dict.fromkeys(seeds, 1.0)
         frontier = dict(levels)
         with self._lock:
             conn = self._get_conn()
             for _ in range(depth):
-                next_frontier: Dict[int, float] = {}
+                next_frontier: dict[int, float] = {}
                 for mid, level in frontier.items():
                     rows = conn.execute(
                         "SELECT memory_b_id, strength FROM hebbian_connections"
@@ -631,9 +632,9 @@ class HebbianMemory:
         category: str = "general",
         path: str = "",
         importance: int = 5,
-        tags: Optional[List[str]] = None,
+        tags: list[str] | None = None,
         emotional_valence: float = 0.0,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> int:
         """Store a memory node; returns its integer id (WRITE).
 
@@ -665,6 +666,10 @@ class HebbianMemory:
                 ),
             )
             if cur.rowcount == 1:
+                if cur.lastrowid is None:
+                    raise MuninnStorageError(
+                        "node insert reported success but returned no row id"
+                    )
                 node_id = int(cur.lastrowid)
                 is_new = True
             else:
@@ -685,8 +690,8 @@ class HebbianMemory:
         path: str = "",
         memory_type: str = "fact",
         importance: int = 5,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         *,
         emotional_valence: float = 0.0,
     ) -> int:
@@ -719,7 +724,7 @@ class HebbianMemory:
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
-    def get_node(self, memory_id: int) -> Optional[MemoryNode]:
+    def get_node(self, memory_id: int) -> MemoryNode | None:
         """One node by id, or None. PURE READ."""
         memory_id = _check_memory_id(memory_id)
         with self._lock:
@@ -730,15 +735,15 @@ class HebbianMemory:
 
     def retrieve(
         self,
-        query: Optional[str] = None,
-        path: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        memory_type: Optional[str] = None,
+        query: str | None = None,
+        path: str | None = None,
+        tags: list[str] | None = None,
+        memory_type: str | None = None,
         top_k: int = 5,
         *,
-        category: Optional[str] = None,
+        category: str | None = None,
         touch: bool = False,
-    ) -> List[MemoryNode]:
+    ) -> list[MemoryNode]:
         """Retrieve nodes by filters (ancestor semantics). PURE READ
         unless ``touch=True``.
 
@@ -751,14 +756,14 @@ class HebbianMemory:
         top_k = max(1, min(int(top_k), self.MAX_QUERY_RESULTS))
         wanted_type = category or memory_type
         sql = "SELECT * FROM nodes WHERE 1=1"
-        params: List[Any] = []
+        params: list[Any] = []
         if wanted_type:
             sql += " AND category = ?"
             params.append(str(wanted_type))
         if path:
             sql += " AND (path = ? OR path LIKE ?)"
             params.extend([str(path), str(path).rstrip("/") + "/%"])
-        rows_out: List[MemoryNode] = []
+        rows_out: list[MemoryNode] = []
         with self._lock:
             rows = self._get_conn().execute(sql, params).fetchall()
             for row in rows:
@@ -778,11 +783,13 @@ class HebbianMemory:
             if touch:
                 at = _now()
                 for node in rows_out:
-                    self._log_activation_locked(node.id, node.emotional_valence, "retrieve:touch", at)
+                    self._log_activation_locked(
+                        node.id, node.emotional_valence, "retrieve:touch", at
+                    )
                 self._conn.commit()
         return rows_out
 
-    def get_by_path(self, path: str) -> List[MemoryNode]:
+    def get_by_path(self, path: str) -> list[MemoryNode]:
         """All nodes at exactly ``path``. PURE READ."""
         with self._lock:
             rows = self._get_conn().execute(
@@ -791,10 +798,10 @@ class HebbianMemory:
             ).fetchall()
         return [self._row_to_node(r) for r in rows]
 
-    def get_children(self, parent_path: str) -> Dict[str, List[MemoryNode]]:
+    def get_children(self, parent_path: str) -> dict[str, list[MemoryNode]]:
         """Nodes grouped by every path under ``parent_path``. PURE READ."""
         prefix = str(parent_path).rstrip("/") + "/"
-        children: Dict[str, List[MemoryNode]] = {}
+        children: dict[str, list[MemoryNode]] = {}
         with self._lock:
             rows = self._get_conn().execute(
                 "SELECT * FROM nodes WHERE path LIKE ? ORDER BY path, importance DESC",
@@ -808,7 +815,10 @@ class HebbianMemory:
     def update(self, node_id: int, content: Any = None, **fields: Any) -> bool:
         """Update a node's fields (WRITE). False when no such node."""
         node_id = _check_memory_id(node_id)
-        allowed = {"importance", "emotional_valence", "tags", "metadata", "path", "memory_type", "category"}
+        allowed = {
+            "importance", "emotional_valence", "tags", "metadata",
+            "path", "memory_type", "category",
+        }
         unknown = set(fields) - allowed
         if unknown:
             raise MuninnValidationError(f"unknown node fields: {sorted(unknown)}")
@@ -817,7 +827,7 @@ class HebbianMemory:
             row = self._conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
             if row is None:
                 return False
-            updates: Dict[str, Any] = {}
+            updates: dict[str, Any] = {}
             if content is not None:
                 text, is_json, content_hash = _content_payload(content)
                 updates["content"] = text
@@ -832,7 +842,9 @@ class HebbianMemory:
                     [str(t).strip().lower()[:64] for t in (fields["tags"] or []) if str(t).strip()]
                 )
             if "metadata" in fields:
-                updates["metadata"] = json.dumps(fields["metadata"] or {}, sort_keys=True, default=str)
+                updates["metadata"] = json.dumps(
+                    fields["metadata"] or {}, sort_keys=True, default=str
+                )
             if "path" in fields:
                 updates["path"] = str(fields["path"])
             if "memory_type" in fields or "category" in fields:
@@ -892,9 +904,9 @@ class HebbianMemory:
         """Move a node to a new hierarchical path (WRITE)."""
         return self.update(node_id, path=str(new_path))
 
-    def get_tree_structure(self) -> Dict[str, Any]:
+    def get_tree_structure(self) -> dict[str, Any]:
         """The hierarchical path tree with node counts. PURE READ."""
-        tree: Dict[str, Any] = {}
+        tree: dict[str, Any] = {}
         with self._lock:
             rows = self._get_conn().execute(
                 "SELECT path, COUNT(*) AS c FROM nodes GROUP BY path ORDER BY path"
@@ -914,7 +926,8 @@ class HebbianMemory:
         if overflow <= 0:
             return
         victims = self._conn.execute(
-            "SELECT id FROM nodes ORDER BY importance ASC, access_count ASC, updated_at ASC LIMIT ?",
+            "SELECT id FROM nodes ORDER BY importance ASC, access_count ASC,"
+            " updated_at ASC LIMIT ?",
             (overflow,),
         ).fetchall()
         for (victim,) in victims:
@@ -932,7 +945,7 @@ class HebbianMemory:
 
     # ─── maintenance: heal / decay / consolidate (WRITES, named) ──────
 
-    def heal_structure(self) -> Dict[str, Any]:
+    def heal_structure(self) -> dict[str, Any]:
         """Run the self-healing pass now; returns its report (WRITE).
 
         Fixes: self-edges pruned; edges touching forgotten ids pruned;
@@ -945,7 +958,7 @@ class HebbianMemory:
             self.last_heal_report = self._heal_locked()
             return dict(self.last_heal_report)
 
-    def decay(self, days: float = 1.0) -> Dict[str, Any]:
+    def decay(self, days: float = 1.0) -> dict[str, Any]:
         """Fade strengths and confidences by elapsed ``days`` (WRITE).
 
         Edge strengths multiply by ``0.5 ** (days / edge_half_life)``;
@@ -990,7 +1003,7 @@ class HebbianMemory:
                 "confidences_decayed": confidences,
             }
 
-    def consolidate(self, threshold: float | None = None) -> Dict[str, Any]:
+    def consolidate(self, threshold: float | None = None) -> dict[str, Any]:
         """Mark strong edges consolidated; repair structure (WRITE).
 
         Edges at or above ``threshold`` (default: the config's
@@ -1035,7 +1048,7 @@ class HebbianMemory:
 
     # ─── health & stats (PURE READS) ──────────────────────────────────
 
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         """Store health. PURE READ (integrity via quick_check)."""
         with self._lock:
             conn = self._get_conn()
@@ -1058,7 +1071,7 @@ class HebbianMemory:
             "schema_version": "1",
         }
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Store statistics. PURE READ."""
         with self._lock:
             conn = self._get_conn()
@@ -1091,11 +1104,11 @@ class HebbianMemory:
             "db_path": str(self._db_path),
         }
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Ancestor-shaped alias of :meth:`stats`."""
         return self.stats()
 
-    def dump(self, limit: int = 50) -> Dict[str, Any]:
+    def dump(self, limit: int = 50) -> dict[str, Any]:
         """Debug dump: stats + highest-importance nodes. PURE READ."""
         limit = max(1, min(int(limit), 500))
         with self._lock:

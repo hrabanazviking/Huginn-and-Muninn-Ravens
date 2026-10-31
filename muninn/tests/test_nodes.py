@@ -55,8 +55,12 @@ def test_structured_content_round_trip(mem):
 
 
 def test_ancestor_store_retrieve(mem):
-    mem.store("Odin hung on the tree nine nights", path="myth/odin", memory_type="myth", importance=8)
-    mem.store("Thor fishes for the World Serpent", path="myth/thor", memory_type="myth", importance=7)
+    mem.store(
+        "Odin hung on the tree nine nights", path="myth/odin", memory_type="myth", importance=8
+    )
+    mem.store(
+        "Thor fishes for the World Serpent", path="myth/thor", memory_type="myth", importance=7
+    )
     mem.store("Python async patterns", path="skill/python", memory_type="skill", importance=6)
     hits = mem.retrieve("tree", memory_type="myth")
     assert len(hits) == 1 and "Odin" in hits[0].content

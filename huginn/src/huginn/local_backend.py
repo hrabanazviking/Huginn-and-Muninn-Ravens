@@ -14,13 +14,14 @@ Scoring modes (honestly labelled):
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import sqlite3
 import threading
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from ._db import open_store
 from .config import HuginnConfig
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS doc_vectors (
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _content_hash(content: str, category: str) -> str:
@@ -77,7 +78,7 @@ class LocalBackend:
 
     kind = "local"
 
-    def __init__(self, config: HuginnConfig, embedder: Optional[Embedder] = None):
+    def __init__(self, config: HuginnConfig, embedder: Embedder | None = None):
         self.config = config
         self._embedder = embedder
         self._lock = threading.RLock()
@@ -108,14 +109,12 @@ class LocalBackend:
             if self._closed:
                 return
             self._closed = True
-            try:
+            with contextlib.suppress(sqlite3.Error):
                 self._conn.close()
-            except sqlite3.Error:
-                pass
 
     # ─── index maintenance (lock held) ────────────────────────────────
 
-    def _index_terms_locked(self, doc_id: int, counts: Dict[str, int]) -> None:
+    def _index_terms_locked(self, doc_id: int, counts: dict[str, int]) -> None:
         if counts:
             self._conn.executemany(
                 "INSERT INTO doc_terms (doc_id, term, tf) VALUES (?, ?, ?)",
@@ -139,7 +138,7 @@ class LocalBackend:
             self._conn.execute("DELETE FROM corpus_stats WHERE doc_freq <= 0")
             self._conn.execute("DELETE FROM doc_terms WHERE doc_id = ?", (doc_id,))
 
-    def _heal_locked(self) -> Dict[str, Any]:
+    def _heal_locked(self) -> dict[str, Any]:
         """Repair term-index drift: orphans pruned, doc_freq recounted."""
         report = {"orphan_terms_pruned": 0, "orphan_vectors_pruned": 0, "doc_freq_fixed": 0}
         cur = self._conn.execute(
@@ -175,7 +174,7 @@ class LocalBackend:
             logger.warning("huginn: local heal repaired %s", report)
         return report
 
-    def heal(self) -> Dict[str, Any]:
+    def heal(self) -> dict[str, Any]:
         with self._lock:
             self._ensure_open()
             self.last_heal_report = self._heal_locked()
@@ -189,16 +188,16 @@ class LocalBackend:
         *,
         category: str,
         importance: int,
-        tags: List[str],
+        tags: list[str],
         emotional_valence: float,
-        memory_id: Optional[int] = None,
+        memory_id: int | None = None,
     ) -> int:
         counts = term_counts(tokenize(content))
         content_hash = _content_hash(content, category)
         at = _now()
         with self._lock:
             conn = self._ensure_open()
-            target_id: Optional[int] = None
+            target_id: int | None = None
             if memory_id is not None:
                 row = conn.execute(
                     "SELECT id, content_hash, category FROM documents WHERE id = ?",
@@ -247,6 +246,10 @@ class LocalBackend:
                         json.dumps(tags), emotional_valence, at, at,
                     ),
                 )
+                if cur.lastrowid is None:
+                    raise HuginnStorageError(
+                        "document insert reported success but returned no row id"
+                    )
                 doc_id = int(cur.lastrowid)
             else:
                 cur = conn.execute(
@@ -259,6 +262,10 @@ class LocalBackend:
                         json.dumps(tags), emotional_valence, at, at,
                     ),
                 )
+                if cur.lastrowid is None:
+                    raise HuginnStorageError(
+                        "document insert reported success but returned no row id"
+                    )
                 doc_id = int(cur.lastrowid)
             self._index_terms_locked(doc_id, counts)
             if self._embedder is not None:
@@ -281,7 +288,7 @@ class LocalBackend:
 
     # ─── reads (pure) ─────────────────────────────────────────────────
 
-    def _row_to_doc(self, row: sqlite3.Row, score: Optional[float] = None) -> Dict[str, Any]:
+    def _row_to_doc(self, row: sqlite3.Row, score: float | None = None) -> dict[str, Any]:
         doc = {
             "id": int(row["id"]),
             "content": row["content"],
@@ -294,7 +301,7 @@ class LocalBackend:
             doc["score"] = float(score)
         return doc
 
-    def get(self, memory_id: int) -> Optional[Dict[str, Any]]:
+    def get(self, memory_id: int) -> dict[str, Any] | None:
         with self._lock:
             row = self._ensure_open().execute(
                 "SELECT * FROM documents WHERE id = ?", (memory_id,)
@@ -312,27 +319,31 @@ class LocalBackend:
         query_text: str,
         *,
         limit: int,
-        category: Optional[str],
+        category: str | None,
         min_importance: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         with self._lock:
             conn = self._ensure_open()
             if self._embedder is not None:
-                return self._search_vectors_locked(conn, query_text, limit, category, min_importance)
-            return self._search_tfidf_locked(conn, query_text, limit, category, min_importance)
+                return self._search_vectors_locked(
+                    conn, query_text, limit, category, min_importance
+                )
+            return self._search_tfidf_locked(
+                conn, query_text, limit, category, min_importance
+            )
 
     def _candidate_docs_locked(
         self,
         conn: sqlite3.Connection,
-        doc_ids: List[int],
-        category: Optional[str],
+        doc_ids: list[int],
+        category: str | None,
         min_importance: int,
-    ) -> Dict[int, sqlite3.Row]:
+    ) -> dict[int, sqlite3.Row]:
         if not doc_ids:
             return {}
         placeholders = ",".join("?" * len(doc_ids))
         sql = f"SELECT * FROM documents WHERE id IN ({placeholders})"
-        params: List[Any] = list(doc_ids)
+        params: list[Any] = list(doc_ids)
         if category:
             sql += " AND category = ?"
             params.append(category)
@@ -346,9 +357,9 @@ class LocalBackend:
         conn: sqlite3.Connection,
         query_text: str,
         limit: int,
-        category: Optional[str],
+        category: str | None,
         min_importance: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         q_counts = term_counts(tokenize(query_text))
         if not q_counts:
             return []
@@ -373,7 +384,7 @@ class LocalBackend:
             f"SELECT doc_id, term, tf FROM doc_terms WHERE doc_id IN ({ph})",
             doc_ids,
         ).fetchall()
-        per_doc: Dict[int, Dict[str, int]] = {}
+        per_doc: dict[int, dict[str, int]] = {}
         all_terms = set(q_counts)
         for doc_id, term, tf in term_rows:
             per_doc.setdefault(int(doc_id), {})[term] = int(tf)
@@ -402,9 +413,9 @@ class LocalBackend:
         conn: sqlite3.Connection,
         query_text: str,
         limit: int,
-        category: Optional[str],
+        category: str | None,
         min_importance: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         assert self._embedder is not None
         query_vec = self._embedder.embed(query_text)
         rows = conn.execute("SELECT doc_id, vector FROM doc_vectors").fetchall()
@@ -421,7 +432,7 @@ class LocalBackend:
 
     # ─── health ───────────────────────────────────────────────────────
 
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         with self._lock:
             conn = self._ensure_open()
             try:

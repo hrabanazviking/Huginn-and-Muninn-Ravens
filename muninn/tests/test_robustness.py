@@ -1,7 +1,6 @@
 """Threaded, crash-proof, self-healing, lazy — proven, not promised."""
 
 import os
-import sqlite3
 import subprocess
 import sys
 import threading

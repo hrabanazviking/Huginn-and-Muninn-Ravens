@@ -15,7 +15,6 @@ import pytest
 from huginn import HuginnConfig, HuginnMemory
 from huginn.errors import HuginnBackendError, HuginnConfigurationError
 
-
 # ─── Fake qdrant_client ───────────────────────────────────────────────
 
 class _NS:
@@ -24,14 +23,35 @@ class _NS:
 
 
 class FakeModels(types.SimpleNamespace):
-    VectorParams = lambda size, distance: _NS(size=size, distance=distance)  # noqa: E731
     Distance = types.SimpleNamespace(COSINE="cosine")
-    PointStruct = lambda id, vector, payload: _NS(id=id, vector=vector, payload=payload)  # noqa: E731
-    FieldCondition = lambda key, match=None, range=None: _NS(key=key, match=match, range=range)  # noqa: E731
-    MatchValue = lambda value: _NS(value=value)  # noqa: E731
-    Range = lambda gte=None: _NS(gte=gte)  # noqa: E731
-    Filter = lambda must: _NS(must=must)  # noqa: E731
-    PointIdsList = lambda points: _NS(points=points)  # noqa: E731
+
+    @staticmethod
+    def VectorParams(size, distance):
+        return _NS(size=size, distance=distance)
+
+    @staticmethod
+    def PointStruct(id, vector, payload):
+        return _NS(id=id, vector=vector, payload=payload)
+
+    @staticmethod
+    def FieldCondition(key, match=None, range=None):
+        return _NS(key=key, match=match, range=range)
+
+    @staticmethod
+    def MatchValue(value):
+        return _NS(value=value)
+
+    @staticmethod
+    def Range(gte=None):
+        return _NS(gte=gte)
+
+    @staticmethod
+    def Filter(must):
+        return _NS(must=must)
+
+    @staticmethod
+    def PointIdsList(points):
+        return _NS(points=points)
 
 
 def _matches(payload, flt):
@@ -46,7 +66,7 @@ def _matches(payload, flt):
 
 
 def _cosine(a, b):
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
@@ -128,13 +148,13 @@ def dead_qdrant(monkeypatch):
 
 
 def _cfg(tmp_path, **kw):
-    base = dict(
-        backend="qdrant",
-        qdrant_url="http://fake:6333",
-        local_db_path=str(tmp_path / "h.db"),
-        embedder="hashing",
-        vector_dim=64,
-    )
+    base = {
+        "backend": "qdrant",
+        "qdrant_url": "http://fake:6333",
+        "local_db_path": str(tmp_path / "h.db"),
+        "embedder": "hashing",
+        "vector_dim": 64,
+    }
     base.update(kw)
     return HuginnConfig(**base)
 
