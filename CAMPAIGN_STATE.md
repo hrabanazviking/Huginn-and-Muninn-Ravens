@@ -33,9 +33,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001, RM-002.
+- Banked: RM-001, RM-002, RM-003.
 - In progress: none.
-- Next: RM-003 in roadmap order.
+- Next: RM-004 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -83,3 +83,21 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   never been dispatched, so a GitHub-hosted run is NOT PROVEN — only the
   file and its triggers are proven. No package code changed; founding
   tree needs no sync.
+- **RM-003 — Contract freeze tests. BANKED 2026-10-31. Class: UNIT.**
+  Added `tests/test_contract_freeze.py` to both packages: golden
+  (name, kind, default) signatures for every BUILD_NOTES §1 contract
+  method, golden result-key sets (muninn stats/health/association/
+  decay/consolidate; huginn search/health), and the MuninnConfig
+  dataclass + keyword-`db_path` pin. Acceptance proven: a deliberate
+  signature drift (scratch copy of the installed muninn with
+  `activate`'s `emotional_valence` default changed 0.0→0.5) fails
+  `test_golden_signatures` while the other freeze tests pass; the
+  scratch copy was discarded, no repo code drifted. Full suites green:
+  muninn **39 passed** (36+3), huginn **29 passed** (27+2). Side note
+  (pre-existing, not introduced here): both packages share test-file
+  basenames, so the suites must be run per package — a combined
+  single-pytest invocation hits pytest's import-file-mismatch on the
+  founding `test_contract.py` pair identically. No public API or
+  schema change, so no Bifröst re-verification was required; founding
+  tree needs no sync (test-only addition; a tests sync to the founding
+  tree is optional and has not been done).
