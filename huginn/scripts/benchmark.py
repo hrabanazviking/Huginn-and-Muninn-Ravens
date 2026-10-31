@@ -216,11 +216,12 @@ def main(argv=None):
 
     record = build_record(results, details, threshold)
     env = record["environment"]
-    print(
-        f"environment: {env['machine']} {env['system']} "
-        f"cpus={env['cpu_count']} load={env['load_avg']} "
-        f"python={env['python_version']} sqlite={env['sqlite_version']}"
-    )
+    print("environment:")
+    for key in (
+        "recorded_at", "machine", "system", "platform", "node",
+        "cpu_count", "load_avg", "python_version", "sqlite_version",
+    ):
+        print(f"  {key}: {env[key]}")
     if args.output is not None:
         args.output.write_text(json.dumps(record, indent=2) + "\n")
         print(f"record written: {args.output}")

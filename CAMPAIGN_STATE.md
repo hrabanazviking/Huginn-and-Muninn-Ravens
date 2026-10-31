@@ -33,9 +33,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001, RM-002, RM-003, RM-004, RM-005.
+- Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006.
 - In progress: none.
-- Next: RM-006 in roadmap order.
+- Next: RM-007 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -146,3 +146,18 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   founding tree needs a sync (benchmark scripts changed there
   are now behind this repo's gate versions — scripts-only, no
   package code change).
+- **RM-006 — Loaded-machine honesty in benchmarks. BANKED 2026-10-31. Class: UNIT (output) / BENCH (harness).**
+  The environment block landed with RM-005's harness; this slice
+  makes the printed benchmark output carry the FULL block field by
+  field (recorded_at, machine, system, platform, node, cpu_count,
+  load_avg, python_version, sqlite_version — previously a one-line
+  summary) and proves the acceptance end-to-end: new
+  `tests/test_benchmark_environment.py` in both packages runs the
+  real script as a subprocess at a tiny workload and asserts the
+  block is present in both printed and JSON output, that the
+  versions equal the running interpreter's real Python/SQLite
+  versions (a canned block cannot pass), and that load_avg is a
+  3-number list where provided. Full suites green: muninn
+  **51 passed** (49+2), huginn **41 passed** (39+2). No public
+  API or schema change, so no Bifröst re-verification required;
+  founding tree sync note from RM-005 stands (scripts only).

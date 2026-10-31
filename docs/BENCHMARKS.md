@@ -40,6 +40,11 @@ architecture, OS/platform, CPU count, load average at record
 time, Python version, SQLite version, and the UTC timestamp.
 Numbers measured on a loaded machine are indicative, not
 absolutes, and must never be quoted without that block.
+(RM-006: the printed output now carries the full block, field
+by field, and `tests/test_benchmark_environment.py` in both
+packages runs the real script end-to-end and asserts the block
+is present in both the printed and JSON output, with versions
+matching the running interpreter.)
 
 That warning is earned, not decorative. On the recording VM
 (4 CPUs, many campaigns running), two consecutive muninn gate
