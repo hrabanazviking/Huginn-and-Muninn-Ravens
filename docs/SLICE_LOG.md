@@ -169,3 +169,33 @@ has an entry here with its Class and Commit fields present.
   and a healthy clock's readings pass through untouched.
   Suites: muninn **70 passed**, huginn **60 passed**; ruff +
   mypy floors still clean.
+
+## RM-013 — Idempotency matrix
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The matrix in `docs/API_REFERENCE.md` Part 3:
+  every public API row of both packages classified **I**
+  (idempotent) / **R** (safely re-runnable) / **N**
+  (intentionally not), with the repeat behaviour stated per
+  row — 28 Muninn rows (M-01–M-28, the `Muninn` facade
+  inheriting every row) and 15 Huginn rows (H-01–H-15, local
+  backend; live Qdrant still NOT PROVEN, no Qdrant row claimed
+  proven). Proven by `tests/test_idempotency.py` in both
+  packages — exactly one test per row: muninn **29 tests**
+  (28 rows + the facade-inheritance row M-01b), huginn
+  **15 tests**. The N rows are proven to double-apply
+  (`activate` / `activate_batch` / `associate` counts and
+  strengths advance, `retrieve(touch=True)` reinforces again,
+  Huginn flights append history while the store stays pure);
+  every pure-read row's test also asserts the store's stats
+  did not move. Notable semantics pinned, not changed: a
+  Muninn `remember` retry with differing fields returns the
+  same id with the first write winning, while a Huginn
+  `upsert_memory` retry replaces in place under the same id;
+  Muninn `decay` is R — `decay(1)` twice composes to
+  `decay(2)` to float precision. No package code, API, or
+  schema change (RM-003 freeze + RM-004 snapshot green), so
+  no Bifröst re-verification required. Suites: muninn
+  **99 passed**, huginn **75 passed**; ruff + mypy floors
+  still clean.

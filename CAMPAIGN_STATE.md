@@ -36,9 +36,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
-- Banked (Part II): RM-011, RM-012.
+- Banked (Part II): RM-011, RM-012, RM-013.
 - In progress: none.
-- Next: RM-013 in roadmap order (Part II — Stability).
+- Next: RM-014 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -352,3 +352,49 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   Bifröst re-verification required. Founding tree NEEDS A
   SYNC for the `_tick` guard (package sources; extends the
   RM-008/RM-011 sync note).
+- **RM-013 — Idempotency matrix. BANKED 2026-10-31. Class: UNIT.**
+  Matrix in `docs/API_REFERENCE.md` Part 3 (new): every public
+  API row of both packages classified **I** (idempotent) /
+  **R** (safely re-runnable) / **N** (intentionally not), with
+  the repeat behaviour + blind-retry guidance stated per row.
+  Muninn: 28 rows M-01–M-28 (`HebbianMemory`; the `Muninn`
+  facade inherits every row — proven by an extra facade test).
+  Huginn: 15 rows H-01–H-15, proven on the local backend; the
+  Qdrant backend mirrors the upsert identity and pure reads by
+  construction, but a live Qdrant round-trip is still NOT
+  PROVEN, so no Qdrant row is claimed proven. Proven by new
+  `tests/test_idempotency.py` in both packages — exactly one
+  test per row: muninn **29 tests**, huginn **15 tests**.
+  N rows proven to double-apply: muninn `activate`,
+  `activate_batch`, `associate` (explicit-strength form pins
+  the strength value but `co_activation_count` still advances;
+  the delta form's strength climbs), `retrieve(touch=True)`;
+  huginn `fly` / `multi_hop_retrieve` (results repeat, the
+  store never moves, but each flight appends one in-memory
+  history record). R rows: construction/reopen in both
+  packages, muninn `backup()` (rolling generations rotate,
+  store unchanged), muninn `decay` — proven cumulative in the
+  defined way: `decay(1)` twice composes to `decay(2)` to
+  float precision (`pytest.approx`, rel 1e-12). Every
+  pure-read row's test also asserts the store's stats did not
+  move between repeats. Semantics pinned, not changed: a
+  Muninn `remember` retry carrying different fields returns
+  the same id and the FIRST write wins, while a Huginn
+  `upsert_memory` retry replaces in place under the same id;
+  removal rows (`forget`/`delete`) return True→False with
+  state unmoved; `update`/`move` are I apart from the
+  `updated_at` stamp (RM-012 `_tick`). One mid-build
+  correction, test-side only: an early draft of the muninn
+  row file briefly carried a `noqa` — removed in-slice before
+  banking (the RM-008 floor forbids them); a separate
+  long-line E501 was fixed by naming a helper. Full suites
+  green in a fresh venv (`ravens-rm013-venv`, packages
+  installed non-editable, imports resolving to site-packages,
+  suites run from the checkout, TMPDIR redirected to the
+  workspace disk): muninn **99 passed** (70+29), huginn
+  **75 passed** (60+15); ruff + mypy floors still clean in
+  both packages. No package code, public API, or schema
+  change (RM-003 freeze + RM-004 snapshot green), so no
+  Bifröst re-verification required. Founding tree needs no
+  NEW sync for this slice (tests + docs only); the
+  RM-008/RM-011/RM-012 package-source sync note stands.

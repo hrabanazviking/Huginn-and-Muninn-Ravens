@@ -1061,6 +1061,99 @@ text, with normalized embeddings, as plain floats.
 
 ---
 
+# Part 3 — Idempotency matrix (RM-013)
+
+What happens when a call is repeated with identical arguments —
+the retry question every caller eventually faces. One row per
+public API entry point, each row proven by exactly one test in
+`tests/test_idempotency.py` of the owning package (test names
+carry the row id). Scope: the exported surface of both packages —
+`HebbianMemory` / `Muninn` and `HuginnMemory`, the module
+functions, and the documented `LocalBackend.heal` seam. Huginn
+rows are proven on the local backend; the Qdrant backend mirrors
+the upsert identity and pure reads by construction, but a live
+Qdrant round-trip is **NOT PROVEN**, so no Qdrant row is claimed
+proven here.
+
+The three classes:
+
+- **I — Idempotent.** An identical repeat leaves the logical
+  store state unchanged and returns an equal result. Pure reads
+  are I trivially (and their tests also prove the store did not
+  move). Two honest exceptions to "equal result": a removal row
+  returns its *already-done* signal on the repeat (`True` →
+  `False`) while the state stays put, and a write row stamped
+  with RM-012's monotonic `_tick` may carry a newer `updated_at`
+  — the row says so where it applies; every other field is equal.
+- **R — Safely re-runnable.** A repeat never errors, duplicates
+  a record, or corrupts anything, but it applies its defined
+  effect again. Safe to schedule, unsafe to mistake for I.
+- **N — Intentionally not.** Every call is a new *event* by
+  design — an activation, a strengthening, a flight. A caller
+  who is unsure whether a call landed must **not** blind-retry
+  an N row: the retry is a second event, and the counts will
+  faithfully say so.
+
+## 3.1 Muninn — `HebbianMemory` (the `Muninn` facade inherits every row)
+
+| Row | API | Class | What a repeat does |
+|---|---|---|---|
+| M-01 | construction / reopen | R | Reopening a closed store returns the same logical state, `recovered_from_backup == False` on a healthy store. |
+| M-02 | `close()` | I | Second and later closes are no-ops. |
+| M-03 | `backup()` | R | Re-takes the rolling backup (generations rotate, bounded by `backup_keep`); the store itself never changes; returns the newest generation's path both times. |
+| M-04 | `activate(id)` | **N** | Logs a **second** activation: the returned total and `activation_count` advance by one per call. This is the operation itself — never blind-retry. |
+| M-05 | `activate_batch(ids)` | **N** | Logs every id again and strengthens every pair again (`connections_created` drops to 0, the strengthening and the counts are real). |
+| M-06 | `associate(a, b, …)` | **N** | A co-activation event: `co_activation_count` advances on every call. With explicit `strength=` the strength value is pinned but the count still advances; with `delta=` / default the strength itself climbs toward 1.0. |
+| M-07 | `get_associations(id)` | I | Pure read; equal result, store unmoved. |
+| M-08 | `activation_count(id)` | I | Pure read. |
+| M-09 | `spread_activation(ids)` | I | Pure read. |
+| M-10 | `remember(content, …)` | I | Same content + category + path returns the **same id**, no duplicate node. A retry carrying different fields still returns that id and the **first write wins** (the differing fields are ignored) — update deliberately via `update()` instead. |
+| M-11 | `store(content, …)` | I | Alias of `remember` (category = `memory_type`); same row. |
+| M-12 | `get_node(id)` | I | Pure read. |
+| M-13 | `retrieve(…, touch=False)` | I | Pure read — the default reinforces nothing. |
+| M-14 | `retrieve(…, touch=True)` | **N** | The one explicitly named reinforcing read: every touch logs an activation per returned node, per call. |
+| M-15 | `get_by_path(path)` | I | Pure read. |
+| M-16 | `get_children(path)` | I | Pure read. |
+| M-17 | `update(id, …)` | I* | Same field values land identically; returns `True` both times (`False` both times for a missing id). *Only `updated_at` may advance, via the monotonic `_tick`.* |
+| M-18 | `forget(id)` | I | First call removes node + wiring (`True`); the repeat returns `False` and the state does not move (the tombstone is re-stamped, nothing else). |
+| M-19 | `delete(id)` | I | Alias of `forget`; same row. |
+| M-20 | `move(id, path)` | I* | `update(id, path=…)`; same row as M-17. |
+| M-21 | `get_tree_structure()` | I | Pure read. |
+| M-22 | `heal_structure()` | I | A repeat on a healed store reports the same zero fixes; connections unchanged. |
+| M-23 | `decay(days)` | R | Safe to run on any schedule — and cumulative by definition: `decay(d)` twice composes to `decay(2d)` (strengths equal to float precision; row proven against a single `decay(2)`). Never mistake a re-run for a no-op. |
+| M-24 | `consolidate(threshold)` | I | The repeat marks nothing new: `newly_consolidated == 0`, totals unchanged. |
+| M-25 | `health()` | I | Pure read. |
+| M-26 | `stats()` / `get_stats()` | I | Pure reads; the alias returns exactly `stats()`. |
+| M-27 | `dump(limit)` | I | Pure read. |
+| M-28 | `MemoryNode.to_dict()` / `from_dict()` | I | Pure functions; the round trip is a fixed point (`from_dict(to_dict(n)) == n`, repeatably). |
+
+## 3.2 Huginn — `HuginnMemory` and module functions (local backend)
+
+| Row | API | Class | What a repeat does |
+|---|---|---|---|
+| H-01 | construction / reopen | R | Construction is lazy (no file until first use); reopening returns the same documents, `recovered_from_backup == False` on a healthy store. |
+| H-02 | `close()` | I | Second and later closes are no-ops — including closing before the lazy backend was ever built. |
+| H-03 | `upsert_memory(content, …)` (no id) | I | Same content + category returns the **same id**, one document. Upsert means *replace*: a repeat carrying new fields updates that same document in place (contrast Muninn M-10, where the first write wins). |
+| H-04 | `upsert_memory(…, memory_id=k)` | I | The explicit-id form lands on `k` every time; replacing the content under `k` twice leaves exactly the second content, once. |
+| H-05 | `search(query)` | I | Pure read; a blank query returns `[]`, repeatably. |
+| H-06 | `get(id)` | I | Pure read. |
+| H-07 | `delete(id)` | I | First call removes (`True`); the repeat returns `False`, state unmoved. |
+| H-08 | `health()` | I | Pure read at the logical level (the first call on a fresh object may build the lazy backend — after that, repeats are equal and move nothing). |
+| H-09 | `stats()` | I | Exactly `health()`, repeatably. |
+| H-10 | `analyze_query(q)` (method + module function) | I | Pure function of the query text; never touches the store. |
+| H-11 | `semantic_search(q, docs)` (module) | I | Pure function of its arguments. |
+| H-12 | `fly(query)` | **N** | Store-pure — the documents never move, and the flight's results repeat exactly (retrieval time excluded) — but every flight **appends one record to the in-memory flight history** (`get_flight_stats` counts it). A flight is an event, not a query. |
+| H-13 | `multi_hop_retrieve(query)` | **N** | One `fly` per hop, so one history record per hop per call; results repeat, history accumulates. |
+| H-14 | `get_flight_stats()` | I | Pure read — reading the stats appends no flight. |
+| H-15 | `LocalBackend.heal()` | I | A repeat on a healed backend reports the same all-zero report; the document count is unchanged. |
+
+Retry guidance, in one line per class: **I** — retry freely;
+**R** — retry knowing the effect applies again; **N** — never
+blind-retry, reconcile first (e.g. read `activation_count`, or
+accept that the event happened twice).
+
+---
+
 *End of the API reference. For why the stores underneath behave the
 way they do, see `docs/RELIABILITY.md`. For putting the packages to
 work inside another project, see `docs/INTEGRATION.md`.*
