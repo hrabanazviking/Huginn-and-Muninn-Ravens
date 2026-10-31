@@ -1,0 +1,11 @@
+# RM-004 golden schema snapshot - muninn store (sqlite_master, sqlite_% excluded)
+# Six tables + indexes. Update ONLY deliberately, in the same commit as a schema change,
+# with migration proof against the pinned Bifrost contract (roadmap Part X governs schema changes).
+index|idx_activation_memory|activation_log|CREATE INDEX idx_activation_memory ON activation_log(memory_id)
+index|idx_conn_b|hebbian_connections|CREATE INDEX idx_conn_b ON hebbian_connections(memory_b_id)
+table|activation_log|activation_log|CREATE TABLE activation_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, memory_id INTEGER NOT NULL, activated_at TEXT NOT NULL, emotional_valence REAL NOT NULL DEFAULT 0.0, source TEXT NOT NULL DEFAULT 'api' )
+table|deleted_nodes|deleted_nodes|CREATE TABLE deleted_nodes ( memory_id INTEGER PRIMARY KEY, deleted_at TEXT NOT NULL )
+table|hebbian_connections|hebbian_connections|CREATE TABLE hebbian_connections ( memory_a_id INTEGER NOT NULL, memory_b_id INTEGER NOT NULL, strength REAL NOT NULL DEFAULT 0.0, co_activation_count INTEGER NOT NULL DEFAULT 0, consolidated INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, last_coactivated_at TEXT, PRIMARY KEY (memory_a_id, memory_b_id) )
+table|meta|meta|CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL )
+table|node_activation|node_activation|CREATE TABLE node_activation ( memory_id INTEGER PRIMARY KEY, total_activations INTEGER NOT NULL DEFAULT 0, confidence REAL NOT NULL DEFAULT 1.0, last_activated_at TEXT )
+table|nodes|nodes|CREATE TABLE nodes ( id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, content_is_json INTEGER NOT NULL DEFAULT 0, content_hash TEXT NOT NULL, path TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT 'general', importance INTEGER NOT NULL DEFAULT 5, emotional_valence REAL NOT NULL DEFAULT 0.0, tags TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}', access_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(content_hash, category, path) )

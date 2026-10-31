@@ -33,9 +33,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001, RM-002, RM-003.
+- Banked: RM-001, RM-002, RM-003, RM-004.
 - In progress: none.
-- Next: RM-004 in roadmap order.
+- Next: RM-005 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -101,3 +101,15 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   schema change, so no Bifröst re-verification was required; founding
   tree needs no sync (test-only addition; a tests sync to the founding
   tree is optional and has not been done).
+- **RM-004 — Schema snapshot tests. BANKED 2026-10-31. Class: UNIT.**
+  Added `tests/test_schema_snapshot.py` + `tests/golden_schema.txt` to
+  both packages: golden `sqlite_master` dumps (internal `sqlite_%`
+  excluded, SQL whitespace-normalized) — muninn **six tables + 2
+  indexes**, huginn local **five tables + 1 index**, matching the
+  roadmap's counts. Acceptance proven: baseline dump equals the golden
+  exactly, and a raw-SQL `CREATE TABLE drift_probe` on a scratch store
+  makes the dump mismatch the golden (the test raises with a unified
+  diff). Full suites green: muninn **41 passed** (39+2), huginn
+  **31 passed** (29+2). No schema or API change — snapshots pin what
+  exists — so no Bifröst re-verification required; founding tree needs
+  no sync (test-only addition).

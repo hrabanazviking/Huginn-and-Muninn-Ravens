@@ -1,0 +1,8 @@
+# RM-004 golden schema snapshot - huginn local store (sqlite_master, sqlite_% excluded)
+# Five tables + indexes. Update ONLY deliberately, in the same commit as a schema change.
+index|idx_terms_term|doc_terms|CREATE INDEX idx_terms_term ON doc_terms(term)
+table|corpus_stats|corpus_stats|CREATE TABLE corpus_stats ( term TEXT PRIMARY KEY, doc_freq INTEGER NOT NULL )
+table|doc_terms|doc_terms|CREATE TABLE doc_terms ( doc_id INTEGER NOT NULL, term TEXT NOT NULL, tf INTEGER NOT NULL, PRIMARY KEY (doc_id, term) )
+table|doc_vectors|doc_vectors|CREATE TABLE doc_vectors ( doc_id INTEGER PRIMARY KEY, vector TEXT NOT NULL )
+table|documents|documents|CREATE TABLE documents ( id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, content_hash TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'general', importance INTEGER NOT NULL DEFAULT 5, tags TEXT NOT NULL DEFAULT '[]', emotional_valence REAL NOT NULL DEFAULT 0.0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(content_hash, category) )
+table|meta|meta|CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL )
