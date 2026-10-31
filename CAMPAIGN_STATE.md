@@ -33,9 +33,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006.
+- Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007.
 - In progress: none.
-- Next: RM-007 in roadmap order.
+- Next: RM-008 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -161,3 +161,25 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   **51 passed** (49+2), huginn **41 passed** (39+2). No public
   API or schema change, so no Bifröst re-verification required;
   founding tree sync note from RM-005 stands (scripts only).
+- **RM-007 — Test-matrix slice. BANKED 2026-10-31. Class: UNIT.**
+  Manual CI matrix widened from `["3.12"]` to
+  `["3.11", "3.12", "3.13"]` (`fail-fast: false` already set, so
+  failures stay named per version; trigger stays
+  `workflow_dispatch` only). New `tests/test_ci_matrix.py` in both
+  packages pins the matrix list, the fail-fast setting, and the
+  manual-only trigger; it skips when run outside a repo checkout
+  (the RM-001 neutral-cwd installed-package method). Acceptance
+  proven two ways: (1) local matrix run, fresh venv per version,
+  packages installed from this repo, suites run per package as CI
+  runs them — Python 3.11.17: muninn **54 passed**, huginn
+  **44 passed**; Python 3.12.3: muninn **54 passed**, huginn
+  **44 passed**; Python 3.13.17: muninn **54 passed**, huginn
+  **44 passed** (evidence:
+  `~/workspace/.verify-tmp/rm007/matrix.log`). (2) A scratch copy
+  with the matrix shrunk back to `["3.12"]` fails
+  `test_ci_matrix_covers_all_supported_pythons` (1 failed,
+  2 passed) — the pin catches drift. A GitHub-hosted matrix run
+  is NOT PROVEN (the workflow has never been dispatched); the
+  local per-version runs are the evidence. No package code, API,
+  or schema change, so no Bifröst re-verification required;
+  founding tree needs no sync (CI + tests only).

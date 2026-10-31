@@ -16,7 +16,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        # RM-007 test matrix: every supported Python, each job named
+        # per version; fail-fast is false so one version's failure
+        # never hides another version's result.
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
