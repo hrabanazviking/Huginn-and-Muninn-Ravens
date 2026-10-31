@@ -34,9 +34,10 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 ## Status
 
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
-  RM-008, RM-009.
+  RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
+  complete** — all ten slices banked and pushed.
 - In progress: none.
-- Next: RM-010 in roadmap order.
+- Next: RM-011 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -266,3 +267,19 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   (pyprojects there would need the coverage config too when the
   RM-008 sync happens). A GitHub-hosted run of the coverage
   steps is NOT PROVEN (never dispatched).
+- **RM-010 — Slice-log discipline. BANKED 2026-10-31. Class: UNIT.**
+  `docs/SLICE_LOG.md` created with the entry convention (Slice /
+  Class / Commit / Evidence, appended in the banking commit,
+  never edited after the fact). RM-001–RM-009 backfilled from
+  real records only — counts and classes from the slice log
+  above, commit hashes cross-checked against `git log`
+  (abad7b5, 63d96ed, 112e0ee, 0e50b5b, 9c58d04, f98585f,
+  de2dfa1, 0bc193d, 506b2df). New `tests/test_slice_log.py` in
+  both packages pins that every banked slice RM-001–RM-010 has
+  an entry carrying Class + Commit fields; later slices extend
+  EXPECTED in the same commit they bank. Full suites green:
+  muninn **63 passed** (61+2), huginn **54 passed** (52+2).
+  No package code, API, or schema change, so no Bifröst
+  re-verification required; founding tree needs no sync for
+  this slice (docs + tests only). **Part I complete with this
+  slice.**

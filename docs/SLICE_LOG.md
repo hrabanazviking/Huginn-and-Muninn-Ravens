@@ -1,0 +1,133 @@
+# Slice Log — Huginn & Muninn Ravens Roadmap
+
+The evidence record for every closed slice of
+`RAVENS_ROADMAP_2026-10-31.md`. One entry per slice, appended
+in the same commit that banks the slice, never edited after the
+fact (a correction is a new note under the entry, dated).
+
+## Entry convention
+
+Each entry carries, in this order:
+
+- **Slice** — the roadmap id and title (`## RM-NNN — Title`).
+- **Class** — the honesty class of its proof (UNIT / FAULT /
+  BENCH / LIVE / NOT PROVEN), per the roadmap's governing laws.
+- **Commit** — the short hash of the banking commit. A slice's
+  own entry is written inside its banking commit, so its hash
+  is recorded as *this commit* and is recoverable exactly from
+  `git log` and `CAMPAIGN_STATE.md`.
+- **Evidence** — the counts and results, quoted from test
+  runners and tool output only. Numbers are never estimated.
+
+`CAMPAIGN_STATE.md` (repo root) is the working state; this log
+is the permanent record. `tests/test_slice_log.py` in both
+packages pins that every banked slice through the current part
+has an entry here with its Class and Commit fields present.
+
+---
+
+## RM-001 — Repo-shipped baseline
+
+- **Class:** UNIT
+- **Commit:** abad7b5
+- **Evidence:** Fresh venv, packages installed non-editable from
+  this repo, suites run from a neutral cwd against the installed
+  packages, twice consecutively: muninn **36 passed**, huginn
+  **27 passed** — the roadmap's v1.0.0 acceptance exactly.
+
+## RM-002 — Manual-only CI
+
+- **Class:** UNIT (inspection)
+- **Commit:** 63d96ed
+- **Evidence:** `.github/workflows/ci.yml` trigger block verified
+  by parsed-YAML inspection: `on` is exactly
+  `{workflow_dispatch: null}` — no automatic trigger of any kind.
+  Local suites re-run green: muninn 36, huginn 27. A
+  GitHub-hosted run is NOT PROVEN (never dispatched).
+
+## RM-003 — Contract freeze tests
+
+- **Class:** UNIT
+- **Commit:** 112e0ee
+- **Evidence:** Golden signature + result-key tests added to both
+  packages. Acceptance proven by deliberate drift: changing
+  `activate`'s `emotional_valence` default in a scratch copy
+  fails `test_golden_signatures`. Suites: muninn **39 passed**,
+  huginn **29 passed**.
+
+## RM-004 — Schema snapshot tests
+
+- **Class:** UNIT
+- **Commit:** 0e50b5b
+- **Evidence:** Golden `sqlite_master` dumps pinned: muninn six
+  tables + 2 indexes, huginn local five tables + 1 index. A
+  scratch `CREATE TABLE drift_probe` makes the dump mismatch.
+  Suites: muninn **41 passed**, huginn **31 passed**.
+
+## RM-005 — Benchmark harness as a gate
+
+- **Class:** BENCH
+- **Commit:** 9c58d04
+- **Evidence:** Both `scripts/benchmark.py` promoted to gates
+  with committed baselines; >25% headline regression (or a
+  missing headline op) exits 1. Gate behaviour proven by unit
+  tests of the comparison, a real load-driven FAIL honestly
+  recorded in `docs/BENCHMARKS.md`, and a controlled pass against
+  an inflated baseline. Suites: muninn **49 passed**, huginn
+  **39 passed**.
+
+## RM-006 — Loaded-machine honesty in benchmarks
+
+- **Class:** UNIT (output) / BENCH (harness)
+- **Commit:** f98585f
+- **Evidence:** Benchmark output (printed + JSON) now carries the
+  full environment block field by field, asserted end-to-end
+  against the running interpreter's real Python/SQLite versions.
+  Suites: muninn **51 passed**, huginn **41 passed**.
+
+## RM-007 — Test-matrix slice
+
+- **Class:** UNIT
+- **Commit:** de2dfa1
+- **Evidence:** Manual CI matrix widened to Python 3.11 / 3.12 /
+  3.13, pinned by tests (a scratch shrink to `["3.12"]` fails the
+  pin). Local matrix run, fresh venv per version: muninn
+  **54 passed** and huginn **44 passed** on all three versions.
+  A GitHub-hosted matrix run is NOT PROVEN (never dispatched).
+
+## RM-008 — Lint/type floor
+
+- **Class:** UNIT
+- **Commit:** 0bc193d
+- **Evidence:** Ruff floor (E, W, F, I, UP, B, SIM, C4;
+  line-length 100; py311) + mypy ratchet level 1 in both
+  pyprojects; first run found 196 ruff + 9 mypy findings, all
+  fixed in code, plus 10 pre-existing `noqa` removed by fixing.
+  Clean run: ruff **All checks passed!**, mypy **Success: no
+  issues found** (5 + 8 files). Suites: muninn **58 passed**,
+  huginn **49 passed**. Full record: `docs/LINT_AND_TYPES.md`.
+
+## RM-009 — Coverage floor
+
+- **Class:** UNIT
+- **Commit:** 506b2df
+- **Evidence:** Line coverage measured: muninn **88.80%**
+  (661 statements), huginn **88.79%** (883 statements);
+  `fail_under = 88` enforced by `coverage report` in the manual
+  CI and proven both directions (real reports pass; a scratch
+  floor of 99 fails). Suites under coverage: muninn
+  **61 passed**, huginn **52 passed**. Full report:
+  `docs/COVERAGE.md`.
+
+## RM-010 — Slice-log discipline
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** This log exists with the convention above;
+  RM-001–RM-009 backfilled from the real records in
+  `CAMPAIGN_STATE.md` and `git log` only — every count, class
+  and hash cross-checked against those two sources.
+  `tests/test_slice_log.py` in both packages pins the entries'
+  presence and shape. Suites: muninn **63 passed**, huginn
+  **54 passed** (the RM-009 counts plus this slice's two pins
+  each).
