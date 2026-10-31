@@ -159,7 +159,9 @@ class LocalBackend:
             r[0]: int(r[1])
             for r in self._conn.execute("SELECT term, doc_freq FROM corpus_stats").fetchall()
         }
-        for term in set(expected) | set(current):
+        # RM-011 determinism pin: sorted, so the repair write order
+        # never depends on set iteration (hash-seed) order.
+        for term in sorted(set(expected) | set(current)):
             if expected.get(term) != current.get(term):
                 report["doc_freq_fixed"] += 1
                 if term in expected:
@@ -405,7 +407,8 @@ class LocalBackend:
             score = cosine(query_vec, doc_vec)
             if score > 0.0:
                 scored.append((score, doc_id))
-        scored.sort(key=lambda item: item[0], reverse=True)
+        # RM-011 determinism pin: equal scores resolve by doc id.
+        scored.sort(key=lambda item: (-item[0], item[1]))
         return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]
 
     def _search_vectors_locked(
@@ -427,7 +430,8 @@ class LocalBackend:
             score = dense_cosine(query_vec, vectors[doc_id])
             if score > 0.0:
                 scored.append((score, doc_id))
-        scored.sort(key=lambda item: item[0], reverse=True)
+        # RM-011 determinism pin: equal scores resolve by doc id.
+        scored.sort(key=lambda item: (-item[0], item[1]))
         return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]
 
     # ─── health ───────────────────────────────────────────────────────

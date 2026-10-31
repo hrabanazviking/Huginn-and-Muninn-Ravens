@@ -131,3 +131,21 @@ has an entry here with its Class and Commit fields present.
   presence and shape. Suites: muninn **63 passed**, huginn
   **54 passed** (the RM-009 counts plus this slice's two pins
   each).
+
+## RM-011 — Determinism audit
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Full audit in `docs/DETERMINISM.md`: tie-breaks
+  pinned in every ordered read (associations, spread activation,
+  retrieve, search in both scoring paths, `semantic_search`),
+  backpressure victim choice, and both heal passes' write order;
+  content hashes, the hashing embedder, and float arithmetic
+  proven already deterministic; Qdrant server ordering and
+  wall-clock timestamps documented, not pinned. Acceptance:
+  `tests/test_determinism.py` in both packages — one fixed
+  workload on two fresh stores produces byte-identical logical
+  dumps (every non-timestamp column of every table; the excluded
+  timestamp columns are listed in the audit and in the tests),
+  in-process and in child processes under `PYTHONHASHSEED` 0
+  and 42. Suites: muninn **66 passed**, huginn **57 passed**.

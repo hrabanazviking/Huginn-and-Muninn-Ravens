@@ -361,6 +361,7 @@ class HebbianMemory:
         rows = self._conn.execute(
             "SELECT memory_a_id, memory_b_id, strength, co_activation_count,"
             " consolidated, created_at, last_coactivated_at FROM hebbian_connections"
+            " ORDER BY memory_a_id, memory_b_id"
         ).fetchall()
         by_pair = {(r[0], r[1]): r for r in rows}
         for (a, b), r in list(by_pair.items()):
@@ -555,7 +556,8 @@ class HebbianMemory:
                 "SELECT memory_b_id, strength, co_activation_count, consolidated,"
                 " last_coactivated_at FROM hebbian_connections"
                 " WHERE memory_a_id = ? AND strength >= ?"
-                " ORDER BY strength DESC, co_activation_count DESC LIMIT ?",
+                " ORDER BY strength DESC, co_activation_count DESC, memory_b_id ASC"
+                " LIMIT ?",
                 (memory_id, float(min_strength), limit),
             ).fetchall()
         return [
@@ -620,7 +622,9 @@ class HebbianMemory:
                 frontier = next_frontier
                 if not frontier:
                     break
-        ranked = sorted(levels.items(), key=lambda kv: kv[1], reverse=True)
+        # RM-011 determinism pin: ties on activation resolve by id, so
+        # iteration order never depends on query-plan row order.
+        ranked = sorted(levels.items(), key=lambda kv: (-kv[1], kv[0]))
         return dict(ranked[: max(1, int(limit))])
 
     # ─── node API (ancestor semantics) ────────────────────────────────
@@ -778,7 +782,11 @@ class HebbianMemory:
                     if str(query).lower() not in haystack:
                         continue
                 rows_out.append(node)
-            rows_out.sort(key=lambda n: (n.importance, n.updated_at), reverse=True)
+            # RM-011 determinism pin: id breaks (importance, updated_at)
+            # ties — identical timestamps must not leave order to chance.
+            rows_out.sort(
+                key=lambda n: (n.importance, n.updated_at, n.id), reverse=True
+            )
             rows_out = rows_out[:top_k]
             if touch:
                 at = _now()
@@ -793,7 +801,8 @@ class HebbianMemory:
         """All nodes at exactly ``path``. PURE READ."""
         with self._lock:
             rows = self._get_conn().execute(
-                "SELECT * FROM nodes WHERE path = ? ORDER BY importance DESC, updated_at DESC",
+                "SELECT * FROM nodes WHERE path = ?"
+                " ORDER BY importance DESC, updated_at DESC, id ASC",
                 (str(path),),
             ).fetchall()
         return [self._row_to_node(r) for r in rows]
@@ -804,7 +813,8 @@ class HebbianMemory:
         children: dict[str, list[MemoryNode]] = {}
         with self._lock:
             rows = self._get_conn().execute(
-                "SELECT * FROM nodes WHERE path LIKE ? ORDER BY path, importance DESC",
+                "SELECT * FROM nodes WHERE path LIKE ?"
+                " ORDER BY path, importance DESC, id ASC",
                 (prefix + "%",),
             ).fetchall()
         for row in rows:
@@ -927,7 +937,7 @@ class HebbianMemory:
             return
         victims = self._conn.execute(
             "SELECT id FROM nodes ORDER BY importance ASC, access_count ASC,"
-            " updated_at ASC LIMIT ?",
+            " updated_at ASC, id ASC LIMIT ?",
             (overflow,),
         ).fetchall()
         for (victim,) in victims:
@@ -1113,7 +1123,8 @@ class HebbianMemory:
         limit = max(1, min(int(limit), 500))
         with self._lock:
             rows = self._get_conn().execute(
-                "SELECT * FROM nodes ORDER BY importance DESC, updated_at DESC LIMIT ?",
+                "SELECT * FROM nodes ORDER BY importance DESC, updated_at DESC,"
+                " id ASC LIMIT ?",
                 (limit,),
             ).fetchall()
         return {

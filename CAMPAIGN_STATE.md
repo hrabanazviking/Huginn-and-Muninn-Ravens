@@ -36,8 +36,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
+- Banked (Part II): RM-011.
 - In progress: none.
-- Next: RM-011 in roadmap order (Part II — Stability).
+- Next: RM-012 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -283,3 +284,36 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   re-verification required; founding tree needs no sync for
   this slice (docs + tests only). **Part I complete with this
   slice.**
+- **RM-011 — Determinism audit. BANKED 2026-10-31. Class: UNIT.**
+  Full audit in `docs/DETERMINISM.md`. PINNED in code: every
+  ordered read whose sort key can tie now carries an explicit
+  final tie-break (muninn `get_associations` +`memory_b_id ASC`;
+  `spread_activation` key `(-activation, id)`; `retrieve`
+  `(importance, updated_at, id)`; `get_by_path`/`get_children`/
+  `dump` +`id ASC`; huginn TF-IDF + vector search key
+  `(-score, doc_id)`; module `semantic_search` `(-score,
+  index)`); muninn backpressure victim choice +`id ASC` (a tie
+  could previously prune a different node per run); both heal
+  passes' write order (muninn wiring read `ORDER BY a, b`;
+  huginn corpus repair iterates `sorted(terms)` instead of a
+  hash-seed-ordered set union). PROVEN already deterministic:
+  content hashes (SHA-256 over sort_keys JSON / raw text — no
+  float ever formatted into a hash input outside json's fixed
+  repr), the hashing embedder, float sums (dict insertion order
+  only, never sets). DOCUMENTED, not pinned: Qdrant server
+  result order (live Qdrant still NOT PROVEN), wall-clock
+  timestamp values, physical SQLite file bytes (acceptance is
+  at the logical-dump level). Acceptance proven by new
+  `tests/test_determinism.py` in both packages: one fixed
+  workload on two fresh stores produces byte-identical logical
+  dumps (every non-timestamp column of every table; excluded
+  timestamp columns listed in the audit + the tests), in-process
+  AND in child processes under PYTHONHASHSEED 0 and 42. Full
+  suites green: muninn **66 passed** (63+3), huginn **57
+  passed** (54+3); ruff + mypy floors still clean. No public
+  API signature or schema change (RM-003 freeze + RM-004
+  snapshot green; the contractual strength-DESC association
+  order is preserved — only ties gained a rule), so no Bifröst
+  re-verification required. Founding tree (`~/workspace/ravens`)
+  NEEDS A SYNC: the tie-break pins are package-source changes
+  there (extends the RM-008 sync note).

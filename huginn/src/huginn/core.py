@@ -131,7 +131,8 @@ def semantic_search(
         score = cosine(query_vec, sparse_tfidf(counts, df, total))
         if score > 0.0:
             scored.append((idx, score))
-    scored.sort(key=lambda item: item[1], reverse=True)
+    # RM-011 determinism pin: equal scores resolve by document index.
+    scored.sort(key=lambda item: (-item[1], item[0]))
     bounded = max(1, min(int(top_k), len(documents)))
     return [(idx, float(score)) for idx, score in scored[:bounded]]
 
