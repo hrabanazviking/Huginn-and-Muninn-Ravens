@@ -1,0 +1,38 @@
+{
+  "package": "huginn",
+  "schema": 1,
+  "threshold": 0.25,
+  "environment": {
+    "recorded_at": "2026-10-31T04:45:42.765151+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      4.36376953125,
+      6.4873046875,
+      7.19775390625
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "upsert": 4594.0897290001885,
+    "search": 13.472974500018609,
+    "search_filtered": 1.6223084999182902
+  },
+  "details": {
+    "workload": {
+      "n_docs": 5000,
+      "n_search": 200,
+      "n_search_filtered": 100
+    },
+    "unit": "upsert: total ms for the batch; search ops: median ms per search",
+    "search_p95_ms": {
+      "search": 84.21428100018602,
+      "search_filtered": 2.3105049999685434
+    },
+    "backend": "local"
+  }
+}

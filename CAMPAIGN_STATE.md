@@ -33,9 +33,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 
 ## Status
 
-- Banked: RM-001, RM-002, RM-003, RM-004.
+- Banked: RM-001, RM-002, RM-003, RM-004, RM-005.
 - In progress: none.
-- Next: RM-005 in roadmap order.
+- Next: RM-006 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -113,3 +113,36 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   **31 passed** (29+2). No schema or API change — snapshots pin what
   exists — so no Bifröst re-verification required; founding tree needs
   no sync (test-only addition).
+- **RM-005 — Benchmark harness as a gate. BANKED 2026-10-31. Class: BENCH.**
+  Both `scripts/benchmark.py` promoted to repeatable gates: JSON
+  record per run, committed baselines (`scripts/baseline.json` in
+  both packages), default gate = exit 1 when any headline operation
+  regresses >25% vs baseline (missing headline op on either side
+  also fails); `--update-baseline` / `--no-check` / `--threshold`
+  supported. Every record carries an environment block (machine,
+  OS/platform, CPU count, load average, Python + SQLite versions,
+  UTC timestamp) — numbers labelled with machine + load as the
+  roadmap requires (this also lands the recording half of RM-006;
+  RM-006 still owns its own output-level acceptance tests).
+  Baselines recorded on this VM (4 CPUs, Python 3.12.3, SQLite
+  3.45.1, loaded): muninn at load_avg [3.24, 6.35, 7.16] —
+  remember 423.1 ms, activate 1454.7, activate_batch 977.0,
+  get_associations 216.5, spread_activation 287.0, decay 16.4,
+  consolidate 69.3, stats×1000 1936.9; huginn (local) at
+  [4.36, 6.49, 7.20] — upsert×5000 4594.1 ms, search median
+  13.47 ms, search_filtered 1.62 ms. Gate behaviour proven three
+  ways: deterministic unit tests of `compare_to_baseline` in both
+  packages (identical/+24% pass, +26% fails, threshold override,
+  missing-op fails); a real check run minutes after baselining
+  FAILED as load rose to 6.60 (decay +365%, stats +106%,
+  spread_activation +75%, activate +45% — recorded honestly in
+  docs/BENCHMARKS.md: under load a FAIL is a signal to re-run
+  quieter, not proof of regression); a controlled pass run
+  against a ×10-inflated copy of the baseline in
+  ~/workspace/.verify-tmp/rm005/ exited 0 for both packages.
+  Docs: new `docs/BENCHMARKS.md`. Full suites green: muninn
+  **49 passed** (41+8), huginn **39 passed** (31+8). No public
+  API or schema change, so no Bifröst re-verification required;
+  founding tree needs a sync (benchmark scripts changed there
+  are now behind this repo's gate versions — scripts-only, no
+  package code change).

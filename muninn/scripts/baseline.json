@@ -1,0 +1,39 @@
+{
+  "package": "muninn",
+  "schema": 1,
+  "threshold": 0.25,
+  "environment": {
+    "recorded_at": "2026-10-31T04:45:31.796936+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      3.24462890625,
+      6.349609375,
+      7.1611328125
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "remember": 423.09033299989096,
+    "activate": 1454.6890020001229,
+    "activate_batch": 976.9785799999227,
+    "get_associations": 216.5340900000956,
+    "spread_activation": 286.9923260000178,
+    "decay": 16.425517999778094,
+    "consolidate": 69.28272399954949,
+    "stats": 1936.8661749999774
+  },
+  "details": {
+    "workload": {
+      "n_nodes": 5000,
+      "n_activate": 20000,
+      "n_batch": 2000,
+      "read_repeat": 3
+    },
+    "unit": "median total ms for the labelled batch (seed ops run once)"
+  }
+}
