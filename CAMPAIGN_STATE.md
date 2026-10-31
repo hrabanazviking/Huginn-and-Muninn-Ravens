@@ -34,9 +34,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 ## Status
 
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
-  RM-008.
+  RM-008, RM-009.
 - In progress: none.
-- Next: RM-009 in roadmap order.
+- Next: RM-010 in roadmap order.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -237,3 +237,32 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   findings measured on muninn this tick), then
   disallow_untyped_calls; ruff BLE/S/PLR families evaluated
   case-by-case later.
+- **RM-009 — Coverage floor. BANKED 2026-10-31. Class: UNIT.**
+  Line coverage measured with coverage.py 7.17.0 (suites importing
+  from `src/`, per package): muninn **88.80%** (661 statements,
+  74 missed), huginn **88.79%** (883 statements, 99 missed) —
+  the v1.0.0 logic as it stands post-RM-008. Floors set at the
+  measured level rounded down: `[tool.coverage.report]
+  fail_under = 88` in both pyprojects, with
+  `[tool.coverage.run] source_pkgs` naming each package.
+  `coverage>=7,<8` added to both dev extras (dev-only, bounded).
+  Enforcement proven both ways: the real reports exit 0
+  (88.80 / 88.79 ≥ 88), and a scratch copy at `fail_under = 99`
+  fails with "Coverage failure: total of 88.80 is less than
+  fail-under=99.00"; the pin itself is proven by a scratch copy
+  at 80 failing `test_coverage_floor_is_pinned`. New
+  `tests/test_coverage_floor.py` in both packages (3 pins each);
+  manual CI gained muninn + huginn coverage steps (still
+  workflow_dispatch only). Committed report: docs/COVERAGE.md
+  (verbatim tables + Missing columns + a read of what the missed
+  lines are: config validation branches, _db healing paths, the
+  NOT-PROVEN sentence-transformers body and live-Qdrant paths,
+  and the RM-008 lastrowid guards — unreachable by construction,
+  counted as missed, absorbed by the floor). Suites under
+  coverage: muninn **61 passed** (58+3), huginn **52 passed**
+  (49+3); ruff floor still clean. No package code, API, or
+  schema change, so no Bifröst re-verification required;
+  founding tree needs no NEW sync beyond RM-008's note
+  (pyprojects there would need the coverage config too when the
+  RM-008 sync happens). A GitHub-hosted run of the coverage
+  steps is NOT PROVEN (never dispatched).

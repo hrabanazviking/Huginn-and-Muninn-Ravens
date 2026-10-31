@@ -34,8 +34,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ./muninn ./huginn "pytest>=7,<9"
 
-      - name: Install lint/type tools (RM-008 floor, dev-only)
-        run: python -m pip install "ruff>=0.6,<1" "mypy>=1.11,<2"
+      - name: Install lint/type/coverage tools (RM-008/RM-009 floors, dev-only)
+        run: python -m pip install "ruff>=0.6,<1" "mypy>=1.11,<2" "coverage>=7,<8"
 
       - name: Lint both packages (ruff — RM-008 floor)
         run: |
@@ -49,6 +49,18 @@ jobs:
       - name: Type-check huginn (mypy — RM-008 ratchet level 1)
         working-directory: huginn
         run: python -m mypy src/huginn
+
+      - name: Coverage muninn (RM-009 floor — report fails under 88%)
+        working-directory: muninn
+        run: |
+          python -m coverage run -m pytest tests -q
+          python -m coverage report
+
+      - name: Coverage huginn (RM-009 floor — report fails under 88%)
+        working-directory: huginn
+        run: |
+          python -m coverage run -m pytest tests -q
+          python -m coverage report
 
       - name: Run the muninn suite (installed package)
         run: python -m pytest muninn/tests -q

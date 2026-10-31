@@ -15,7 +15,7 @@ dependencies = []
 [project.optional-dependencies]
 qdrant = ["qdrant-client>=1.9,<2"]
 embeddings = ["sentence-transformers>=2.2,<6"]
-dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2"]
+dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2", "coverage>=7,<8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -53,3 +53,16 @@ warn_unused_configs = true
 [[tool.mypy.overrides]]
 module = ["qdrant_client", "sentence_transformers"]
 ignore_missing_imports = true
+
+# ─── RM-009 coverage floor ──────────────────────────────────────────
+# Measured 2026-10-31 on this tree (the v1.0.0 logic, post-RM-008):
+# 88.79% line coverage (883 statements, 99 missed). The floor is the
+# measured level rounded down to a whole percent; later slices
+# ratchet it up. Report: docs/COVERAGE.md at the repo root.
+[tool.coverage.run]
+source_pkgs = ["huginn"]
+
+[tool.coverage.report]
+fail_under = 88
+precision = 2
+show_missing = true

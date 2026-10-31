@@ -13,7 +13,7 @@ authors = [{ name = "Volmarr Wyrd" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2"]
+dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2", "coverage>=7,<8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -41,3 +41,16 @@ check_untyped_defs = true
 warn_return_any = true
 no_implicit_optional = true
 warn_unused_configs = true
+
+# ─── RM-009 coverage floor ──────────────────────────────────────────
+# Measured 2026-10-31 on this tree (the v1.0.0 logic, post-RM-008):
+# 88.80% line coverage (661 statements, 74 missed). The floor is the
+# measured level rounded down to a whole percent; later slices
+# ratchet it up. Report: docs/COVERAGE.md at the repo root.
+[tool.coverage.run]
+source_pkgs = ["muninn"]
+
+[tool.coverage.report]
+fail_under = 88
+precision = 2
+show_missing = true
