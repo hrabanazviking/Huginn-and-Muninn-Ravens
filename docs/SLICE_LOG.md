@@ -199,3 +199,31 @@ has an entry here with its Class and Commit fields present.
   no Bifröst re-verification required. Suites: muninn
   **99 passed**, huginn **75 passed**; ruff + mypy floors
   still clean.
+
+## RM-014 — Flake quarantine
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Harness `scripts/flake_quarantine.py` runs both
+  suites back to back as pairs under 2 busy-loop load workers
+  and records one JSON line per pair; a pair is green only when
+  both suites exit 0, and the harness never retries — the first
+  non-green pair would stop the sweep with its full output
+  saved. No non-green pair ever occurred. The final record
+  (`~/workspace/.verify-tmp/rm014/runs-resumed.jsonl`, durable
+  copy in the goal's hidden files as
+  `rm014_flake_record.jsonl`) holds **50 consecutive green
+  pairs, runs 1–50**: muninn **99 passed** and huginn
+  **75 passed** in every pair, 0 failed / 0 errors throughout.
+  Honest interruption history (interruptions, not flakes —
+  each is recorded in full in `CAMPAIGN_STATE.md`): the first
+  attempt reached 15/50 before a VM reboot; the resumed record
+  was then carried forward across five further external
+  teardowns of the background sweep process (silent deaths and
+  one runtime-reported SIGTERM, causes not proven) using the
+  harness's `--start-run` resume, which keeps pair numbers so
+  the file reads as one consecutive run; the final resume
+  (pairs 31–50) completed in one stretch. No package code, API,
+  or schema change (RM-003 freeze + RM-004 snapshot green), so
+  no Bifröst re-verification required. Suites: muninn
+  **99 passed**, huginn **75 passed**.

@@ -36,9 +36,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
-- Banked (Part II): RM-011, RM-012, RM-013.
+- Banked (Part II): RM-011, RM-012, RM-013, RM-014.
 - In progress: none.
-- Next: RM-014 in roadmap order (Part II — Stability).
+- Next: RM-015 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -398,3 +398,35 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   Bifröst re-verification required. Founding tree needs no
   NEW sync for this slice (tests + docs only); the
   RM-008/RM-011/RM-012 package-source sync note stands.
+- **RM-014 — Flake quarantine. BANKED 2026-10-31. Class: UNIT.**
+  Acceptance met: **50 consecutive green runs recorded.**
+  Harness `scripts/flake_quarantine.py` (committed with this
+  slice) ran both suites back to back as pairs under 2
+  busy-loop load workers, one JSON record line per pair, never
+  retrying — a non-green pair stops the sweep with full output
+  saved, and none ever occurred. Final record
+  (`~/workspace/.verify-tmp/rm014/runs-resumed.jsonl`; durable
+  copy in the goal hidden files as `rm014_flake_record.jsonl`):
+  runs 1–50, every pair green, muninn **99 passed** / huginn
+  **75 passed**, 0 failed / 0 errors throughout. The road to
+  the record was interrupted repeatedly by the machine, never
+  by a flake: first attempt 15/50 then a VM reboot (~07:18
+  UTC); the resumed record was carried across five further
+  external teardowns of the background sweep process (silent
+  deaths at 15, 22→, 30 pairs and one runtime-reported SIGTERM
+  during pair 23; causes not proven — OOM under concurrent
+  campaigns plausible but NOT PROVEN) via the harness's
+  `--start-run` resume, which keeps pair numbers so the file
+  reads as one consecutive run; the final resume (pairs
+  31–50, keeper-run 2026-10-31 ~10:17–10:32 UTC) completed in
+  one stretch. Every interruption was recorded in this file
+  as it happened, not hidden. No package code, public API, or
+  schema change (RM-003 freeze + RM-004 snapshot green), so
+  no Bifröst re-verification required. Founding tree needs no
+  sync for this slice (harness + docs + slice-log test pin
+  only); the RM-008/RM-011/RM-012 package-source sync note
+  stands. Post-sweep, the harness was tidied to the lint
+  floor (executable bit, explicit `check=False`,
+  `datetime.UTC`) — behaviour unchanged, record unaffected;
+  ruff + mypy floors re-verified clean at banking (mypy:
+  muninn 5 files, huginn 8 files, no issues).
