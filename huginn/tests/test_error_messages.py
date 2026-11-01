@@ -23,6 +23,7 @@ be broken by a casual rewording. Two pins enforce that:
 
 import ast
 import contextlib
+import os
 import sys
 import types
 from collections import Counter
@@ -181,6 +182,14 @@ def _cases(tmp_path):
     _full_conn = full._ensure_backend()._conn
     _pages = _full_conn.execute("PRAGMA page_count").fetchone()[0]
     _full_conn.execute(f"PRAGMA max_page_count={int(_pages)}")
+    # RM-030: a store file marked read-only (no write bit at all)
+    # is refused on open with the read-only message.
+    ro_path = tmp_path / "ro.db"
+    ro_backend = LocalBackend(
+        HuginnConfig(backend="local", local_db_path=str(ro_path))
+    )
+    ro_backend.close()
+    os.chmod(ro_path, 0o444)
     embedder = HashingEmbedder(dim=384)
     qdrant_cfg = HuginnConfig(backend="qdrant")
     closed_qdrant = QdrantBackend(qdrant_cfg, embedder)
@@ -261,6 +270,9 @@ def _cases(tmp_path):
         ),
         "qdrant_count_failed": lambda: boom.count(),
         "disk_full_upsert": lambda: full.upsert_memory("z" * 200_000),
+        "readonly_open": lambda: LocalBackend(
+            HuginnConfig(backend="local", local_db_path=str(ro_path))
+        ),
     }
     return cases
 

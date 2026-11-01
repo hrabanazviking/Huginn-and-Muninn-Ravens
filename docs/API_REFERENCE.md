@@ -89,7 +89,7 @@ Four classes:
 | `MuninnError` | `Exception` | Base class for every error Muninn raises deliberately. |
 | `MuninnValidationError` | `MuninnError`, `ValueError` | Caller supplied an invalid argument (bad id type, out-of-range value, empty/`None` content, …). Raised before any write. |
 | `MuninnConfigurationError` | `MuninnError`, `ValueError` | A `MuninnConfig` value is out of its legal range. |
-| `MuninnStorageError` | `MuninnError` | The store could not be opened, read, written, or healed — including unrecoverable corruption (main store *and* every rolling backup failed integrity). Muninn never silently starts empty over a corrupt store. Also raised by any operation on a closed `HebbianMemory` (via `_get_conn()`), and by any write that fails in the storage layer (e.g. a full disk: `muninn write failed during {operation}: database or disk is full`, RM-029) — the failed call is rolled back first, so no partial write survives. |
+| `MuninnStorageError` | `MuninnError` | The store could not be opened, read, written, or healed — including unrecoverable corruption (main store *and* every rolling backup failed integrity). Muninn never silently starts empty over a corrupt store. Also raised by any operation on a closed `HebbianMemory` (via `_get_conn()`), by any write that fails in the storage layer (e.g. a full disk: `muninn write failed during {operation}: database or disk is full`, RM-029) — the failed call is rolled back first, so no partial write survives — and on open when the store's location is read-only (`muninn store {path} is read-only and cannot be opened for writing`, RM-030), immediately, before any connection or restore attempt. |
 
 ## 1.3 `MemoryNode` — `muninn/core.py`
 
@@ -661,7 +661,7 @@ Five classes:
 | `HuginnError` | `Exception` | Base class for every error Huginn raises deliberately. |
 | `HuginnValidationError` | `HuginnError`, `ValueError` | Caller supplied an invalid argument. Raised before any write. |
 | `HuginnConfigurationError` | `HuginnError`, `ValueError` | A `HuginnConfig` value is illegal, or a configured optional dependency (`qdrant-client`, `sentence-transformers`) is missing. |
-| `HuginnStorageError` | `HuginnError` | The local store could not be opened, read, written, or healed — including unrecoverable corruption (main store and every rolling backup failed integrity). Also raised by `LocalBackend` operations after close, and by any local write that fails in the storage layer (e.g. a full disk: `huginn write failed during {operation}: database or disk is full`, RM-029) — the failed call is rolled back first, so no partial write survives. |
+| `HuginnStorageError` | `HuginnError` | The local store could not be opened, read, written, or healed — including unrecoverable corruption (main store and every rolling backup failed integrity). Also raised by `LocalBackend` operations after close, by any local write that fails in the storage layer (e.g. a full disk: `huginn write failed during {operation}: database or disk is full`, RM-029) — the failed call is rolled back first, so no partial write survives — and on open when the store's location is read-only (`huginn store {path} is read-only and cannot be opened for writing`, RM-030), immediately, before any connection or restore attempt. |
 | `HuginnBackendError` | `HuginnError` | The selected backend failed at operation time (e.g. an explicit Qdrant backend whose server is unreachable), or an operation is attempted on a closed `HuginnMemory`. |
 
 The one designed non-error: with `backend="auto"`, a missing Qdrant

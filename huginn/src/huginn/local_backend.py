@@ -23,7 +23,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypeVar
 
 from ._db import open_store
 from .config import HuginnConfig
@@ -81,9 +81,12 @@ def _content_hash(content: str, category: str) -> str:
     return hashlib.sha256(f"{category}\x00{content}".encode()).hexdigest()
 
 
+_R = TypeVar("_R")
+
+
 def _storage_write(
     operation: str,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
     """Guard a local-backend write method (RM-029).
 
     A storage-layer failure during a write — above all SQLite's
@@ -94,11 +97,15 @@ def _storage_write(
     write (an upsert that de-indexed the old document but never
     stored the new one) can never leak into a later commit, and
     the store stays open and consistent for the calls that follow.
+
+    The decorator preserves the wrapped method's return type —
+    the same RM-030 repair as Muninn's twin, whose ``Any``-typed
+    wrapper broke the RM-008 mypy floor (``warn_return_any``).
     """
 
-    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(fn: Callable[..., _R]) -> Callable[..., _R]:
         @functools.wraps(fn)
-        def wrapper(self: LocalBackend, *args: Any, **kwargs: Any) -> Any:
+        def wrapper(self: LocalBackend, *args: Any, **kwargs: Any) -> _R:
             try:
                 return fn(self, *args, **kwargs)
             except sqlite3.Error as exc:

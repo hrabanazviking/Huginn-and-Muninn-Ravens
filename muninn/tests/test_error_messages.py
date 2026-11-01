@@ -18,6 +18,7 @@ be broken by a casual rewording. Two pins enforce that:
 """
 
 import ast
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -82,6 +83,12 @@ def _cases(tmp_path):
     _full_conn = full._get_conn()
     _pages = _full_conn.execute("PRAGMA page_count").fetchone()[0]
     _full_conn.execute(f"PRAGMA max_page_count={int(_pages)}")
+    # RM-030: a store file marked read-only (no write bit at all)
+    # is refused on open with the read-only message.
+    ro_path = tmp_path / "ro.db"
+    ro_mem = HebbianMemory(MuninnConfig(db_path=str(ro_path)))
+    ro_mem.close()
+    os.chmod(ro_path, 0o444)
 
     def cfg(**overrides):
         return lambda: MuninnConfig(db_path=str(tmp_path / "m.db"), **overrides)
@@ -130,6 +137,9 @@ def _cases(tmp_path):
             MuninnConfig(db_path=str(bad_path), backup_keep=0)
         ),
         "disk_full_remember": lambda: full.remember("z" * 200_000),
+        "readonly_open": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(ro_path))
+        ),
     }
     return cases, m
 

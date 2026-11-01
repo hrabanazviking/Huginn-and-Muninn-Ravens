@@ -51,9 +51,10 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029.
-  Part III (Robustness) is under way — 5 of 14 slices banked.
-- Next: RM-030 in roadmap order (Part III — Robustness).
+- Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
+  RM-030. Part III (Robustness) is under way — 6 of 14 slices
+  banked.
+- Next: RM-031 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1092,3 +1093,71 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   tree NEEDS A SYNC for the write guards (extends the
   RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/RM-027/
   RM-028 sync note).
+- **RM-030 — Read-only filesystem. BANKED 2026-11-01.
+  Class: FAULT.** Record: `docs/READONLY_FILESYSTEM.md`.
+  Opening a store whose location is read-only previously had
+  no defined behaviour — as a privileged process the old code
+  simply opened marked stores and wrote to them; unprivileged,
+  the failure surfaced wherever SQLite or the filesystem
+  refused first, raw or mistaken for corruption (which sends
+  the open down the backup-restore road). Defined behaviour,
+  chosen from the roadmap's two roads: **no read-only mode** —
+  a store is opened for writing or not at all, and a read-only
+  open fails loudly and immediately with the typed storage
+  error `{package} store {path} is read-only and cannot be
+  opened for writing`. The refusal sits in a pre-flight at the
+  head of `open_store` in each package's `_db.py`, before any
+  connection: a location is read-only when the store file or
+  the directory that must hold it (the parent, or the nearest
+  existing ancestor of a not-yet-created parent) carries no
+  write permission bit at all, or when this process cannot
+  write there; every later open stage (parent creation,
+  integrity probe, connection, schema preparation) also
+  translates a read-only failure (EROFS/EACCES/EPERM, SQLite's
+  read-only wordings) into the same typed error, so it never
+  takes the restore road and never escapes raw. Pinned by new
+  `tests/test_readonly_filesystem.py` (muninn 4, huginn 3):
+  refusal in under 5 s despite a 60 s busy timeout, store
+  SHA-256 unchanged, no backup taken or restored, clean
+  zero-recovery reopen once unmarked, new stores in read-only
+  directories refused and never created, Huginn's facade
+  `health()` reporting the refusal as `unhealthy` with
+  `HuginnStorageError` named. Negation: all 7 new tests fail
+  against the pre-RM-030 installed packages (RM-029 venv).
+  RM-018 goldens extended deliberately (muninn 40 cases / 49
+  templates, huginn 45 cases / 52 templates — the read-only
+  template stands six times per package, once per raise site,
+  and the main connection's new wrapper added a second
+  "could not be prepared" template). In-slice repair of a
+  discovered pre-existing defect (never-leave-a-bug law):
+  the RM-008 mypy floor did not reproduce at HEAD under the
+  CI invocation (`python -m mypy src/muninn` from the package
+  directory, rm014-venv tools) — RM-029's `_storage_write`
+  decorator returned `Any`, so `warn_return_any` fired in
+  four alias methods in `muninn/core.py` (the same 4 errors
+  proven on a clean HEAD worktree before the fix). The
+  decorator in both packages now preserves the wrapped
+  method's return type via a `TypeVar` (behaviour unchanged;
+  RM-029 suites stay green), and both floors pass as CI runs
+  them: ruff **All checks passed!**, mypy **Success: no
+  issues found** (muninn 5 files, huginn 8 files). Full
+  suites green in a fresh venv (`ravens-rm030-venv`,
+  non-editable installs, final banking tree): muninn
+  **168 passed** (164+4), huginn **120 passed** (117+3).
+  Error behaviour of open changed (no signature or schema
+  change; RM-003/RM-004 pins green), so the **Bifröst
+  contract re-verification was run before banking**: fresh
+  venv (`ravens-rm030-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=2; search 2 merged results;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three backends;
+  both raven health dicts carry `sqlite_version` 3.45.1;
+  huginn degraded via auto-fallback to local — live Qdrant
+  still NOT PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm030_bifrost.log`). Founding tree
+  NEEDS A SYNC for the read-only pre-flight + open-stage
+  translations and the decorator return-type repair (extends
+  the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
+  RM-027/RM-028/RM-029 sync note).

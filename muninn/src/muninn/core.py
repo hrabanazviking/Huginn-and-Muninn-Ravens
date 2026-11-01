@@ -46,7 +46,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import combinations
-from typing import Any
+from typing import Any, TypeVar
 
 from ._db import open_store, take_backup
 from .config import MuninnConfig
@@ -384,9 +384,12 @@ class MemoryNode:
         )
 
 
+_R = TypeVar("_R")
+
+
 def _storage_write(
     operation: str,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
     """Guard a public write method (RM-029).
 
     A storage-layer failure during a write — above all SQLite's
@@ -396,11 +399,16 @@ def _storage_write(
     call's transaction is rolled back first, so no half-applied
     write can leak into a later commit, and the store stays open
     and consistent for the calls that follow.
+
+    The decorator preserves the wrapped method's return type
+    (RM-030 repair: the original ``Any``-typed wrapper silently
+    broke the RM-008 mypy floor — ``warn_return_any`` — in every
+    alias method that returns a guarded write's result).
     """
 
-    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(fn: Callable[..., _R]) -> Callable[..., _R]:
         @functools.wraps(fn)
-        def wrapper(self: HebbianMemory, *args: Any, **kwargs: Any) -> Any:
+        def wrapper(self: HebbianMemory, *args: Any, **kwargs: Any) -> _R:
             try:
                 return fn(self, *args, **kwargs)
             except sqlite3.Error as exc:

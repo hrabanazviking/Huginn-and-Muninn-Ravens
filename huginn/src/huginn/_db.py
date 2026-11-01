@@ -8,11 +8,19 @@ backup API from a verified-healthy store; on open, a corrupt main
 store is restored from the newest backup that itself verifies —
 loudly — and if none verifies, opening raises
 :class:`HuginnStorageError` rather than starting empty over lost data.
+A store on a read-only filesystem, in a read-only directory, or
+marked read-only itself is refused on open with a typed
+:class:`HuginnStorageError` — immediately, before any connection
+or backup-restore attempt (RM-030; see
+``docs/READONLY_FILESYSTEM.md``). There is no read-only mode:
+Huginn local stores are opened for writing or not at all.
 """
 
 from __future__ import annotations
 
+import errno
 import logging
+import os
 import shutil
 import sqlite3
 from dataclasses import dataclass
@@ -45,6 +53,63 @@ def _connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def _is_readonly_error(exc: BaseException) -> bool:
+    """Does this failure mean the store location is read-only?
+
+    Matches the filesystem errnos (EROFS / EACCES / EPERM) and
+    SQLite's own wordings (``attempt to write a readonly
+    database``, ``unable to open database file`` on a read-only
+    filesystem) — the RM-030 classification.
+    """
+    if isinstance(exc, OSError) and exc.errno in (
+        errno.EROFS,
+        errno.EACCES,
+        errno.EPERM,
+    ):
+        return True
+    text = str(exc).lower()
+    return (
+        "readonly" in text
+        or "read-only" in text
+        or "unable to open database file" in text
+    )
+
+
+def _check_not_readonly(db_path: Path) -> None:
+    """RM-030 pre-flight: refuse a read-only store location loudly.
+
+    Runs before any connection is attempted, so a read-only open
+    fails immediately — it never waits out the busy timeout, never
+    probes the store, and never mistakes read-only for corruption
+    and attempts a backup restore over a location it cannot write
+    to. A location is read-only when the store file or the
+    directory that must hold it (the parent, or the nearest
+    existing ancestor when the parent does not exist yet) carries
+    no write permission bit at all, or when this process cannot
+    write there (a read-only mount, an ACL denial). The bit check
+    is deliberate: a file or directory marked read-only is
+    read-only by its owner's declaration, even for a process
+    privileged enough to override the bits.
+    """
+    if db_path.exists() and (
+        db_path.stat().st_mode & 0o222 == 0 or not os.access(db_path, os.W_OK)
+    ):
+        raise HuginnStorageError(
+            f"huginn store {db_path} is read-only and cannot be opened for writing"
+        )
+    ancestor = db_path.parent
+    while not ancestor.exists():
+        if ancestor.parent == ancestor:
+            return
+        ancestor = ancestor.parent
+    if ancestor.is_dir() and (
+        ancestor.stat().st_mode & 0o222 == 0 or not os.access(ancestor, os.W_OK)
+    ):
+        raise HuginnStorageError(
+            f"huginn store {db_path} is read-only and cannot be opened for writing"
+        )
 
 
 def _quick_check_ok(conn: sqlite3.Connection) -> bool:
@@ -133,7 +198,15 @@ def open_store(
 ) -> tuple[sqlite3.Connection, OpenReport]:
     """Open (creating if needed) a Huginn local store, healing first."""
     report = OpenReport()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    _check_not_readonly(db_path)
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        if _is_readonly_error(exc):
+            raise HuginnStorageError(
+                f"huginn store {db_path} is read-only and cannot be opened for writing"
+            ) from exc
+        raise
     existed = db_path.exists()
     mtime_before = db_path.stat().st_mtime if existed else 0.0
 
@@ -144,7 +217,13 @@ def open_store(
                 healthy = _quick_check_ok(probe)
             finally:
                 probe.close()
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            if _is_readonly_error(exc):
+                # RM-030: read-only is not corruption — never take
+                # the restore road for it; fail loudly at once.
+                raise HuginnStorageError(
+                    f"huginn store {db_path} is read-only and cannot be opened for writing"
+                ) from exc
             healthy = False
         if not healthy:
             logger.error(
@@ -161,7 +240,16 @@ def open_store(
             report.restored_backup = str(restored)
             logger.error("huginn: RECOVERED store %s from backup %s", db_path, restored)
 
-    conn = _connect(db_path, busy_timeout_ms)
+    try:
+        conn = _connect(db_path, busy_timeout_ms)
+    except sqlite3.Error as exc:
+        if _is_readonly_error(exc):
+            raise HuginnStorageError(
+                f"huginn store {db_path} is read-only and cannot be opened for writing"
+            ) from exc
+        raise HuginnStorageError(
+            f"huginn store {db_path} could not be prepared: {exc}"
+        ) from exc
     try:
         conn.executescript(schema_sql)
         conn.execute(
@@ -171,6 +259,10 @@ def open_store(
         conn.commit()
     except sqlite3.Error as exc:
         conn.close()
+        if _is_readonly_error(exc):
+            raise HuginnStorageError(
+                f"huginn store {db_path} is read-only and cannot be opened for writing"
+            ) from exc
         raise HuginnStorageError(f"huginn store {db_path} could not be prepared: {exc}") from exc
 
     if auto_backup and existed and backup_keep > 0:

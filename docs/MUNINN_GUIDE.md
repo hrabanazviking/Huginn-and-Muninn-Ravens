@@ -727,6 +727,15 @@ with the failed call rolled back so no partial write survives; the
 store stays open and consistent afterwards (RM-029, see
 `docs/DISK_FULL.md`).
 
+A store whose location is read-only — a read-only filesystem, a
+read-only directory, or a store file marked read-only — is
+refused *on open* with `MuninnStorageError`
+(`muninn store {path} is read-only and cannot be opened for
+writing`), immediately, before any connection or backup-restore
+attempt, and the failed open touches nothing. There is no
+read-only mode: a Muninn store is opened for writing or not at
+all (RM-030, see `docs/READONLY_FILESYSTEM.md`).
+
 Durability: the store runs in WAL mode with `synchronous=FULL`, and
 batch writes are single transactions. A `kill -9` mid-write loses at
 most the uncommitted transaction; committed work survives reopening.

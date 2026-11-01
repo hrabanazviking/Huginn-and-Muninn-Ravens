@@ -902,3 +902,71 @@ has an entry here with its Class and Commit fields present.
   Founding tree NEEDS A SYNC for the write guards (extends the
   RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/RM-027/
   RM-028 sync note).
+
+## RM-030 — Read-only filesystem
+
+- **Class:** FAULT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Opening a store whose location is read-only now
+  fails loudly and immediately with the typed storage error,
+  recorded in `docs/READONLY_FILESYSTEM.md` and pinned by new
+  `tests/test_readonly_filesystem.py` in both packages (muninn
+  4 tests, huginn 3). There is no read-only mode: a store is
+  opened for writing or not at all. The refusal happens in a
+  pre-flight at the head of `open_store` in each package's
+  `_db.py`, before any connection — a location is read-only
+  when the store file or the directory that must hold it (the
+  parent, or the nearest existing ancestor of a not-yet-created
+  parent) carries no write permission bit at all, or when this
+  process cannot write there; every later open stage (parent
+  creation, integrity probe, connection, schema preparation)
+  also translates a read-only failure (`EROFS`/`EACCES`/`EPERM`,
+  SQLite's read-only wordings) into the same typed error, so a
+  read-only open never takes the corruption/restore road and
+  never escapes raw. The one message shape per package —
+  `{package} store {path} is read-only and cannot be opened
+  for writing` — is pinned by the RM-018 goldens (new CASE in
+  both packages; the template stands six times per package,
+  once per raise site, and the main connection's new wrapper
+  added a second "could not be prepared" template line).
+  Pinned behaviours: refusal in under 5 s despite a 60 s busy
+  timeout; the store file's SHA-256 unchanged and no backup
+  taken or restored; a clean zero-recovery reopen once
+  unmarked; a new store in a read-only directory refused and
+  never created; Huginn's facade `health()` reporting the
+  refusal as `unhealthy` with `HuginnStorageError` named.
+  Negation: all 7 new tests fail against the pre-RM-030
+  installed packages (RM-029 venv) — as a privileged process
+  the old code simply opened the marked stores and wrote to
+  them; no read-only behaviour was defined at all. In-slice
+  repair of a discovered pre-existing defect: the RM-008 mypy
+  floor did not reproduce at HEAD under the CI invocation
+  (`python -m mypy src/muninn` from the package directory,
+  rm014-venv tools) — RM-029's `_storage_write` decorator
+  returned `Any`, so `warn_return_any` fired in four alias
+  methods in `muninn/core.py` (the same 4 errors on a clean
+  HEAD worktree, proven before the fix). The decorator in
+  both packages now preserves the wrapped method's return
+  type via a `TypeVar` (behaviour unchanged; the RM-029
+  suites stay green), and both floors pass as CI runs them:
+  ruff **All checks passed!**, mypy **Success: no issues
+  found** (muninn 5 files, huginn 8 files). Full
+  suites green in a fresh venv (`ravens-rm030-venv`,
+  non-editable installs): muninn **168 passed** (164+4),
+  huginn **120 passed** (117+3); ruff + mypy floors clean.
+  Error behaviour of open changed (no signature or schema
+  change; RM-003/RM-004 pins green), so the **Bifröst
+  contract re-verification was run before banking**: fresh
+  venv (`ravens-rm030-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id+huginn_id; search 2 merged results; recall
+  grew the Muninn activation log exactly +1; decay/consolidate
+  reports; `decay_wall_clock()` through the bridge armed at
+  0 days; stats over all three backends; both raven health
+  dicts carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm030_bifrost.log`). Founding tree
+  NEEDS A SYNC for the read-only pre-flight + open-stage
+  translations (extends the RM-008/RM-011/RM-012/RM-016/
+  RM-017/RM-025/RM-026/RM-027/RM-028/RM-029 sync note).

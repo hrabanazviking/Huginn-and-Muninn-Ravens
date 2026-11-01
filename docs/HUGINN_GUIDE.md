@@ -748,6 +748,15 @@ is full`), with the failed call rolled back so no partial write
 survives; the store stays open and consistent afterwards (RM-029,
 see `docs/DISK_FULL.md`).
 
+A local store whose location is read-only — a read-only
+filesystem, a read-only directory, or a store file marked
+read-only — is refused *on open* with `HuginnStorageError`
+(`huginn store {path} is read-only and cannot be opened for
+writing`), immediately, before any connection or backup-restore
+attempt, and the failed open touches nothing; `health()` reports
+the refusal as `unhealthy` with that error named. There is no
+read-only mode (RM-030, see `docs/READONLY_FILESYSTEM.md`).
+
 ### Threading
 
 All backends serialize internally with a lock, and `HuginnMemory`
