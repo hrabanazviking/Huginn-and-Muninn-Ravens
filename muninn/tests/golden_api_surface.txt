@@ -52,6 +52,7 @@ METHOD | HebbianMemory.backup |
 METHOD | HebbianMemory.close | 
 METHOD | HebbianMemory.consolidate | threshold:POSITIONAL_OR_KEYWORD=None
 METHOD | HebbianMemory.decay | days:POSITIONAL_OR_KEYWORD=1.0
+METHOD | HebbianMemory.decay_wall_clock | 
 METHOD | HebbianMemory.delete | node_id:POSITIONAL_OR_KEYWORD=<required>
 METHOD | HebbianMemory.dump | limit:POSITIONAL_OR_KEYWORD=50
 METHOD | HebbianMemory.forget | memory_id:POSITIONAL_OR_KEYWORD=<required>
@@ -82,6 +83,7 @@ METHOD | Muninn.backup |
 METHOD | Muninn.close | 
 METHOD | Muninn.consolidate | threshold:POSITIONAL_OR_KEYWORD=None
 METHOD | Muninn.decay | days:POSITIONAL_OR_KEYWORD=1.0
+METHOD | Muninn.decay_wall_clock | 
 METHOD | Muninn.delete | node_id:POSITIONAL_OR_KEYWORD=<required>
 METHOD | Muninn.dump | limit:POSITIONAL_OR_KEYWORD=50
 METHOD | Muninn.forget | memory_id:POSITIONAL_OR_KEYWORD=<required>

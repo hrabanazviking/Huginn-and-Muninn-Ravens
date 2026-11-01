@@ -1126,6 +1126,7 @@ The three classes:
 | M-26 | `stats()` / `get_stats()` | I | Pure reads; the alias returns exactly `stats()`. |
 | M-27 | `dump(limit)` | I | Pure read. |
 | M-28 | `MemoryNode.to_dict()` / `from_dict()` | I | Pure functions; the round trip is a fixed point (`from_dict(to_dict(n)) == n`, repeatably). |
+| M-29 | `decay_wall_clock()` | R | The RM-021 opt-in mode: the first call only arms the meta-table marker (0 days); a repeat at the same clock reading decays exactly 0 further days, and repeats compose exactly like M-23 across elapsed time. A blind retry is safe — it can never double-decay the same span, because the marker advances with each run and never moves backward. |
 
 ## 3.2 Huginn — `HuginnMemory` and module functions (local backend)
 

@@ -438,3 +438,23 @@ def test_row_m23_decay_is_safely_rerunnable_and_cumulative(tmp_path):
             other.close()
     finally:
         m.close()
+
+
+def test_row_m29_decay_wall_clock_is_safely_rerunnable(tmp_path, monkeypatch):
+    import muninn.core
+
+    monkeypatch.setattr(
+        muninn.core, "_now", lambda: "2026-01-01T00:00:00+00:00"
+    )
+    m = _mem(tmp_path)
+    a, b = _pair(m)
+    m.associate(a, b, strength=0.9)
+    try:
+        first = m.decay_wall_clock()  # arms the marker, decays 0 days
+        strength_after_first = m.get_associations(a)[0]["strength"]
+        second = m.decay_wall_clock()  # same clock reading: 0 more days
+        strength_after_second = m.get_associations(a)[0]["strength"]
+        assert first["elapsed_days"] == second["elapsed_days"] == 0.0
+        assert strength_after_first == strength_after_second == 0.9
+    finally:
+        m.close()

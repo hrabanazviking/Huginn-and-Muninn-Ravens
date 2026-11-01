@@ -114,6 +114,11 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# Meta-table key carrying the wall-clock decay marker (RM-021):
+# the ISO timestamp of the last decay_wall_clock() run.
+_DECAY_MARKER_KEY = "decay_last_run_at"
+
+
 def _check_memory_id(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise MuninnValidationError(f"memory_id must be an int, got {type(value).__name__}")
@@ -1063,6 +1068,80 @@ class HebbianMemory:
                 "edges_pruned": pruned,
                 "confidences_decayed": confidences,
             }
+
+    def decay_wall_clock(self) -> dict[str, Any]:
+        """Fade by the wall-clock time since the last such run (WRITE).
+
+        The optional wall-clock mode (RM-021) — off by default:
+        plain :meth:`decay` never reads the clock and never
+        touches this mode's marker; the wall-clock mode runs
+        only when this method is called. The store's meta table
+        carries the marker (``decay_last_run_at``, an ISO-8601
+        UTC timestamp from :func:`_now`).
+
+        Behaviour at the edges, all deliberate:
+
+        - First call (no marker stored): arms the marker at
+          now and decays **0 days** — enabling the mode never
+          surprises a store with a mass fade.
+        - Clock jumped forward: decays the elapsed days and
+          advances the marker to now.
+        - Clock jumped backward (or has not moved): decays
+          0 days and the marker does **not** move backward, so
+          a later healthy reading cannot re-decay the same span.
+        - A corrupt or timezone-naive marker is treated as no
+          marker (re-armed at now, 0 days) and reported via
+          ``marker_reset`` — the mode heals its own state.
+
+        Returns :meth:`decay`'s report plus ``mode``,
+        ``elapsed_days``, ``last_run_at``, ``run_at``,
+        ``first_run``, ``marker_reset`` and ``marker_advanced``.
+        """
+        now = datetime.fromisoformat(_now())
+        with self._lock:
+            self._get_conn()
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = ?", (_DECAY_MARKER_KEY,)
+            ).fetchone()
+        previous: datetime | None = None
+        marker_reset = False
+        if row is not None and row[0]:
+            try:
+                parsed = datetime.fromisoformat(str(row[0]))
+            except ValueError:
+                marker_reset = True
+            else:
+                if parsed.tzinfo is None:
+                    marker_reset = True
+                else:
+                    previous = parsed
+        if previous is None:
+            elapsed_days = 0.0
+            advance_marker = True
+        else:
+            elapsed_days = max(0.0, (now - previous).total_seconds() / 86400.0)
+            advance_marker = now > previous
+        report = self.decay(elapsed_days)
+        if advance_marker:
+            with self._lock:
+                self._get_conn()
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                    (_DECAY_MARKER_KEY, now.isoformat()),
+                )
+                self._conn.commit()
+        report.update(
+            {
+                "mode": "wall_clock",
+                "elapsed_days": elapsed_days,
+                "last_run_at": previous.isoformat() if previous is not None else None,
+                "run_at": now.isoformat(),
+                "first_run": previous is None and not marker_reset,
+                "marker_reset": marker_reset,
+                "marker_advanced": advance_marker,
+            }
+        )
+        return report
 
     def consolidate(self, threshold: float | None = None) -> dict[str, Any]:
         """Mark strong edges consolidated; repair structure (WRITE).

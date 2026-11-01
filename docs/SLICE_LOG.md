@@ -493,3 +493,64 @@ has an entry here with its Class and Commit fields present.
   Founding tree sync note from RM-005 stands and now
   extends to the corpus-versioned benchmark scripts +
   baselines (scripts only, no package code).
+
+## RM-021 — Clock-free decay
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Plain `decay(days)` is unchanged and stays
+  clock-free — computed from the explicit `days` argument
+  only, never reading the clock, its RM-003 signature and
+  report untouched. The optional wall-clock mode is new and
+  opt-in: `HebbianMemory.decay_wall_clock()` derives `days`
+  from the marker `decay_last_run_at` in the store's `meta`
+  table (an ISO-8601 UTC reading from `muninn.core._now`,
+  the RM-012 seam). Record: `docs/WALL_CLOCK_DECAY.md`.
+  Edge behaviour, all deliberate and all tested: the first
+  call arms the marker and decays 0 days (enabling the mode
+  never mass-fades a store); a forward clock jump decays
+  the elapsed days and advances the marker; a backward jump
+  decays 0 days and the marker does not move backward, so a
+  later healthy reading cannot re-decay the same span; a
+  corrupt or timezone-naive marker is re-armed and reported
+  (`marker_reset`) instead of raising. The report is
+  `decay()`'s report plus `mode` / `elapsed_days` /
+  `last_run_at` / `run_at` / `first_run` / `marker_reset` /
+  `marker_advanced`. Proven by new
+  `tests/test_wall_clock_decay.py` (6 tests, clock patched
+  at the `_now` seam: arming + exact-strength no-fade,
+  +30-day jump halving a 0.8 edge to 0.4 at the default
+  30-day half-life, backward jump + held marker + exact
+  1-day follow-on, corrupt-marker reset, marker surviving
+  a reopen at +10 days, and plain `decay()` leaving the
+  marker absent). The method is classified in the RM-013
+  idempotency matrix as row **M-29 (R)** with its own test
+  (`test_idempotency.py`: a repeat at the same clock reading
+  decays exactly 0 further days). The RM-019 golden API
+  surface gained the two `decay_wall_clock` lines (facade
+  included) in this commit — an addition, the only surface
+  change; no signature, config, schema, or error-message
+  change (RM-003 / RM-004 / RM-018 pins all green), and no
+  new typed-error site was introduced. Public API changed
+  (additively), so the **Bifröst contract re-verification
+  was run before banking**: fresh venv
+  (`ravens-rm021-bifrost-venv`), bifrost at b66e98cc — its
+  own suites **25 passed**; BifrostBridge smoke PASS (store
+  mimir_id+huginn_id; merged search proven on both source
+  paths — huginn for the stored phrase, mimir for a seeded
+  row; recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` callable
+  through the bridge's muninn and arming at 0 days; stats
+  over all three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1 through the bridge; huginn
+  degraded via auto-fallback to local — qdrant-client not
+  installed in the venv, the founding condition; live
+  Qdrant still NOT PROVEN; double close safe). Full suites
+  green in a fresh venv (`ravens-rm021-venv`, non-editable
+  installs): muninn **124 passed** (117+6 wall-clock
+  +1 idempotency), huginn **93 passed** (no huginn code
+  change; slice-log EXPECTED pin only); ruff + mypy floors
+  clean (rm014 venv; mypy muninn 5 files, huginn 8 files).
+  Founding tree (`~/workspace/ravens`) NEEDS A SYNC for the
+  new `decay_wall_clock()` method (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017 sync note).

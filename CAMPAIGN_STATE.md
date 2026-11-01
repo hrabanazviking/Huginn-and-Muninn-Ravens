@@ -37,7 +37,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016, RM-017, RM-018, RM-019, RM-020.
+  RM-016, RM-017, RM-018, RM-019, RM-020, RM-021.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +48,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-021 in roadmap order (Part II — Stability).
+- Next: RM-022 in roadmap order (Part II — Stability).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -700,3 +700,45 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   required. Founding tree sync note from RM-005 stands
   and extends to the corpus-versioned benchmark scripts
   + baselines (scripts only, no package code).
+- **RM-021 — Clock-free decay. BANKED 2026-11-01. Class: UNIT.**
+  Record: `docs/WALL_CLOCK_DECAY.md`. Plain `decay(days)`
+  unchanged and clock-free (explicit `days` only; RM-003
+  signature + report untouched). New opt-in
+  `decay_wall_clock()`: derives `days` from the
+  `decay_last_run_at` marker in the store's `meta` table
+  (ISO-8601 UTC from `muninn.core._now`). First call arms
+  the marker and decays 0 days; forward jump decays the
+  elapsed days and advances the marker; backward jump
+  decays 0 days and the marker never moves backward (a
+  later healthy reading cannot re-decay the same span);
+  a corrupt or timezone-naive marker is re-armed and
+  reported via `marker_reset`, never raised. Report =
+  `decay()`'s plus mode / elapsed_days / last_run_at /
+  run_at / first_run / marker_reset / marker_advanced.
+  Proven by new `tests/test_wall_clock_decay.py` (6 tests
+  at the `_now` seam) and classified in the RM-013 matrix
+  as row M-29 (R) with its own idempotency test. RM-019
+  golden surface gained the two `decay_wall_clock` lines
+  in this commit — the only surface change, an addition;
+  no signature, config, schema, or error-message change
+  and no new typed-error site. Public API changed
+  additively, so the **Bifröst contract re-verification
+  was run before banking**: fresh venv
+  (`ravens-rm021-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id+huginn_id; merged search proven on the
+  huginn and mimir source paths; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge's muninn armed
+  at 0 days; stats over all three backends; both raven
+  health dicts carry `sqlite_version` 3.45.1; huginn
+  degraded via auto-fallback to local — live Qdrant still
+  NOT PROVEN; double close safe). Full suites green in a
+  fresh venv (`ravens-rm021-venv`, non-editable installs):
+  muninn **124 passed** (117+6+1), huginn **93 passed**
+  (no huginn code change); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files).
+  Founding tree NEEDS A SYNC for `decay_wall_clock()`
+  (extends the RM-008/RM-011/RM-012/RM-016/RM-017 sync
+  note). Huginn has no decay of its own — this slice is
+  Muninn-only by design.
