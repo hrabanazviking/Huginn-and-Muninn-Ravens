@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (38): every raise site except the two that cannot
+# CASE lines (39): every raise site except the two that cannot
 # be triggered deterministically — "could not be prepared"
 # (needs a store whose schema script fails mid-open) and "node
 # insert reported success but returned no row id" (unreachable
@@ -55,10 +55,12 @@ CASE decay_days | MuninnValidationError | days must be a number >= 0
 CASE consolidate_threshold | MuninnValidationError | threshold must be in (0, 1]
 CASE closed | MuninnStorageError | HebbianMemory is closed
 CASE corrupt_store | MuninnStorageError | muninn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
-# TEMPLATE lines (41 raise sites; RM-025 added the
+CASE disk_full_remember | MuninnStorageError | muninn write failed during remember: database or disk is full
+# TEMPLATE lines (42 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
-# RM-028 added the three path guards).
+# RM-028 added the three path guards; RM-029 added the
+# write-guard raise in core.py).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -73,6 +75,7 @@ TEMPLATE | MuninnConfigurationError | prune_threshold must be in [0, 1)
 TEMPLATE | MuninnStorageError | HebbianMemory is closed
 TEMPLATE | MuninnStorageError | muninn store {} could not be prepared: {}
 TEMPLATE | MuninnStorageError | muninn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | MuninnStorageError | muninn write failed during {}: {}
 TEMPLATE | MuninnStorageError | node insert reported success but returned no row id
 TEMPLATE | MuninnValidationError | attenuation must be in (0, 1]
 TEMPLATE | MuninnValidationError | cannot associate a memory with itself

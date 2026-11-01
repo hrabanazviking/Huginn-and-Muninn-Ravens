@@ -741,6 +741,13 @@ The local backend uses the same store machinery discipline as Muninn:
 Operations on a closed local backend raise `HuginnStorageError`;
 operations on a closed `HuginnMemory` raise `HuginnBackendError`.
 
+A local write that fails in the storage layer — for example
+against a full disk — surfaces as `HuginnStorageError` naming the
+operation (`huginn write failed during upsert: database or disk
+is full`), with the failed call rolled back so no partial write
+survives; the store stays open and consistent afterwards (RM-029,
+see `docs/DISK_FULL.md`).
+
 ### Threading
 
 All backends serialize internally with a lock, and `HuginnMemory`

@@ -852,3 +852,53 @@ has an entry here with its Class and Commit fields present.
   tree NEEDS A SYNC for the path normaliser (extends the
   standing package-source sync note). Huginn has no node
   paths — this slice is Muninn-only by design.
+## RM-029 — Disk-full behaviour
+
+- **Class:** FAULT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Writes against a full filesystem now surface as
+  typed storage errors with the store still openable and
+  consistent afterwards, recorded in `docs/DISK_FULL.md` and
+  pinned by new `tests/test_disk_full.py` in both packages
+  (muninn 3 tests, huginn 2). Every public write runs behind a
+  write guard (`_storage_write` in `muninn/core.py` — remember/
+  store, update/move, forget/delete, activate, activate_batch,
+  associate, retrieve(touch=True), heal_structure, decay,
+  decay_wall_clock, consolidate, backup; and in
+  `huginn/local_backend.py` — upsert, delete, heal; the Qdrant
+  backend already raises `HuginnBackendError`). On a storage
+  failure the guard rolls the failed call's transaction back —
+  no partial write survives and nothing leaks into a later
+  commit (proven for Muninn's 300-node activate_batch and for
+  Huginn's replace-by-id upsert, which de-indexes before it
+  writes) — and raises `MuninnStorageError` /
+  `HuginnStorageError` with the shape `… write failed during
+  {operation}: {sqlite message}`. Before this slice the same
+  fault escaped as a raw `sqlite3.OperationalError`. The fault
+  is injected with the real engine: `PRAGMA max_page_count`
+  clamped to the store's current page count yields SQLite's own
+  SQLITE_FULL (`database or disk is full`) — the same error a
+  full filesystem produces; no genuinely-full-device claim is
+  made. Negation: all 5 new tests fail against the pre-RM-029
+  installed packages (RM-028 venv). RM-018 goldens extended
+  deliberately (muninn 39 cases / 42 templates, huginn 44
+  cases / 45 templates). Full suites green in a fresh venv
+  (`ravens-rm029-venv`, non-editable installs): muninn
+  **164 passed** (161+3), huginn **117 passed** (115+2);
+  ruff + mypy floors clean.
+  Error behaviour of writes changed (no signature or schema
+  change; RM-003/RM-004 pins green), so the Bifröst contract
+  re-verification was run before banking: fresh venv
+  (`ravens-rm029-bifrost-venv`), bifrost at b66e98cc — its own
+  suites **25 passed**; BifrostBridge smoke PASS (store
+  mimir_id=2 huginn_id=5; search 2 merged results; recall
+  grew the Muninn activation log exactly +1; decay/
+  consolidate reports; `decay_wall_clock()` through the
+  bridge armed at 0 days; stats over all three backends;
+  both raven health dicts carry `sqlite_version` 3.45.1;
+  huginn degraded via auto-fallback to local — live Qdrant
+  still NOT PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm029_bifrost.log`).
+  Founding tree NEEDS A SYNC for the write guards (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/RM-027/
+  RM-028 sync note).

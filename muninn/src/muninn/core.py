@@ -35,12 +35,14 @@ opt-in: ``retrieve(..., touch=True)``.
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import json
 import logging
 import math
 import sqlite3
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import combinations
@@ -382,6 +384,37 @@ class MemoryNode:
         )
 
 
+def _storage_write(
+    operation: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Guard a public write method (RM-029).
+
+    A storage-layer failure during a write — above all SQLite's
+    ``database or disk is full`` (SQLITE_FULL) when the filesystem
+    fills mid-write — must never escape as a raw ``sqlite3.Error``:
+    the caller is owed one of Muninn's typed errors. The failed
+    call's transaction is rolled back first, so no half-applied
+    write can leak into a later commit, and the store stays open
+    and consistent for the calls that follow.
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def wrapper(self: HebbianMemory, *args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(self, *args, **kwargs)
+            except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error):
+                    self._conn.rollback()
+                raise MuninnStorageError(
+                    f"muninn write failed during {operation}: {exc}"
+                ) from exc
+
+        return wrapper
+
+    return decorator
+
+
 class HebbianMemory:
     """Hebbian associative memory over one SQLite store.
 
@@ -491,6 +524,7 @@ class HebbianMemory:
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
+    @_storage_write("backup")
     def backup(self) -> str | None:
         """Take a rolling backup now; returns its path (or None)."""
         with self._lock:
@@ -635,6 +669,7 @@ class HebbianMemory:
 
     # ─── write API: activation and wiring ─────────────────────────────
 
+    @_storage_write("activate")
     def activate(
         self, memory_id: int, *, emotional_valence: float = 0.0, source: str = "api"
     ) -> int:
@@ -655,6 +690,7 @@ class HebbianMemory:
             self._conn.commit()
             return total
 
+    @_storage_write("activate_batch")
     def activate_batch(
         self,
         memory_ids: list[int],
@@ -692,6 +728,7 @@ class HebbianMemory:
                 "connections_strengthened": pairs - created,
             }
 
+    @_storage_write("associate")
     def associate(
         self,
         memory_a: int,
@@ -853,6 +890,7 @@ class HebbianMemory:
 
     # ─── node API (ancestor semantics) ────────────────────────────────
 
+    @_storage_write("remember")
     def remember(
         self,
         content: Any,
@@ -966,6 +1004,7 @@ class HebbianMemory:
             ).fetchone()
         return self._row_to_node(row) if row else None
 
+    @_storage_write("retrieve")
     def retrieve(
         self,
         query: str | None = None,
@@ -1055,6 +1094,7 @@ class HebbianMemory:
             children.setdefault(node.path, []).append(node)
         return children
 
+    @_storage_write("update")
     def update(self, node_id: int, content: Any = None, **fields: Any) -> bool:
         """Update a node's fields (WRITE). False when no such node."""
         node_id = _check_memory_id(node_id)
@@ -1121,6 +1161,7 @@ class HebbianMemory:
             self._conn.commit()
             return True
 
+    @_storage_write("forget")
     def forget(self, memory_id: int) -> bool:
         """Remove a memory's node and all its wiring (WRITE).
 
@@ -1200,6 +1241,7 @@ class HebbianMemory:
 
     # ─── maintenance: heal / decay / consolidate (WRITES, named) ──────
 
+    @_storage_write("heal_structure")
     def heal_structure(self) -> dict[str, Any]:
         """Run the self-healing pass now; returns its report (WRITE).
 
@@ -1213,6 +1255,7 @@ class HebbianMemory:
             self.last_heal_report = self._heal_locked()
             return dict(self.last_heal_report)
 
+    @_storage_write("decay")
     def decay(self, days: float = 1.0) -> dict[str, Any]:
         """Fade strengths and confidences by elapsed ``days`` (WRITE).
 
@@ -1263,6 +1306,7 @@ class HebbianMemory:
                 "confidences_decayed": confidences,
             }
 
+    @_storage_write("decay_wall_clock")
     def decay_wall_clock(self) -> dict[str, Any]:
         """Fade by the wall-clock time since the last such run (WRITE).
 
@@ -1337,6 +1381,7 @@ class HebbianMemory:
         )
         return report
 
+    @_storage_write("consolidate")
     def consolidate(self, threshold: float | None = None) -> dict[str, Any]:
         """Mark strong edges consolidated; repair structure (WRITE).
 

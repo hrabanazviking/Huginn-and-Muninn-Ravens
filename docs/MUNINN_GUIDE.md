@@ -720,6 +720,13 @@ except MuninnValidationError as exc:
 Store open/read/write/heal failures raise `MuninnStorageError`. Using
 a closed `HebbianMemory` also raises `MuninnStorageError`.
 
+A write that fails in the storage layer — for example against a
+full disk — surfaces as `MuninnStorageError` naming the operation
+(`muninn write failed during remember: database or disk is full`),
+with the failed call rolled back so no partial write survives; the
+store stays open and consistent afterwards (RM-029, see
+`docs/DISK_FULL.md`).
+
 Durability: the store runs in WAL mode with `synchronous=FULL`, and
 batch writes are single transactions. A `kill -9` mid-write loses at
 most the uncommitted transaction; committed work survives reopening.

@@ -75,6 +75,13 @@ def _cases(tmp_path):
     )
     bad_path = tmp_path / "bad.db"
     bad_path.write_bytes(b"this is not a sqlite database at all........")
+    # RM-029: a store whose growth is capped at its current page
+    # count — the next large write gets SQLite's own SQLITE_FULL.
+    full = HebbianMemory(MuninnConfig(db_path=str(tmp_path / "full.db")))
+    full.remember("seed")
+    _full_conn = full._get_conn()
+    _pages = _full_conn.execute("PRAGMA page_count").fetchone()[0]
+    _full_conn.execute(f"PRAGMA max_page_count={int(_pages)}")
 
     def cfg(**overrides):
         return lambda: MuninnConfig(db_path=str(tmp_path / "m.db"), **overrides)
@@ -122,6 +129,7 @@ def _cases(tmp_path):
         "corrupt_store": lambda: HebbianMemory(
             MuninnConfig(db_path=str(bad_path), backup_keep=0)
         ),
+        "disk_full_remember": lambda: full.remember("z" * 200_000),
     }
     return cases, m
 

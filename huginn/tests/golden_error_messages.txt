@@ -14,7 +14,7 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (43): every raise site except the three that
+# CASE lines (44): every raise site except the three that
 # cannot be triggered deterministically — "could not be
 # prepared" (needs a store whose schema script fails mid-open)
 # and the two "document insert reported success but returned
@@ -54,6 +54,7 @@ CASE local_id_clash | HuginnValidationError | memory_id 99 is free but this cont
 CASE facade_closed | HuginnBackendError | HuginnMemory is closed
 CASE local_closed | HuginnStorageError | Huginn local backend is closed
 CASE corrupt_store | HuginnStorageError | huginn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
+CASE disk_full_upsert | HuginnStorageError | huginn write failed during upsert: database or disk is full
 CASE qdrant_closed | HuginnBackendError | Huginn Qdrant backend is closed
 CASE qdrant_missing_extra | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 CASE st_missing_extra | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
@@ -64,8 +65,9 @@ CASE qdrant_delete_failed | HuginnBackendError | Qdrant delete failed: boom
 CASE qdrant_retrieve_failed | HuginnBackendError | Qdrant retrieve failed: boom
 CASE qdrant_search_failed | HuginnBackendError | Qdrant search failed: boom
 CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: boom
-# TEMPLATE lines (44 raise sites, 43 distinct — the insert
-# guard's line is duplicated, once per insert path).
+# TEMPLATE lines (45 raise sites, 44 distinct — the insert
+# guard's line is duplicated, once per insert path; RM-029
+# added the write-guard raise in local_backend.py).
 TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
 TEMPLATE | HuginnBackendError | HuginnMemory is closed
 TEMPLATE | HuginnBackendError | Qdrant at {} unreachable: {}
@@ -95,6 +97,7 @@ TEMPLATE | HuginnStorageError | document insert reported success but returned no
 TEMPLATE | HuginnStorageError | document insert reported success but returned no row id
 TEMPLATE | HuginnStorageError | huginn store {} could not be prepared: {}
 TEMPLATE | HuginnStorageError | huginn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | HuginnStorageError | huginn write failed during {}: {}
 TEMPLATE | HuginnValidationError | content must be a non-empty string
 TEMPLATE | HuginnValidationError | content size {} bytes exceeds max_content_bytes ({} bytes)
 TEMPLATE | HuginnValidationError | category must be a string

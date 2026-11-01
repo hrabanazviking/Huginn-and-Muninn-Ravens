@@ -172,6 +172,15 @@ def _cases(tmp_path):
     closed_local.close()
     bad_path = tmp_path / "bad.db"
     bad_path.write_bytes(b"this is not a sqlite database at all........")
+    # RM-029: a store whose growth is capped at its current page
+    # count — the next large write gets SQLite's own SQLITE_FULL.
+    full = HuginnMemory(
+        HuginnConfig(backend="local", local_db_path=str(tmp_path / "full.db"))
+    )
+    full.upsert_memory("seed")
+    _full_conn = full._ensure_backend()._conn
+    _pages = _full_conn.execute("PRAGMA page_count").fetchone()[0]
+    _full_conn.execute(f"PRAGMA max_page_count={int(_pages)}")
     embedder = HashingEmbedder(dim=384)
     qdrant_cfg = HuginnConfig(backend="qdrant")
     closed_qdrant = QdrantBackend(qdrant_cfg, embedder)
@@ -251,6 +260,7 @@ def _cases(tmp_path):
             "text", limit=5, category=None, min_importance=1
         ),
         "qdrant_count_failed": lambda: boom.count(),
+        "disk_full_upsert": lambda: full.upsert_memory("z" * 200_000),
     }
     return cases
 

@@ -15,11 +15,13 @@ Scoring modes (honestly labelled):
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -77,6 +79,38 @@ def _now() -> str:
 
 def _content_hash(content: str, category: str) -> str:
     return hashlib.sha256(f"{category}\x00{content}".encode()).hexdigest()
+
+
+def _storage_write(
+    operation: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Guard a local-backend write method (RM-029).
+
+    A storage-layer failure during a write — above all SQLite's
+    ``database or disk is full`` (SQLITE_FULL) when the filesystem
+    fills mid-write — must never escape as a raw ``sqlite3.Error``:
+    the caller is owed one of Huginn's typed errors. The failed
+    call's transaction is rolled back first, so a half-applied
+    write (an upsert that de-indexed the old document but never
+    stored the new one) can never leak into a later commit, and
+    the store stays open and consistent for the calls that follow.
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def wrapper(self: LocalBackend, *args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(self, *args, **kwargs)
+            except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error):
+                    self._conn.rollback()
+                raise HuginnStorageError(
+                    f"huginn write failed during {operation}: {exc}"
+                ) from exc
+
+        return wrapper
+
+    return decorator
 
 
 class LocalBackend:
@@ -210,6 +244,7 @@ class LocalBackend:
             logger.warning("huginn: local heal repaired %s", report)
         return report
 
+    @_storage_write("heal")
     def heal(self) -> dict[str, Any]:
         with self._lock:
             self._ensure_open()
@@ -218,6 +253,7 @@ class LocalBackend:
 
     # ─── writes ───────────────────────────────────────────────────────
 
+    @_storage_write("upsert")
     def upsert(
         self,
         content: str,
@@ -313,6 +349,7 @@ class LocalBackend:
             conn.commit()
             return doc_id
 
+    @_storage_write("delete")
     def delete(self, memory_id: int) -> bool:
         with self._lock:
             conn = self._ensure_open()

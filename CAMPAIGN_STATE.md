@@ -51,9 +51,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Banked (Part III): RM-025, RM-026, RM-027, RM-028. Part III
-  (Robustness) is under way — 4 of 14 slices banked.
-- Next: RM-029 in roadmap order (Part III — Robustness).
+- Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029.
+  Part III (Robustness) is under way — 5 of 14 slices banked.
+- Next: RM-030 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1045,3 +1045,50 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   reads **10 failed, 2 passed** (the passes are the two
   behaviours that already held pre-fix). No other RM-028
   claim is affected.
+- **RM-029 — Disk-full behaviour. BANKED 2026-11-01.
+  Class: FAULT.** Record: `docs/DISK_FULL.md`. Writes against
+  a full filesystem previously escaped as raw
+  `sqlite3.OperationalError` (`database or disk is full`) and
+  a mid-call failure could leave half-applied statements in
+  the open transaction for a later commit to persist. Every
+  public write now runs behind a write guard (`_storage_write`
+  in `muninn/core.py`: remember/store, update/move,
+  forget/delete, activate, activate_batch, associate,
+  retrieve(touch=True), heal_structure, decay,
+  decay_wall_clock, consolidate, backup; and in
+  `huginn/local_backend.py`: upsert, delete, heal — the
+  Qdrant backend already raises `HuginnBackendError`). The
+  guard rolls the failed call back and raises the typed
+  storage error `… write failed during {operation}: {sqlite
+  message}`. The fault is injected with the real engine —
+  `PRAGMA max_page_count` clamped to the current page count
+  yields SQLite's own SQLITE_FULL, the same error a full
+  filesystem produces; no genuinely-full-device claim is
+  made. Pinned by new `tests/test_disk_full.py` in both
+  packages (muninn 3, huginn 2): typed-not-raw on remember/
+  update/upsert, store consistent in-session and after
+  reopen, rollback proven for the 300-node activate_batch
+  and for Huginn's deindex-then-write replace path.
+  Negation: all 5 new tests fail against the pre-RM-029
+  installed packages (RM-028 venv). RM-018 goldens extended
+  deliberately (muninn 39 cases / 42 templates, huginn 44
+  cases / 45 templates); guides + API reference updated.
+  Full suites green in a fresh venv (`ravens-rm029-venv`,
+  non-editable installs): muninn **164 passed** (161+3),
+  huginn **117 passed** (115+2); ruff + mypy floors clean.
+  Error behaviour of writes changed (no signature or schema
+  change; RM-003/RM-004 pins green), so the **Bifröst
+  contract re-verification was run before banking**: fresh
+  venv (`ravens-rm029-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=5; search 2 merged results;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three
+  backends; both raven health dicts carry `sqlite_version`
+  3.45.1; huginn degraded via auto-fallback to local —
+  live Qdrant still NOT PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm029_bifrost.log`). Founding
+  tree NEEDS A SYNC for the write guards (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/RM-027/
+  RM-028 sync note).
