@@ -37,7 +37,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016, RM-017, RM-018, RM-019.
+  RM-016, RM-017, RM-018, RM-019, RM-020.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +48,22 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-020 in roadmap order (Part II — Stability).
+- Next: RM-021 in roadmap order (Part II — Stability).
+- **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
+  the wait-and-run log (`~/workspace/.verify-tmp/
+  rm020_verify.log`) shows the write gate OPEN at probe 57
+  (2026-11-01T12:56:34Z) and both corpus-gate proofs failing
+  exactly as designed (tiny n=20 runs vs the committed
+  n=5000 baselines: corpus-mismatch GATE FAIL for both
+  packages). Its first full-suite pass was 2 failed /
+  115 passed (muninn) and 2 failed / 91 passed (huginn);
+  a re-run in this tick proved both failures per package
+  were exactly the missing RM-020 entry in
+  `docs/SLICE_LOG.md` (EXPECTED pin extended in the build;
+  entry appended at banking, as in every prior slice).
+  With the entry appended, both full suites were re-run
+  green before banking (counts in the slice log entry
+  below). No bug was found in package or script code.
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -641,3 +656,47 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   re-verification required. Founding tree needs no sync for
   this slice (tests + docs only); the RM-008/RM-011/RM-012/
   RM-016/RM-017 package-source sync note stands.
+- **RM-020 — Reproducible benchmark corpus. BANKED
+  2026-11-01. Class: BENCH.** Record: `docs/BENCHMARKS.md`
+  (Reproducible corpus section). Both benchmark scripts now
+  carry `CORPUS_VERSION = 1` and a corpus block — version,
+  count, SHA-256 of the stored texts (UTF-8,
+  newline-terminated, in order) — in every record's
+  `details.corpus` and in the printed output; the gate
+  refuses cross-corpus comparisons with a corpus-mismatch
+  failure whatever the timings say (a pre-RM-020 baseline
+  with no block draws a printed note + timing-only
+  comparison). The corpora were already formula-generated
+  (muninn `corpus_text(i)`; huginn `doc_text(i)` over its
+  fixed word list + fixed search queries) — this slice
+  names, versions, and pins that fact. Default-workload
+  (5,000) hashes: muninn `ffe8065f…141d1`, huginn
+  `3693044b…43f`. Both committed baselines gained their
+  corpus blocks without re-timing (generator output
+  byte-identical to the RM-005 runs' stored texts).
+  Pinned by new `tests/test_benchmark_corpus.py` in both
+  packages (4 tests each: determinism, honest hash
+  recomputation, committed-baseline block, real script
+  recording the same hash in printed + JSON output across
+  two runs). Corpus-gate behaviour proven live
+  2026-11-01 by the wait-and-run record
+  (`~/workspace/.verify-tmp/rm020_verify.log`): tiny runs
+  vs the committed baselines fail with exactly the
+  corpus-mismatch message for both packages. Verification
+  history, honestly: built in the ~07:05–07:50 EST tick
+  but unbankable then — the VM's Python write gate was
+  closed (the RM-015 pattern) — so the wait-and-run probed
+  until the gate opened (probe 57, 12:56:34Z) and ran the
+  proofs + suites; its first suite pass (2 failed /
+  115 passed muninn, 2 failed / 91 passed huginn) was
+  proven in the banking tick to be exactly the missing
+  `docs/SLICE_LOG.md` RM-020 entry in both packages.
+  With the entry appended, full suites green in the
+  RM-019 venv: muninn **117 passed** (113+4), huginn
+  **93 passed** (89+4); ruff + mypy floors clean (rm014
+  venv; mypy muninn 5 files, huginn 8 files). No package
+  source, public API, or schema change (RM-003 freeze +
+  RM-004 snapshot green), so no Bifröst re-verification
+  required. Founding tree sync note from RM-005 stands
+  and extends to the corpus-versioned benchmark scripts
+  + baselines (scripts only, no package code).

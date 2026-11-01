@@ -433,3 +433,63 @@ has an entry here with its Class and Commit fields present.
   for this slice (tests + docs only); the
   RM-008/RM-011/RM-012/RM-016/RM-017 package-source sync
   note stands.
+
+## RM-020 — Reproducible benchmark corpus
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Both benchmark corpora are now versioned and
+  hashed. The corpora were already formula-generated (muninn
+  `corpus_text(i)`; huginn `doc_text(i)` over its fixed word
+  list, its fixed search queries part of the corpus
+  definition) — this slice names and pins that fact:
+  `CORPUS_VERSION = 1` in both `scripts/benchmark.py`, a
+  corpus block (`version`, `count`, SHA-256 of the stored
+  texts, UTF-8 + newline-terminated, in order) carried in
+  every record's `details.corpus` and printed beside the
+  environment block, and a gate that refuses cross-corpus
+  comparisons with a corpus-mismatch failure whatever the
+  timings say (a pre-RM-020 baseline with no corpus block
+  draws a printed note and a timing-only comparison).
+  Default-workload (5,000) hashes: muninn
+  `ffe8065f0eb8040e32cff2dc924ceaf752385aac0b9c7830d8efba448ee141d1`,
+  huginn
+  `3693044ba5a6490d5174b31bb86577d338be59f56b9496a05f623a864a06143f`.
+  Both committed baselines gained their corpus blocks
+  without re-timing — the generators' output is
+  byte-identical to what the RM-005 baseline runs stored, so
+  those timings stand. Record: `docs/BENCHMARKS.md`
+  (Reproducible corpus section). Pinned by new
+  `tests/test_benchmark_corpus.py` in both packages
+  (4 tests each: determinism, honest hash recomputation,
+  committed-baseline block, and the real script recording
+  the same hash in printed + JSON output across two runs).
+  Corpus-gate behaviour proven live on 2026-11-01 by the
+  RM-020 wait-and-run record
+  (`~/workspace/.verify-tmp/rm020_verify.log`): tiny-workload
+  runs against the committed baselines fail with exactly the
+  corpus-mismatch message for both packages (muninn
+  n=20 `b674585d…` vs baseline n=5000 `ffe8065f…`; huginn
+  n=20 `241e92a1…` vs baseline `3693044b…`). Verification
+  history, honestly: the slice was built in the
+  ~07:05–07:50 EST keeper tick but could not be banked then
+  — the VM's Python write gate was closed (the RM-015
+  pattern) — so a wait-and-run script probed until the gate
+  opened (probe 57, 2026-11-01T12:56:34Z) and ran the gate
+  proofs + both full suites; its first suite pass showed
+  2 failed / 115 passed (muninn) and 2 failed / 91 passed
+  (huginn), and a re-run in the banking tick proved both
+  failures per package were exactly this slice-log entry
+  missing (the EXPECTED pin extended in the build, the
+  entry appended at banking, as in every prior slice).
+  With the entry appended, full suites green in the
+  RM-019 venv (non-editable installs as recorded there):
+  muninn **117 passed** (113+4), huginn **93 passed**
+  (89+4); ruff + mypy floors clean (rm014 venv; mypy
+  muninn 5 files, huginn 8 files). No package source,
+  public API, or schema change (scripts + baselines +
+  tests + docs only; RM-003 freeze + RM-004 snapshot
+  green), so no Bifröst re-verification required.
+  Founding tree sync note from RM-005 stands and now
+  extends to the corpus-versioned benchmark scripts +
+  baselines (scripts only, no package code).

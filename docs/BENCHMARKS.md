@@ -88,3 +88,35 @@ The gate logic itself (threshold comparison, missing-operation
 failures, baseline/environment shape) is pinned by deterministic
 unit tests — `tests/test_benchmark_gate.py` in both packages —
 so the unit suites never depend on wall-clock timing.
+
+## Reproducible corpus (RM-020)
+
+The corpora are synthetic and formula-generated — muninn's
+`corpus_text(i)` ("benchmark memory *i* about topic *i* mod 50")
+and huginn's `doc_text(i)` over its fixed word list — pure
+functions of the index with no randomness anywhere, so every
+run on every machine stores byte-identical texts. Both are
+versioned (`CORPUS_VERSION = 1` in each script; huginn's fixed
+search queries are part of its corpus definition).
+
+Every benchmark record now carries a corpus block in
+`details.corpus` — version, count, and the SHA-256 of the
+stored texts (each UTF-8 encoded, newline-terminated, in
+order) — and the printed output shows it beside the
+environment block. Default-workload (5,000) hashes:
+
+- muninn: `ffe8065f0eb8040e32cff2dc924ceaf752385aac0b9c7830d8efba448ee141d1`
+- huginn: `3693044ba5a6490d5174b31bb86577d338be59f56b9496a05f623a864a06143f`
+
+The gate now also compares corpora: a run whose corpus block
+differs from the baseline's fails with a corpus-mismatch
+message, whatever the timings say — BENCH comparisons only
+ever compare like with like. A baseline with no corpus block
+(predating RM-020) draws a printed note and a timing-only
+comparison. The committed baselines gained their corpus
+blocks without re-timing: the generators' output is
+byte-identical to what the RM-005 runs stored, so those
+timings stand. Pinned by `tests/test_benchmark_corpus.py` in
+both packages (determinism, honest hash recomputation,
+baseline block, and the real script recording the same hash
+in printed + JSON output across two runs).

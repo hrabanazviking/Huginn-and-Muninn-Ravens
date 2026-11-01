@@ -33,6 +33,12 @@
       "search": 84.21428100018602,
       "search_filtered": 2.3105049999685434
     },
-    "backend": "local"
+    "backend": "local",
+    "corpus": {
+      "version": 1,
+      "count": 5000,
+      "sha256": "3693044ba5a6490d5174b31bb86577d338be59f56b9496a05f623a864a06143f"
+    },
+    "corpus_note": "Corpus block added by RM-020 without re-timing: the corpus generator's output is byte-identical to what the RM-005 baseline run stored, so the recorded timings stand."
   }
 }

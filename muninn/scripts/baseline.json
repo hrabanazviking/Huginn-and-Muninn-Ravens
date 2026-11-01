@@ -34,6 +34,12 @@
       "n_batch": 2000,
       "read_repeat": 3
     },
-    "unit": "median total ms for the labelled batch (seed ops run once)"
+    "unit": "median total ms for the labelled batch (seed ops run once)",
+    "corpus": {
+      "version": 1,
+      "count": 5000,
+      "sha256": "ffe8065f0eb8040e32cff2dc924ceaf752385aac0b9c7830d8efba448ee141d1"
+    },
+    "corpus_note": "Corpus block added by RM-020 without re-timing: the corpus generator's output is byte-identical to what the RM-005 baseline run stored, so the recorded timings stand."
   }
 }
