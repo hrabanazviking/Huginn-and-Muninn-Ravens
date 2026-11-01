@@ -306,3 +306,53 @@ has an entry here with its Class and Commit fields present.
   tree (`~/workspace/ravens`) NEEDS A SYNC for the two
   health() additions (extends the RM-008/RM-011/RM-012 sync
   note).
+
+## RM-017 — Config immutability
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `MuninnConfig` and `HuginnConfig` are now
+  `@dataclass(frozen=True)`: validated once at construction,
+  then immutable — assigning to any field raises
+  `dataclasses.FrozenInstanceError`, so a caller holding the
+  config it handed in cannot change a live store's behaviour
+  mid-flight (or smuggle in an unvalidated combination; the
+  validators run only at construction). Record:
+  `docs/CONFIG_IMMUTABILITY.md`. The road to a variant is
+  `dataclasses.replace`, which re-runs full validation; the
+  constructors' `**overrides` already took that road (via
+  `replace`) and are now pinned to leave the caller's config
+  untouched. Proven by new `tests/test_config_immutability.py`
+  in both packages (5 tests each): assignment attempts on
+  representative fields raise; a mutation attempt against a
+  live store leaves behaviour at the validated values
+  (Muninn's first wiring still starts at exactly the
+  configured learning rate 0.1 after an attempted 1.0; a live
+  Huginn local store's backend cannot be flipped to
+  `qdrant`); `replace` builds a distinct re-validated config
+  (out-of-range replacements raise the typed configuration
+  errors); constructor overrides do not mutate the caller's
+  config. Acceptance also proven by negation: the same test
+  files run against a scratch copy with the freeze removed
+  fail exactly the two mutation tests per package (2 failed /
+  3 passed each) — the pin catches a regression. Because
+  freezing changes public-surface behaviour (construction
+  shapes, fields and defaults are unchanged — RM-003 freeze
+  green), the **Bifröst contract re-verification was run
+  before banking**: fresh venv (`ravens-rm017-bifrost-venv`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id; search
+  2 merged results; recall grew the Muninn activation log
+  exactly +1; decay/consolidate reports; stats over all three
+  backends; both raven health dicts carry `sqlite_version`
+  3.45.1 through the bridge; double close safe; huginn
+  degraded via auto-fallback to local — qdrant-client not
+  installed in the venv, the founding condition; live Qdrant
+  still NOT PROVEN). Full suites green in a fresh venv
+  (non-editable installs): muninn **107 passed** (102+5),
+  huginn **83 passed** (78+5); ruff + mypy floors clean
+  (mypy muninn 5 files, huginn 8 files, no issues; one B010
+  on the new tests' `setattr` fixed in-slice to the direct
+  assignment the floor prescribes). Founding tree
+  (`~/workspace/ravens`) NEEDS A SYNC for the frozen configs
+  (extends the RM-008/RM-011/RM-012/RM-016 sync note).

@@ -4,6 +4,14 @@ Bifröst constructs this as ``MuninnConfig(db_path=...)`` and nothing
 more; every other field carries the default the ancestors' semantics
 imply. All values are validated at construction — a bad configuration
 fails loudly here, never mid-write.
+
+The config is **frozen** after validation (RM-017): assigning to any
+field raises ``dataclasses.FrozenInstanceError``, so a caller cannot
+change a live store's behaviour by mutating the dataclass it handed
+in. The road to a different configuration is
+``dataclasses.replace(config, field=value)``, which builds a new,
+re-validated config — the constructors' ``**overrides`` already take
+that road.
 """
 
 from __future__ import annotations
@@ -16,7 +24,7 @@ from .errors import MuninnConfigurationError
 DEFAULT_DB_PATH = "~/.hermes/memory/muninn_hebbian.db"
 
 
-@dataclass
+@dataclass(frozen=True)
 class MuninnConfig:
     """Configuration for :class:`muninn.HebbianMemory`.
 

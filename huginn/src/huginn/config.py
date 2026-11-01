@@ -4,6 +4,14 @@ Bifröst constructs ``HuginnMemory(config=None)`` — defaults are
 therefore a *contract*: with no config and no Qdrant server anywhere,
 Huginn must come up on its local backend and work. Every field is
 validated at construction.
+
+The config is **frozen** after validation (RM-017): assigning to any
+field raises ``dataclasses.FrozenInstanceError``, so a caller cannot
+change a live store's behaviour by mutating the dataclass it handed
+in. The road to a different configuration is
+``dataclasses.replace(config, field=value)``, which builds a new,
+re-validated config — the constructors' ``**overrides`` already take
+that road.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ BACKENDS = ("auto", "local", "qdrant")
 EMBEDDERS = ("tfidf", "hashing", "sentence-transformers")
 
 
-@dataclass
+@dataclass(frozen=True)
 class HuginnConfig:
     """Configuration for :class:`huginn.HuginnMemory`.
 

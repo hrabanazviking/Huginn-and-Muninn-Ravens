@@ -37,7 +37,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016.
+  RM-016, RM-017.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +48,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-017 in roadmap order (Part II — Stability).
+- Next: RM-018 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -528,3 +528,45 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   (mypy muninn 5 files, huginn 8 files). Founding tree
   NEEDS A SYNC for the health() additions (extends the
   RM-008/RM-011/RM-012 sync note).
+- **RM-017 — Config immutability. BANKED 2026-11-01. Class: UNIT.**
+  `MuninnConfig` and `HuginnConfig` are now
+  `@dataclass(frozen=True)`: validated once at construction,
+  then immutable — assigning to any field raises
+  `dataclasses.FrozenInstanceError`, so a caller cannot change
+  a live store's behaviour mid-flight or smuggle in an
+  unvalidated combination (validators run only at
+  construction). Record: `docs/CONFIG_IMMUTABILITY.md`. The
+  road to a variant is `dataclasses.replace` (full
+  re-validation); the constructors' `**overrides` already took
+  that road and are now pinned to leave the caller's config
+  untouched. Proven by new `tests/test_config_immutability.py`
+  in both packages (5 tests each): representative-field
+  assignment attempts raise; a mutation attempt against a live
+  store leaves behaviour at the validated values (Muninn first
+  wiring still starts at exactly lr 0.1 after an attempted 1.0;
+  a live Huginn local backend cannot be flipped to `qdrant`);
+  `replace` re-validates (typed configuration errors on
+  out-of-range replacements); overrides never mutate the
+  caller's config. Acceptance proven by negation: the same
+  files against a scratch copy with the freeze removed fail
+  exactly the two mutation tests per package (2 failed / 3
+  passed each). Construction shapes, fields and defaults are
+  unchanged (RM-003 freeze green), but freezing changes
+  public-surface behaviour, so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm017-bifrost-venv`), bifrost at b66e98cc — its own
+  suites **25 passed**; BifrostBridge smoke PASS (store
+  mimir_id+huginn_id; search 2 merged results; recall grew the
+  Muninn activation log exactly +1; decay/consolidate reports;
+  stats over all three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1 through the bridge; double close
+  safe; huginn degraded via auto-fallback to local —
+  qdrant-client not installed, the founding condition; live
+  Qdrant still NOT PROVEN). Full suites green in a fresh venv
+  (non-editable installs), re-run on the final banking tree
+  after a service restart interrupted the first attempt:
+  muninn **107 passed** (102+5), huginn **83 passed** (78+5);
+  ruff + mypy floors clean (mypy muninn 5 files, huginn 8
+  files; one B010 on the new tests fixed in-slice). Founding
+  tree NEEDS A SYNC for the frozen configs (extends the
+  RM-008/RM-011/RM-012/RM-016 sync note).
