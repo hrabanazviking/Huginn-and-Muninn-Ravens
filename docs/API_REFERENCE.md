@@ -339,13 +339,28 @@ gives it.
 #### `get_by_path(path: str) -> List[MemoryNode]`
 
 **READ (pure).** All nodes at exactly `path`, ordered by importance
-descending, then `updated_at` descending.
+descending, then `updated_at` descending. The argument is
+normalised first (RM-028, below), so any spelling of the path
+finds the same nodes.
 
 #### `get_children(parent_path: str) -> Dict[str, List[MemoryNode]]`
 
 **READ (pure).** Nodes at any path strictly under `parent_path`
 (prefix `parent_path + "/"`), grouped by their full path. Each group
-is ordered by importance descending.
+is ordered by importance descending. The parent is normalised
+first; `get_children("")` returns every node at a non-root path,
+and `%` / `_` / `\` inside a segment match literally, never as
+LIKE wildcards.
+
+**Path normalisation (RM-028).** Every node path — written by
+`remember` / `store` / `update` / `move`, queried by `retrieve`,
+`get_by_path` and `get_children` — passes through one normaliser:
+split on `/`, drop empty and `.` segments, let `..` remove the
+previous segment (clamped at the root), re-join with single
+`/`s. Only `/` separates segments. Non-string paths raise
+`MuninnValidationError`, as do normalised paths over 64
+segments or 2048 UTF-8 bytes. Full record:
+`docs/PATHOLOGICAL_PATHS.md`.
 
 #### `update(node_id: int, content: Any = None, **fields: Any) -> bool`
 

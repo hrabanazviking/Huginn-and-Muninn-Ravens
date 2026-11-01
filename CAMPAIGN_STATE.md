@@ -51,9 +51,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Banked (Part III): RM-025, RM-026, RM-027. Part III
-  (Robustness) is under way — 3 of 14 slices banked.
-- Next: RM-028 in roadmap order (Part III — Robustness).
+- Banked (Part III): RM-025, RM-026, RM-027, RM-028. Part III
+  (Robustness) is under way — 4 of 14 slices banked.
+- Next: RM-029 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -977,3 +977,56 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   tree NEEDS A SYNC for the config fields + enforcement
   (extends the RM-008/RM-011/RM-012/RM-016/RM-017/
   RM-025/RM-026 sync note).
+- **RM-028 — Pathological paths. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/PATHOLOGICAL_PATHS.md`.
+  Muninn-only (Huginn has no node paths). Defined
+  behaviour for node paths, previously undefined and
+  partly inconsistent (`a/b` vs `a/b/` forked identity on
+  the exact read but not the prefix read; LIKE wildcards
+  in segments silently matched neighbours). One
+  normaliser (`_normalize_path`) now serves every entry
+  point — `remember` / `store` / `update` / `move` writes,
+  `retrieve` / `get_by_path` / `get_children` reads:
+  split on `/`, empty and `.` segments drop, `..` climbs
+  one level and clamps at the store root, kept segments
+  re-join with single `/`s, root is `""`; only `/`
+  separates (backslash + unicode look-alikes are ordinary
+  characters). Prefix reads escape `\` / `%` / `_` with
+  `ESCAPE '\'`; `get_children("")` returns every pathed
+  node grouped by path (was always `{}`). Bounds on the
+  normalised path: non-strings are typed
+  `MuninnValidationError` before any write; at most 64
+  segments and 2048 UTF-8 bytes. Pinned by new
+  `tests/test_pathological_paths.py` (12 tests:
+  dotdot/root spellings, spelling agreement across writes
+  and reads, move/update normalisation, typed non-strings
+  leaving stats unchanged, both ceilings at/above,
+  literal wildcards, root children). Negation: **11 of
+  12 failed** against the pre-RM-028 installed packages
+  (RM-027 venv; the pass is verbatim backslash/unicode
+  storage, which already held). RM-018 goldens extended
+  deliberately (38 cases / 41 templates); guides + API
+  reference updated. Full suites green in a fresh venv
+  (`ravens-rm028-venv`, non-editable installs), final
+  banking-tree runs: muninn **162 passed**, huginn
+  **115 passed** (the pre-entry muninn run failed only
+  the two slice-log pin tests, as in every prior slice);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). Validation behaviour
+  tightened (no signature or schema change; RM-003
+  freeze + RM-004 snapshot green), so the **Bifröst
+  contract re-verification was run before banking**:
+  fresh venv (`ravens-rm028-bifrost-venv`), bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS (store mimir_id+huginn_id; search 1 merged
+  result; recall grew the Muninn activation log exactly
+  +1; decay/consolidate reports; `decay_wall_clock()`
+  through the bridge armed at 0 days; stats over all
+  three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT
+  PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm028_bifrost.log`).
+  Founding tree NEEDS A SYNC for the path normaliser
+  (extends the RM-008/RM-011/RM-012/RM-016/RM-017/
+  RM-025/RM-026/RM-027 sync note).

@@ -39,7 +39,7 @@ A node is one stored memory. The `MemoryNode` dataclass has:
 |---|---|---|
 | `id` | `int` | Integer id, assigned by the store (autoincrement) |
 | `content` | `str` or any JSON-serializable value | The memory itself. Strings are stored as text; other JSON-serializable values are stored as JSON and returned decoded |
-| `path` | `str`, default `""` | Hierarchical path, for example `"people/family"` — used by `get_by_path`, `get_children`, `get_tree_structure`, and `move` |
+| `path` | `str`, default `""` | Hierarchical path, for example `"people/family"` — used by `get_by_path`, `get_children`, `get_tree_structure`, and `move`. Paths are normalised on write and on read (RM-028): empty/`.` segments and trailing slashes collapse, `..` climbs and clamps at the root, only `/` separates, and the normalised path is capped at 64 segments / 2048 UTF-8 bytes — see `docs/PATHOLOGICAL_PATHS.md` |
 | `memory_type` | `str`, default `"fact"` on the dataclass | The node's type. In the database this column is called `category`. `MemoryNode.category` is a read-only property alias for `memory_type` |
 | `importance` | `int`, 1–10, default `5` | How much this memory matters. Used for result ordering and for backpressure pruning |
 | `emotional_valence` | `float`, −1.0 to 1.0, default `0.0` | Emotional charge of the memory |
@@ -372,7 +372,11 @@ print(tree)
 ```
 
 All three are pure reads. `get_children` groups nodes by every path
-strictly under the parent path. `get_tree_structure` returns a nested
+strictly under the parent path (`get_children("")` returns every
+pathed node, grouped by path). Path arguments are normalised the
+same way as on writes (RM-028), so `get_by_path("/animals/ravens/")`
+finds the node stored at `animals/ravens`, and `%`/`_` inside a
+segment are literal characters, never wildcards. `get_tree_structure` returns a nested
 dict following the `/`-separated path parts, with a `"_nodes"` count
 at each path that holds nodes.
 

@@ -259,6 +259,67 @@ def _check_metadata_size(meta_text: str, ceiling: int) -> None:
         )
 
 
+# RM-028: node-path bounds, applied to the normalised path.
+_MAX_PATH_SEGMENTS = 64
+_MAX_PATH_BYTES = 2048
+
+
+def _normalize_path(value: Any) -> str:
+    """RM-028: fold a node path to its one canonical spelling.
+
+    Node paths are store-internal hierarchical labels, never
+    filesystem paths. The defined behaviour (docs/
+    PATHOLOGICAL_PATHS.md): split on ``/``; empty segments
+    (leading / trailing / doubled slashes) and ``.`` segments
+    drop; ``..`` removes the previous kept segment and clamps
+    at the root, so no spelling escapes the store root; the
+    rest are kept verbatim — backslashes and unicode separator
+    look-alikes are ordinary segment characters, only ``/``
+    separates. The root is ``""``. Non-strings, a depth over
+    64 segments, or a size over 2048 UTF-8 bytes (both measured
+    after normalisation) are typed refusals.
+    """
+    if not isinstance(value, str):
+        raise MuninnValidationError(
+            f"path must be a string, got {type(value).__name__}"
+        )
+    segments: list[str] = []
+    for segment in value.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            if segments:
+                segments.pop()
+            continue
+        segments.append(segment)
+    if len(segments) > _MAX_PATH_SEGMENTS:
+        raise MuninnValidationError(
+            f"path depth {len(segments)} exceeds maximum of "
+            f"{_MAX_PATH_SEGMENTS} segments"
+        )
+    normalized = "/".join(segments)
+    size = len(normalized.encode("utf-8"))
+    if size > _MAX_PATH_BYTES:
+        raise MuninnValidationError(
+            f"path size {size} bytes exceeds maximum of {_MAX_PATH_BYTES} bytes"
+        )
+    return normalized
+
+
+def _like_prefix_pattern(path: str) -> str:
+    """RM-028: an escaped LIKE pattern matching every path
+    strictly under ``path`` (to be used with ``ESCAPE '\\'``).
+
+    ``\\``, ``%`` and ``_`` in a segment are literal characters,
+    never wildcards. The root's pattern matches any non-empty
+    path; the caller still excludes the root row itself.
+    """
+    escaped = (
+        path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    return escaped + "/%" if escaped else "%"
+
+
 @dataclass
 class MemoryNode:
     """A node in Muninn's memory — the ancestor's shape, integer-keyed."""
@@ -813,6 +874,7 @@ class HebbianMemory:
             raise MuninnValidationError("content must not be None")
         importance = _check_importance(importance)
         emotional_valence = _check_valence(emotional_valence)
+        clean_path = _normalize_path(path)
         text, is_json, content_hash = _content_payload(content)
         _check_content_size(text, self.config.max_content_bytes)
         clean_tags = [
@@ -832,7 +894,7 @@ class HebbianMemory:
                 "  emotional_valence, tags, metadata, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    text, is_json, content_hash, str(path), str(category), importance,
+                    text, is_json, content_hash, clean_path, str(category), importance,
                     emotional_valence, json.dumps(clean_tags), meta_text, at, at,
                 ),
             )
@@ -846,7 +908,7 @@ class HebbianMemory:
             else:
                 row = self._conn.execute(
                     "SELECT id FROM nodes WHERE content_hash = ? AND category = ? AND path = ?",
-                    (content_hash, str(category), str(path)),
+                    (content_hash, str(category), clean_path),
                 ).fetchone()
                 node_id = int(row[0])
                 is_new = False
@@ -932,9 +994,10 @@ class HebbianMemory:
         if wanted_type:
             sql += " AND category = ?"
             params.append(str(wanted_type))
-        if path:
-            sql += " AND (path = ? OR path LIKE ?)"
-            params.extend([str(path), str(path).rstrip("/") + "/%"])
+        clean_path = _normalize_path(path) if path is not None else None
+        if clean_path:
+            sql += " AND (path = ? OR path LIKE ? ESCAPE '\\')"
+            params.extend([clean_path, _like_prefix_pattern(clean_path)])
         rows_out: list[MemoryNode] = []
         with self._lock:
             rows = self._get_conn().execute(sql, params).fetchall()
@@ -967,23 +1030,25 @@ class HebbianMemory:
 
     def get_by_path(self, path: str) -> list[MemoryNode]:
         """All nodes at exactly ``path``. PURE READ."""
+        clean_path = _normalize_path(path)
         with self._lock:
             rows = self._get_conn().execute(
                 "SELECT * FROM nodes WHERE path = ?"
                 " ORDER BY importance DESC, updated_at DESC, id ASC",
-                (str(path),),
+                (clean_path,),
             ).fetchall()
         return [self._row_to_node(r) for r in rows]
 
     def get_children(self, parent_path: str) -> dict[str, list[MemoryNode]]:
         """Nodes grouped by every path under ``parent_path``. PURE READ."""
-        prefix = str(parent_path).rstrip("/") + "/"
+        clean_parent = _normalize_path(parent_path)
         children: dict[str, list[MemoryNode]] = {}
         with self._lock:
             rows = self._get_conn().execute(
-                "SELECT * FROM nodes WHERE path LIKE ?"
+                "SELECT * FROM nodes WHERE path LIKE ? ESCAPE '\\'"
+                " AND path <> ''"
                 " ORDER BY path, importance DESC, id ASC",
-                (prefix + "%",),
+                (_like_prefix_pattern(clean_parent),),
             ).fetchall()
         for row in rows:
             node = self._row_to_node(row)
@@ -1036,7 +1101,7 @@ class HebbianMemory:
                 _check_metadata_size(meta_text, self.config.max_metadata_bytes)
                 updates["metadata"] = meta_text
             if "path" in fields:
-                updates["path"] = str(fields["path"])
+                updates["path"] = _normalize_path(fields["path"])
             if "memory_type" in fields or "category" in fields:
                 updates["category"] = str(fields.get("memory_type", fields.get("category")))
             if not updates:
@@ -1092,7 +1157,7 @@ class HebbianMemory:
 
     def move(self, node_id: int, new_path: str) -> bool:
         """Move a node to a new hierarchical path (WRITE)."""
-        return self.update(node_id, path=str(new_path))
+        return self.update(node_id, path=new_path)
 
     def get_tree_structure(self) -> dict[str, Any]:
         """The hierarchical path tree with node counts. PURE READ."""

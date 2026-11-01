@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (35): every raise site except the two that cannot
+# CASE lines (38): every raise site except the two that cannot
 # be triggered deterministically — "could not be prepared"
 # (needs a store whose schema script fails mid-open) and "node
 # insert reported success but returned no row id" (unreachable
@@ -28,6 +28,9 @@ CASE config_backup_keep | MuninnConfigurationError | backup_keep must be >= 0
 CASE config_max_nodes | MuninnConfigurationError | max_nodes must be >= 1
 CASE config_max_content_bytes | MuninnConfigurationError | max_content_bytes must be >= 1
 CASE config_max_metadata_bytes | MuninnConfigurationError | max_metadata_bytes must be >= 1
+CASE path_type | MuninnValidationError | path must be a string, got int
+CASE path_depth | MuninnValidationError | path depth 65 exceeds maximum of 64 segments
+CASE path_size | MuninnValidationError | path size 2049 bytes exceeds maximum of 2048 bytes
 CASE content_oversize | MuninnValidationError | content size 9 bytes exceeds max_content_bytes (8 bytes)
 CASE metadata_oversize | MuninnValidationError | metadata size 17 bytes exceeds max_metadata_bytes (8 bytes)
 CASE memory_id_type | MuninnValidationError | memory_id must be an int, got str
@@ -52,9 +55,10 @@ CASE decay_days | MuninnValidationError | days must be a number >= 0
 CASE consolidate_threshold | MuninnValidationError | threshold must be in (0, 1]
 CASE closed | MuninnStorageError | HebbianMemory is closed
 CASE corrupt_store | MuninnStorageError | muninn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
-# TEMPLATE lines (38 raise sites; RM-025 added the
+# TEMPLATE lines (41 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
-# core.py, and update()'s metadata-serializability site).
+# core.py, and update()'s metadata-serializability site;
+# RM-028 added the three path guards).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -92,6 +96,9 @@ TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata size {} bytes exceeds max_metadata_bytes ({} bytes)
 TEMPLATE | MuninnValidationError | min_strength must be in [0, 1]
+TEMPLATE | MuninnValidationError | path must be a string, got {}
+TEMPLATE | MuninnValidationError | path depth {} exceeds maximum of {} segments
+TEMPLATE | MuninnValidationError | path size {} bytes exceeds maximum of {} bytes
 TEMPLATE | MuninnValidationError | pass strength or delta, not both
 TEMPLATE | MuninnValidationError | strength must be in [0, 1]
 TEMPLATE | MuninnValidationError | threshold must be in (0, 1]

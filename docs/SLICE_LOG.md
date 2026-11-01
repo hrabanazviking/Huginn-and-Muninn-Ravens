@@ -804,3 +804,51 @@ has an entry here with its Class and Commit fields present.
   `~/workspace/.verify-tmp/rm027_bifrost.log`). Founding
   tree NEEDS A SYNC for the config fields + enforcement
   (extends the standing package-source sync note).
+## RM-028 — Pathological paths
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Muninn node paths now have defined behaviour,
+  recorded in `docs/PATHOLOGICAL_PATHS.md` and pinned by new
+  `tests/test_pathological_paths.py` (12 tests). One
+  normaliser serves every entry point (`remember` / `store` /
+  `update` / `move` writes; `retrieve` / `get_by_path` /
+  `get_children` reads): split on `/`, empty and `.` segments
+  drop, `..` climbs one level and clamps at the store root,
+  segments re-join with single `/`s and the root is `""` — so
+  every spelling of one logical path is the same path, and a
+  `remember` retry under another spelling hits the idempotent
+  identity instead of forking a node. Only `/` separates:
+  backslash and unicode look-alikes (U+FF0F and kin) are
+  ordinary segment characters. Prefix reads escape `\` / `%` /
+  `_` with `ESCAPE '\'` — a LIKE-wildcard segment names
+  exactly itself (previously `get_children("a_b")` also
+  matched `aXb`). `get_children("")` now returns every pathed
+  node grouped by path (previously a prefix no stored path
+  could match, always `{}`). Bounds on the normalised path:
+  string-only (non-strings are typed
+  `MuninnValidationError` before any write), at most 64
+  segments and 2048 UTF-8 bytes. Negation: the new suite
+  failed 11 of 12 against the pre-RM-028 installed packages
+  (RM-027 venv; the one pass is verbatim backslash/unicode
+  storage, which already held). RM-018 goldens extended
+  deliberately (38 cases / 41 templates). Full suites green
+  in a fresh venv (`ravens-rm028-venv`, non-editable
+  installs): muninn **162 passed**, huginn **115 passed**; ruff +
+  mypy floors clean. Validation behaviour tightened (no
+  signature or schema change; RM-003/RM-004 pins green), so
+  the Bifröst contract re-verification was run before
+  banking: fresh venv (`ravens-rm028-bifrost-venv`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id;
+  search 1 merged result; recall grew the Muninn activation
+  log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge armed at 0 days;
+  stats over all three backends; both raven health dicts
+  carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm028_bifrost.log`). Founding
+  tree NEEDS A SYNC for the path normaliser (extends the
+  standing package-source sync note). Huginn has no node
+  paths — this slice is Muninn-only by design.

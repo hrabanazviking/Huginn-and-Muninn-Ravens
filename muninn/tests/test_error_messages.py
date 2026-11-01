@@ -91,6 +91,9 @@ def _cases(tmp_path):
         "config_max_nodes": cfg(max_nodes=0),
         "config_max_content_bytes": cfg(max_content_bytes=0),
         "config_max_metadata_bytes": cfg(max_metadata_bytes=0),
+        "path_type": lambda: m.remember("x", path=123),
+        "path_depth": lambda: m.remember("x", path="/".join(["a"] * 65)),
+        "path_size": lambda: m.remember("x", path="x" * 2049),
         "content_oversize": lambda: tight.remember("123456789"),
         "metadata_oversize": lambda: tight.remember(
             "ok", metadata={"k": "12345678"}
