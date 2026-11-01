@@ -38,7 +38,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
   RM-016, RM-017, RM-018, RM-019, RM-020, RM-021, RM-022,
-  RM-023.
+  RM-023, RM-024. **Part II (Stability) is complete** — all
+  fourteen slices banked and pushed; evidence bundle in
+  `docs/PART_II_EVIDENCE.md`.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -49,7 +51,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-024 in roadmap order (Part II — Stability, part gate).
+- Next: RM-025 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -792,3 +794,22 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   change, so no Bifröst re-verification required.
   Founding tree needs no sync (tests + docs only); the
   package-source sync note stands.
+- **RM-024 — Part gate. BANKED 2026-11-01. Class: UNIT.**
+  `docs/PART_II_EVIDENCE.md` files the Part II evidence
+  bundle: determinism (RM-011), the 50-pair flake record
+  (RM-014), the 24-hour soak (RM-015) and the per-version
+  matrix (RM-007); a check-off row per slice
+  RM-011–RM-024 with banking counts; the part's three
+  Bifröst re-verifications (RM-016/RM-017/RM-021, all
+  green); floors standing; the honesty ledger unchanged
+  (live Qdrant, sentence-transformers, GitHub-hosted CI
+  all NOT PROVEN); debts named (founding-tree sync owed;
+  `schema_version` recorded-not-gated until RM-132 /
+  RM-082). Pinned by new `tests/test_part_ii_gate.py` in
+  both packages (2 tests each). Full suites green in the
+  RM-021 venv: muninn **131 passed** (129+2), huginn
+  **100 passed** (98+2); ruff floor clean. No package
+  code, API, or schema change, so no Bifröst
+  re-verification required for the gate itself.
+  **Part II (Stability) complete: 14/14 slices banked
+  and pushed.** Next: Part III — Robustness, RM-025.

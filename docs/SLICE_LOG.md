@@ -631,3 +631,35 @@ has an entry here with its Class and Commit fields present.
   Bifröst re-verification required. Founding tree needs
   no sync for this slice (tests + docs only); the
   package-source sync note stands.
+
+## RM-024 — Part gate (Part II complete)
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `docs/PART_II_EVIDENCE.md` — the Part II
+  evidence bundle: the four named evidence kinds filed
+  (determinism RM-011, the 50-pair flake record RM-014,
+  the 24-hour soak RM-015, the per-version matrix RM-007),
+  a one-line acceptance + banking counts check-off for
+  every slice RM-011–RM-024, the part's three Bifröst
+  contract re-verifications (RM-016, RM-017, RM-021 — each
+  fresh-venv, bifrost suites 25 passed, bridge smoke
+  PASS), the floors standing at the gate (ruff/mypy clean
+  at every banking, coverage floor 88, schema + contract
+  freezes green throughout; no schema changed in Part II
+  and the only surface change was RM-021's additive
+  method), the honesty ledger carried forward unchanged
+  (live Qdrant NOT PROVEN, sentence-transformers NOT
+  PROVEN, GitHub-hosted CI NOT PROVEN), and the debts
+  named (founding-tree sync owed; `schema_version`
+  recorded-not-gated until RM-132 / RM-082). The bundle is
+  pinned by new `tests/test_part_ii_gate.py` in both
+  packages (2 tests each): it must name every Part II
+  slice and file all four evidence kinds. Full suites
+  green in the RM-021 venv: muninn **131 passed**
+  (129+2), huginn **100 passed** (98+2); ruff floor clean.
+  No package code, public API, or schema change, so no
+  Bifröst re-verification required for the gate itself.
+  **Part II (Stability) is complete with this slice** —
+  14 of 14 slices banked. The road continues at Part III
+  — Robustness (RM-025–RM-038).
