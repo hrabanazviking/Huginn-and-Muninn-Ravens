@@ -663,3 +663,42 @@ has an entry here with its Class and Commit fields present.
   **Part II (Stability) is complete with this slice** —
   14 of 14 slices banked. The road continues at Part III
   — Robustness (RM-025–RM-038).
+
+## RM-025 — Input fuzzing, muninn
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/INPUT_FUZZING_MUNINN.md`.
+  Property-style fuzz over every Muninn validator (ids,
+  valence, importance, paths, tags, metadata, and the numeric
+  parameters), stdlib-only with recorded seeds 20261031,
+  20261101, 42, pinned by new `muninn/tests/test_input_fuzz.py`
+  (10 tests): every generated input either succeeds or raises
+  a typed `MuninnError`, and every rejected write leaves the
+  store's stats byte-identical (no partial write). Acceptance
+  proven by negation: against the pre-fix code the suite
+  failed 8 of 10 tests. Ten defects found and fixed in-slice:
+  oversized ids overflowing SQLite untyped (ceiling now
+  2⁶³−1 in `_check_memory_id`); a failed `activate_batch`
+  leaving a pending partial write; `associate` validating
+  `delta` only after its first tombstone write (both numbers
+  now validated before any SQL); bare `float()`/`int()`
+  TypeErrors across strength/delta/attenuation/min_strength/
+  threshold/limit/depth/top_k; `decay(NaN)` corrupting
+  confidences via an untyped IntegrityError (days must now be
+  finite); non-iterable and bare-string tags crashing or
+  exploding into characters (list/tuple only now); `update`'s
+  uncaught metadata serializability failure; `MuninnConfig`
+  raising untyped on non-convertible fields and accepting NaN
+  half-lives; `spread_activation` seed/min_strength tightening.
+  RM-018 golden extended in this commit (38 templates, 31
+  cases; moved validators keep their exact messages). Full
+  suites green in a fresh venv: muninn **141 passed**
+  (131+10), huginn **100 passed** (no huginn change beyond
+  this log pin); ruff + mypy floors clean. Validation
+  behaviour tightened (no signature or schema change), so
+  the Bifröst contract re-verification was run before
+  banking — fresh venv, bifrost at b66e98cc, its suites
+  25 passed, bridge smoke PASS (see CAMPAIGN_STATE.md).
+  Founding tree NEEDS A SYNC for the validator hardening
+  (extends the standing package-source sync note).

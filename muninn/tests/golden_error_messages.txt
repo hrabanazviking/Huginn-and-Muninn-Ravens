@@ -48,7 +48,9 @@ CASE decay_days | MuninnValidationError | days must be a number >= 0
 CASE consolidate_threshold | MuninnValidationError | threshold must be in (0, 1]
 CASE closed | MuninnStorageError | HebbianMemory is closed
 CASE corrupt_store | MuninnStorageError | muninn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
-# TEMPLATE lines (33 raise sites).
+# TEMPLATE lines (38 raise sites; RM-025 added the
+# memory-id ceiling, the count/tag-list/seed-list guards in
+# core.py, and update()'s metadata-serializability site).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -74,7 +76,12 @@ TEMPLATE | MuninnValidationError | importance must be an int in [1, 10], got {}
 TEMPLATE | MuninnValidationError | importance must be in [1, 10], got {}
 TEMPLATE | MuninnValidationError | memory_id must be >= 0, got {}
 TEMPLATE | MuninnValidationError | memory_id must be an int, got {}
+TEMPLATE | MuninnValidationError | memory_id must be <= 9223372036854775807, got {}
 TEMPLATE | MuninnValidationError | memory_ids must be a list of ints
+TEMPLATE | MuninnValidationError | seed_ids must be a list of ints
+TEMPLATE | MuninnValidationError | tags must be a list of strings
+TEMPLATE | MuninnValidationError | {} must be an int, got {}
+TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | min_strength must be in [0, 1]
 TEMPLATE | MuninnValidationError | pass strength or delta, not both

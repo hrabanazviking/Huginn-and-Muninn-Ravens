@@ -24,6 +24,43 @@ from .errors import MuninnConfigurationError
 DEFAULT_DB_PATH = "~/.hermes/memory/muninn_hebbian.db"
 
 
+def _coerce_float(value: object) -> float | None:
+    """RM-025: the value as a float, or None — never an untyped raise.
+
+    Accepts exactly the shapes the pre-RM-025 ``float()`` checks
+    accepted for sane callers (bool / int / float / numeric
+    string); anything else is None, and the caller raises the
+    field's typed configuration error.
+    """
+    if isinstance(value, (bool, int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_int(value: object) -> int | None:
+    """RM-025: the value as an int, or None — never an untyped raise."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        try:
+            return int(value)
+        except (ValueError, OverflowError):
+            return None
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 @dataclass(frozen=True)
 class MuninnConfig:
     """Configuration for :class:`muninn.HebbianMemory`.
@@ -67,21 +104,29 @@ class MuninnConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
             raise MuninnConfigurationError("db_path must be a non-empty string")
-        if not (0.0 < float(self.learning_rate) <= 1.0):
+        learning_rate = _coerce_float(self.learning_rate)
+        if learning_rate is None or not (0.0 < learning_rate <= 1.0):
             raise MuninnConfigurationError("learning_rate must be in (0, 1]")
-        if float(self.decay_half_life_days) <= 0:
+        decay_half_life = _coerce_float(self.decay_half_life_days)
+        if decay_half_life is None or not decay_half_life > 0:
             raise MuninnConfigurationError("decay_half_life_days must be > 0")
-        if float(self.confidence_half_life_days) <= 0:
+        confidence_half_life = _coerce_float(self.confidence_half_life_days)
+        if confidence_half_life is None or not confidence_half_life > 0:
             raise MuninnConfigurationError("confidence_half_life_days must be > 0")
-        if not (0.0 <= float(self.prune_threshold) < 1.0):
+        prune_threshold = _coerce_float(self.prune_threshold)
+        if prune_threshold is None or not (0.0 <= prune_threshold < 1.0):
             raise MuninnConfigurationError("prune_threshold must be in [0, 1)")
-        if not (0.0 < float(self.consolidation_threshold) <= 1.0):
+        consolidation_threshold = _coerce_float(self.consolidation_threshold)
+        if consolidation_threshold is None or not (0.0 < consolidation_threshold <= 1.0):
             raise MuninnConfigurationError("consolidation_threshold must be in (0, 1]")
-        if int(self.busy_timeout_ms) < 0:
+        busy_timeout = _coerce_int(self.busy_timeout_ms)
+        if busy_timeout is None or busy_timeout < 0:
             raise MuninnConfigurationError("busy_timeout_ms must be >= 0")
-        if int(self.backup_keep) < 0:
+        backup_keep = _coerce_int(self.backup_keep)
+        if backup_keep is None or backup_keep < 0:
             raise MuninnConfigurationError("backup_keep must be >= 0")
-        if int(self.max_nodes) < 1:
+        max_nodes = _coerce_int(self.max_nodes)
+        if max_nodes is None or max_nodes < 1:
             raise MuninnConfigurationError("max_nodes must be >= 1")
 
     def resolved_path(self) -> Path:

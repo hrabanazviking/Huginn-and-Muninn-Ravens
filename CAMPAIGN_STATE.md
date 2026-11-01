@@ -51,7 +51,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-025 in roadmap order (Part III — Robustness).
+- Banked (Part III): RM-025. Part III (Robustness) is
+  under way — 1 of 14 slices banked.
+- Next: RM-026 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -813,3 +815,47 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   re-verification required for the gate itself.
   **Part II (Stability) complete: 14/14 slices banked
   and pushed.** Next: Part III — Robustness, RM-025.
+- **RM-025 — Input fuzzing, muninn. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/INPUT_FUZZING_MUNINN.md`.
+  Stdlib-only property-style fuzz (seeds 20261031, 20261101,
+  42) over every Muninn validator, pinned by new
+  `tests/test_input_fuzz.py` (10 tests): every generated
+  input either succeeds or raises a typed `MuninnError`,
+  and every rejected write leaves the store's stats
+  byte-identical. Negation first: the suite failed **8 of
+  10** against the pre-fix code. Ten defects fixed in-slice:
+  oversized ids (> 2⁶³−1) overflowing SQLite with untyped
+  `OverflowError` (typed ceiling now in `_check_memory_id`);
+  a failed `activate_batch` leaving a pending partial write;
+  `associate` validating `delta` only after its first
+  tombstone write (both numbers now validated before any
+  SQL); bare `float()`/`int()` TypeErrors across strength /
+  delta / attenuation / min_strength / threshold / limit /
+  depth / top_k (single-message typed checkers; bools refused
+  as numbers; NaN fails every range); `decay(NaN)` corrupting
+  confidences through an untyped IntegrityError (days must
+  now be finite); non-iterable / bare-string tags crashing or
+  exploding into characters (list/tuple only); `update`'s
+  uncaught metadata serializability failure; `MuninnConfig`
+  raising untyped on non-convertible fields and accepting
+  NaN half-lives (never-raising coercion helpers, messages
+  unchanged); `spread_activation` seed-list and min_strength
+  tightening. RM-018 golden extended deliberately (38
+  templates, 31 cases; moved validators keep their exact
+  messages). Validation behaviour tightened (no signature or
+  schema change; RM-003/RM-004 pins green), so the **Bifröst
+  contract re-verification was run before banking**: fresh
+  venv (`ravens-rm025-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id+huginn_id; search 1 merged result;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three backends;
+  both raven health dicts carry `sqlite_version` 3.45.1;
+  huginn degraded via auto-fallback to local — live Qdrant
+  still NOT PROVEN; double close safe). Full suites green
+  in a fresh venv (`ravens-rm025-venv`, non-editable
+  installs): muninn **141 passed** (131+10), huginn
+  **100 passed**; ruff + mypy floors clean. Founding tree
+  NEEDS A SYNC for the validator hardening (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017 sync note).

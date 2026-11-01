@@ -38,6 +38,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import math
 import sqlite3
 import threading
 from dataclasses import dataclass, field
@@ -124,7 +125,84 @@ def _check_memory_id(value: Any) -> int:
         raise MuninnValidationError(f"memory_id must be an int, got {type(value).__name__}")
     if value < 0:
         raise MuninnValidationError(f"memory_id must be >= 0, got {value}")
+    if value > 9223372036854775807:
+        raise MuninnValidationError(f"memory_id must be <= 9223372036854775807, got {value}")
     return int(value)
+
+
+def _check_strength(value: Any) -> float:
+    """RM-025: a unit-interval float, typed on every bad shape."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 <= float(value) <= 1.0
+    ):
+        raise MuninnValidationError("strength must be in [0, 1]")
+    return float(value)
+
+
+def _check_delta(value: Any) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 < float(value) <= 1.0
+    ):
+        raise MuninnValidationError("delta must be in (0, 1]")
+    return float(value)
+
+
+def _check_min_strength(value: Any) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 <= float(value) <= 1.0
+    ):
+        raise MuninnValidationError("min_strength must be in [0, 1]")
+    return float(value)
+
+
+def _check_attenuation(value: Any) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 < float(value) <= 1.0
+    ):
+        raise MuninnValidationError("attenuation must be in (0, 1]")
+    return float(value)
+
+
+def _check_threshold(value: Any) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 < float(value) <= 1.0
+    ):
+        raise MuninnValidationError("threshold must be in (0, 1]")
+    return float(value)
+
+
+def _check_count(value: Any, what: str) -> int:
+    """RM-025: an integer count (limit / depth / top_k), typed.
+
+    Plain ints pass; finite integral floats are accepted as
+    before (``int()`` semantics); everything else — strings,
+    containers, NaN, infinities, bools — is a typed refusal
+    instead of a bare ``TypeError``/``ValueError`` from ``int()``.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or (
+        isinstance(value, float) and not (math.isfinite(value) and value.is_integer())
+    ):
+        raise MuninnValidationError(f"{what} must be an int, got {type(value).__name__}")
+    return int(value)
+
+
+def _check_tag_list(tags: Any) -> list[Any]:
+    """RM-025: the tags argument is a list/tuple (or None)."""
+    if tags is None:
+        return []
+    if isinstance(tags, (str, bytes)) or not isinstance(tags, (list, tuple)):
+        raise MuninnValidationError("tags must be a list of strings")
+    return list(tags)
 
 
 def _check_importance(value: Any) -> int:
@@ -549,14 +627,20 @@ class HebbianMemory:
             raise MuninnValidationError("cannot associate a memory with itself")
         if strength is not None and delta is not None:
             raise MuninnValidationError("pass strength or delta, not both")
-        if strength is not None and not 0.0 <= float(strength) <= 1.0:
-            raise MuninnValidationError("strength must be in [0, 1]")
+        # RM-025: both numeric arguments are fully validated BEFORE
+        # any write — previously an invalid delta was only checked
+        # inside the write loop, after a tombstone delete had
+        # already been issued in the same uncommitted transaction.
+        strength_value = _check_strength(strength) if strength is not None else None
+        rate = (
+            self.config.learning_rate if delta is None else _check_delta(delta)
+        )
         at = self._tick()
         with self._lock:
             self._get_conn()
             for x, y in ((a, b), (b, a)):
                 self._conn.execute("DELETE FROM deleted_nodes WHERE memory_id = ?", (x,))
-                if strength is not None:
+                if strength_value is not None:
                     self._conn.execute(
                         "INSERT INTO hebbian_connections"
                         " (memory_a_id, memory_b_id, strength, co_activation_count,"
@@ -566,12 +650,9 @@ class HebbianMemory:
                         "   strength = excluded.strength,"
                         "   co_activation_count = co_activation_count + 1,"
                         "   last_coactivated_at = excluded.last_coactivated_at",
-                        (x, y, float(strength), at, at),
+                        (x, y, strength_value, at, at),
                     )
                 else:
-                    rate = self.config.learning_rate if delta is None else float(delta)
-                    if not 0.0 < rate <= 1.0:
-                        raise MuninnValidationError("delta must be in (0, 1]")
                     self._conn.execute(
                         "INSERT INTO hebbian_connections"
                         " (memory_a_id, memory_b_id, strength, co_activation_count,"
@@ -604,9 +685,8 @@ class HebbianMemory:
         so ordering by strength DESC is contractual.
         """
         memory_id = _check_memory_id(memory_id)
-        if not 0.0 <= float(min_strength) <= 1.0:
-            raise MuninnValidationError("min_strength must be in [0, 1]")
-        limit = max(1, min(int(limit), 10000))
+        min_strength = _check_min_strength(min_strength)
+        limit = max(1, min(_check_count(limit, "limit"), 10000))
         with self._lock:
             rows = self._get_conn().execute(
                 "SELECT memory_b_id, strength, co_activation_count, consolidated,"
@@ -652,10 +732,13 @@ class HebbianMemory:
         ``attenuation``. Returns ``{memory_id: activation}`` (seeds
         included), strongest first in iteration order.
         """
+        if not isinstance(seed_ids, (list, tuple)):
+            raise MuninnValidationError("seed_ids must be a list of ints")
         seeds = [_check_memory_id(m) for m in seed_ids]
-        if not 0.0 < float(attenuation) <= 1.0:
-            raise MuninnValidationError("attenuation must be in (0, 1]")
-        depth = max(0, min(int(depth), 10))
+        attenuation = _check_attenuation(attenuation)
+        min_strength = _check_min_strength(min_strength)
+        depth = max(0, min(_check_count(depth, "depth"), 10))
+        limit = max(1, _check_count(limit, "limit"))
         levels: dict[int, float] = dict.fromkeys(seeds, 1.0)
         frontier = dict(levels)
         with self._lock:
@@ -681,7 +764,7 @@ class HebbianMemory:
         # RM-011 determinism pin: ties on activation resolve by id, so
         # iteration order never depends on query-plan row order.
         ranked = sorted(levels.items(), key=lambda kv: (-kv[1], kv[0]))
-        return dict(ranked[: max(1, int(limit))])
+        return dict(ranked[:limit])
 
     # ─── node API (ancestor semantics) ────────────────────────────────
 
@@ -707,7 +790,9 @@ class HebbianMemory:
         importance = _check_importance(importance)
         emotional_valence = _check_valence(emotional_valence)
         text, is_json, content_hash = _content_payload(content)
-        clean_tags = [str(t).strip().lower()[:64] for t in (tags or []) if str(t).strip()]
+        clean_tags = [
+            str(t).strip().lower()[:64] for t in _check_tag_list(tags) if str(t).strip()
+        ]
         try:
             meta_text = json.dumps(metadata or {}, sort_keys=True, default=str)
         except (TypeError, ValueError) as exc:
@@ -813,7 +898,8 @@ class HebbianMemory:
         read — each returned node is also activated (see
         :meth:`activate`); the default is a pure read.
         """
-        top_k = max(1, min(int(top_k), self.MAX_QUERY_RESULTS))
+        top_k = max(1, min(_check_count(top_k, "top_k"), self.MAX_QUERY_RESULTS))
+        wanted_tags = [str(t).lower() for t in _check_tag_list(tags)] if tags else []
         wanted_type = category or memory_type
         sql = "SELECT * FROM nodes WHERE 1=1"
         params: list[Any] = []
@@ -828,7 +914,7 @@ class HebbianMemory:
             rows = self._get_conn().execute(sql, params).fetchall()
             for row in rows:
                 node = self._row_to_node(row)
-                if tags and not any(t.lower() in node.tags for t in tags):
+                if wanted_tags and not any(t in node.tags for t in wanted_tags):
                     continue
                 if query:
                     haystack = (
@@ -905,12 +991,21 @@ class HebbianMemory:
                 updates["emotional_valence"] = _check_valence(fields["emotional_valence"])
             if "tags" in fields:
                 updates["tags"] = json.dumps(
-                    [str(t).strip().lower()[:64] for t in (fields["tags"] or []) if str(t).strip()]
+                    [
+                        str(t).strip().lower()[:64]
+                        for t in _check_tag_list(fields["tags"])
+                        if str(t).strip()
+                    ]
                 )
             if "metadata" in fields:
-                updates["metadata"] = json.dumps(
-                    fields["metadata"] or {}, sort_keys=True, default=str
-                )
+                try:
+                    updates["metadata"] = json.dumps(
+                        fields["metadata"] or {}, sort_keys=True, default=str
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise MuninnValidationError(
+                        "metadata must be JSON-serializable"
+                    ) from exc
             if "path" in fields:
                 updates["path"] = str(fields["path"])
             if "memory_type" in fields or "category" in fields:
@@ -1032,7 +1127,12 @@ class HebbianMemory:
         confidences multiply by their own half-life factor. Returns
         exact counts. Deterministic and safe to re-run.
         """
-        if isinstance(days, bool) or not isinstance(days, (int, float)) or float(days) < 0:
+        if (
+            isinstance(days, bool)
+            or not isinstance(days, (int, float))
+            or not math.isfinite(float(days))
+            or float(days) < 0
+        ):
             raise MuninnValidationError("days must be a number >= 0")
         days = float(days)
         edge_factor = 0.5 ** (days / self.config.decay_half_life_days)
@@ -1154,8 +1254,7 @@ class HebbianMemory:
         """
         if threshold is None:
             threshold = self.config.consolidation_threshold
-        if not 0.0 < float(threshold) <= 1.0:
-            raise MuninnValidationError("threshold must be in (0, 1]")
+        threshold = _check_threshold(threshold)
         with self._lock:
             self._get_conn()
             if self.config.auto_backup:
