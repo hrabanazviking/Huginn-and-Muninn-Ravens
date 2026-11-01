@@ -14,7 +14,7 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (41): every raise site except the three that
+# CASE lines (43): every raise site except the three that
 # cannot be triggered deterministically — "could not be
 # prepared" (needs a store whose schema script fails mid-open)
 # and the two "document insert reported success but returned
@@ -30,6 +30,8 @@ CASE config_vector_dim | HuginnConfigurationError | vector_dim must be >= 8
 CASE config_qdrant_timeout | HuginnConfigurationError | qdrant_timeout must be > 0
 CASE config_busy_timeout | HuginnConfigurationError | busy_timeout_ms must be >= 0
 CASE config_backup_keep | HuginnConfigurationError | backup_keep must be >= 0
+CASE config_max_content_bytes | HuginnConfigurationError | max_content_bytes must be >= 1
+CASE content_oversize | HuginnValidationError | content size 9 bytes exceeds max_content_bytes (8 bytes)
 CASE config_st_model | HuginnConfigurationError | st_model must be a non-empty string
 CASE config_api_key_type | HuginnConfigurationError | qdrant_api_key must be a string or None
 CASE content_empty | HuginnValidationError | content must be a non-empty string
@@ -84,6 +86,7 @@ TEMPLATE | HuginnConfigurationError | local_db_path must be a non-empty string
 TEMPLATE | HuginnConfigurationError | no vector embedder named {}
 TEMPLATE | HuginnConfigurationError | qdrant_api_key must be a string or None
 TEMPLATE | HuginnConfigurationError | st_model must be a non-empty string
+TEMPLATE | HuginnConfigurationError | max_content_bytes must be >= 1
 TEMPLATE | HuginnConfigurationError | qdrant_timeout must be > 0
 TEMPLATE | HuginnConfigurationError | qdrant_url must be a non-empty string
 TEMPLATE | HuginnConfigurationError | vector_dim must be >= 8
@@ -93,6 +96,7 @@ TEMPLATE | HuginnStorageError | document insert reported success but returned no
 TEMPLATE | HuginnStorageError | huginn store {} could not be prepared: {}
 TEMPLATE | HuginnStorageError | huginn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
 TEMPLATE | HuginnValidationError | content must be a non-empty string
+TEMPLATE | HuginnValidationError | content size {} bytes exceeds max_content_bytes ({} bytes)
 TEMPLATE | HuginnValidationError | category must be a string
 TEMPLATE | HuginnValidationError | documents must be a list of strings
 TEMPLATE | HuginnValidationError | tags must be a list of strings

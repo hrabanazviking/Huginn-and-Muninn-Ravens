@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (31): every raise site except the two that cannot
+# CASE lines (35): every raise site except the two that cannot
 # be triggered deterministically — "could not be prepared"
 # (needs a store whose schema script fails mid-open) and "node
 # insert reported success but returned no row id" (unreachable
@@ -26,6 +26,10 @@ CASE config_consolidation_threshold | MuninnConfigurationError | consolidation_t
 CASE config_busy_timeout | MuninnConfigurationError | busy_timeout_ms must be >= 0
 CASE config_backup_keep | MuninnConfigurationError | backup_keep must be >= 0
 CASE config_max_nodes | MuninnConfigurationError | max_nodes must be >= 1
+CASE config_max_content_bytes | MuninnConfigurationError | max_content_bytes must be >= 1
+CASE config_max_metadata_bytes | MuninnConfigurationError | max_metadata_bytes must be >= 1
+CASE content_oversize | MuninnValidationError | content size 9 bytes exceeds max_content_bytes (8 bytes)
+CASE metadata_oversize | MuninnValidationError | metadata size 17 bytes exceeds max_metadata_bytes (8 bytes)
 CASE memory_id_type | MuninnValidationError | memory_id must be an int, got str
 CASE memory_id_negative | MuninnValidationError | memory_id must be >= 0, got -1
 CASE importance_type | MuninnValidationError | importance must be an int in [1, 10], got 'high'
@@ -58,6 +62,8 @@ TEMPLATE | MuninnConfigurationError | consolidation_threshold must be in (0, 1]
 TEMPLATE | MuninnConfigurationError | db_path must be a non-empty string
 TEMPLATE | MuninnConfigurationError | decay_half_life_days must be > 0
 TEMPLATE | MuninnConfigurationError | learning_rate must be in (0, 1]
+TEMPLATE | MuninnConfigurationError | max_content_bytes must be >= 1
+TEMPLATE | MuninnConfigurationError | max_metadata_bytes must be >= 1
 TEMPLATE | MuninnConfigurationError | max_nodes must be >= 1
 TEMPLATE | MuninnConfigurationError | prune_threshold must be in [0, 1)
 TEMPLATE | MuninnStorageError | HebbianMemory is closed
@@ -68,6 +74,7 @@ TEMPLATE | MuninnValidationError | attenuation must be in (0, 1]
 TEMPLATE | MuninnValidationError | cannot associate a memory with itself
 TEMPLATE | MuninnValidationError | content must be a string or JSON-serializable value
 TEMPLATE | MuninnValidationError | content must not be None
+TEMPLATE | MuninnValidationError | content size {} bytes exceeds max_content_bytes ({} bytes)
 TEMPLATE | MuninnValidationError | days must be a number >= 0
 TEMPLATE | MuninnValidationError | delta must be in (0, 1]
 TEMPLATE | MuninnValidationError | emotional_valence must be a number in [-1, 1], got {}
@@ -83,6 +90,7 @@ TEMPLATE | MuninnValidationError | tags must be a list of strings
 TEMPLATE | MuninnValidationError | {} must be an int, got {}
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
+TEMPLATE | MuninnValidationError | metadata size {} bytes exceeds max_metadata_bytes ({} bytes)
 TEMPLATE | MuninnValidationError | min_strength must be in [0, 1]
 TEMPLATE | MuninnValidationError | pass strength or delta, not both
 TEMPLATE | MuninnValidationError | strength must be in [0, 1]

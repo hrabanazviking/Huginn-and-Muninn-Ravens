@@ -242,6 +242,21 @@ def _check_tag_list(tags: Any) -> list[Any]:
     return list(tags)
 
 
+def _check_content_size(content: str, ceiling: int) -> None:
+    """RM-027: content must fit the configured ceiling (typed).
+
+    Size is the UTF-8 byte length of the content — what the
+    store actually holds — so a multibyte character counts for
+    what it costs, not for one. Enforced in the facade, so the
+    refusal lands before any backend is touched.
+    """
+    size = len(content.encode("utf-8"))
+    if size > ceiling:
+        raise HuginnValidationError(
+            f"content size {size} bytes exceeds max_content_bytes ({ceiling} bytes)"
+        )
+
+
 def _check_documents(documents: Any) -> list[str]:
     """RM-026: ``semantic_search`` documents are a list of strings.
 
@@ -360,6 +375,7 @@ class HuginnMemory:
         """
         if not isinstance(content, str) or not content.strip():
             raise HuginnValidationError("content must be a non-empty string")
+        _check_content_size(content, self.config.max_content_bytes)
         importance = _check_importance(importance)
         emotional_valence = _check_valence(emotional_valence)
         if memory_id is not None:

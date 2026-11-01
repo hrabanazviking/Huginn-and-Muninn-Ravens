@@ -641,6 +641,8 @@ config = MuninnConfig(db_path="~/.hermes/memory/muninn_hebbian.db")
 | `backup_keep` | `int` | `3` | Rolling backup generations kept beside the store (`<db>.bak-1` … `.bak-N`). `0` disables backups — and therefore disables corruption recovery | Must be >= 0 |
 | `auto_backup` | `bool` | `True` | Take/refresh a rolling backup on open (only when the store changed since the last backup) and before `decay()` / `consolidate()` maintenance | No range check — used as a boolean flag |
 | `max_nodes` | `int` | `20000` | Backpressure ceiling: storing a new node beyond it prunes the lowest-value nodes (see Concepts) | Must be >= 1 |
+| `max_content_bytes` | `int` | `1048576` | Oversize ceiling (RM-027): one node's stored content, in UTF-8 bytes of the stored text; above it the write is refused with a typed error before anything is stored (see `docs/OVERSIZE_POLICY.md`) | Must be >= 1 |
+| `max_metadata_bytes` | `int` | `65536` | Oversize ceiling (RM-027): one node's metadata, in UTF-8 bytes of its serialized JSON form; same refusal discipline | Must be >= 1 |
 
 Example — a small, fast-fading store for a test:
 

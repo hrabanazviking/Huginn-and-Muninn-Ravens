@@ -93,6 +93,13 @@ class HuginnConfig:
         qdrant_timeout: Seconds for the auto-probe and Qdrant calls.
         busy_timeout_ms / backup_keep / auto_backup: same store
             discipline as Muninn's.
+        max_content_bytes: Oversize policy (RM-027): the ceiling
+            on one memory's content, measured in UTF-8 bytes.
+            Content above the ceiling is refused with a typed
+            validation error before any write, on every backend.
+            (Huginn memories carry no caller metadata argument, so
+            there is no metadata ceiling here; Muninn's config
+            carries both.)
     """
 
     backend: str = "auto"
@@ -107,6 +114,7 @@ class HuginnConfig:
     busy_timeout_ms: int = 5000
     backup_keep: int = 3
     auto_backup: bool = True
+    max_content_bytes: int = 1048576
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:
@@ -135,6 +143,9 @@ class HuginnConfig:
         backup_keep = _coerce_int(self.backup_keep)
         if backup_keep is None or backup_keep < 0:
             raise HuginnConfigurationError("backup_keep must be >= 0")
+        max_content_bytes = _coerce_int(self.max_content_bytes)
+        if max_content_bytes is None or max_content_bytes < 1:
+            raise HuginnConfigurationError("max_content_bytes must be >= 1")
 
     def resolved_local_path(self) -> Path:
         return Path(self.local_db_path).expanduser()

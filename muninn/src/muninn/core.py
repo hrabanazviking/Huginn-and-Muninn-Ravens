@@ -235,6 +235,30 @@ def _content_payload(content: Any) -> tuple[str, int, str]:
     return text, 1, hashlib.sha256(("j:" + text).encode()).hexdigest()
 
 
+def _check_content_size(text: str, ceiling: int) -> None:
+    """RM-027: stored content must fit the configured ceiling.
+
+    Size is the UTF-8 byte length of the stored text — what the
+    store actually holds — so a multibyte character counts for
+    what it costs, not for one. Refusal is typed and happens
+    before any write.
+    """
+    size = len(text.encode("utf-8"))
+    if size > ceiling:
+        raise MuninnValidationError(
+            f"content size {size} bytes exceeds max_content_bytes ({ceiling} bytes)"
+        )
+
+
+def _check_metadata_size(meta_text: str, ceiling: int) -> None:
+    """RM-027: serialized metadata must fit its ceiling (typed)."""
+    size = len(meta_text.encode("utf-8"))
+    if size > ceiling:
+        raise MuninnValidationError(
+            f"metadata size {size} bytes exceeds max_metadata_bytes ({ceiling} bytes)"
+        )
+
+
 @dataclass
 class MemoryNode:
     """A node in Muninn's memory — the ancestor's shape, integer-keyed."""
@@ -790,6 +814,7 @@ class HebbianMemory:
         importance = _check_importance(importance)
         emotional_valence = _check_valence(emotional_valence)
         text, is_json, content_hash = _content_payload(content)
+        _check_content_size(text, self.config.max_content_bytes)
         clean_tags = [
             str(t).strip().lower()[:64] for t in _check_tag_list(tags) if str(t).strip()
         ]
@@ -797,6 +822,7 @@ class HebbianMemory:
             meta_text = json.dumps(metadata or {}, sort_keys=True, default=str)
         except (TypeError, ValueError) as exc:
             raise MuninnValidationError("metadata must be JSON-serializable") from exc
+        _check_metadata_size(meta_text, self.config.max_metadata_bytes)
         at = self._tick()
         with self._lock:
             self._get_conn()
@@ -982,6 +1008,7 @@ class HebbianMemory:
             updates: dict[str, Any] = {}
             if content is not None:
                 text, is_json, content_hash = _content_payload(content)
+                _check_content_size(text, self.config.max_content_bytes)
                 updates["content"] = text
                 updates["content_is_json"] = is_json
                 updates["content_hash"] = content_hash
@@ -999,13 +1026,15 @@ class HebbianMemory:
                 )
             if "metadata" in fields:
                 try:
-                    updates["metadata"] = json.dumps(
+                    meta_text = json.dumps(
                         fields["metadata"] or {}, sort_keys=True, default=str
                     )
                 except (TypeError, ValueError) as exc:
                     raise MuninnValidationError(
                         "metadata must be JSON-serializable"
                     ) from exc
+                _check_metadata_size(meta_text, self.config.max_metadata_bytes)
+                updates["metadata"] = meta_text
             if "path" in fields:
                 updates["path"] = str(fields["path"])
             if "memory_type" in fields or "category" in fields:

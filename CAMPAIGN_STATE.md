@@ -51,9 +51,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Banked (Part III): RM-025, RM-026. Part III (Robustness)
-  is under way — 2 of 14 slices banked.
-- Next: RM-027 in roadmap order (Part III — Robustness).
+- Banked (Part III): RM-025, RM-026, RM-027. Part III
+  (Robustness) is under way — 3 of 14 slices banked.
+- Next: RM-028 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -925,3 +925,55 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   tree NEEDS A SYNC for the validator hardening (extends
   the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025 sync
   note).
+- **RM-027 — Oversize content policy. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/OVERSIZE_POLICY.md`.
+  Explicit, configurable ceilings replace unbounded
+  acceptance: `MuninnConfig.max_content_bytes` (default
+  1048576 = 1 MiB) + `max_metadata_bytes` (default
+  65536 = 64 KiB); `HuginnConfig.max_content_bytes`
+  (default 1048576; Huginn memories carry no caller
+  metadata, so no metadata ceiling there). Sizes are
+  UTF-8 bytes of what the store holds — stored content
+  text (raw string, or its JSON serialization for
+  non-string content) and metadata's serialized JSON —
+  so 5 × `é` costs 10 bytes. Above a ceiling the write is
+  refused with the typed validation error before any
+  write (`content size {} bytes exceeds max_content_bytes
+  ({} bytes)` + the metadata twin): Muninn enforces on
+  `remember` and on `update` (content and metadata);
+  Huginn enforces in the facade before any backend is
+  touched, so the policy holds on local and Qdrant alike.
+  Ceilings validate at config construction (`>= 1`, typed
+  configuration error; `dataclasses.replace` re-validates).
+  Pinned by new `tests/test_oversize_policy.py` in both
+  packages (muninn 8 tests, huginn 5): boundaries below /
+  at / above each ceiling, byte counting, JSON measured as
+  serialized text, refused writes leaving counts unchanged
+  and the store functional. Negation: the new suites fail
+  in full against the pre-RM-027 installed packages
+  (muninn 8 failed, huginn 5 failed, run against the
+  RM-026 venv). RM-018 goldens extended deliberately
+  (muninn 35 cases / 42 templates, huginn 43 cases / 46
+  templates); RM-019 surface goldens gained the new config
+  fields; guides + API reference updated. Full suites
+  green in a fresh venv (`ravens-rm027-venv`, non-editable
+  installs), re-run on the final banking tree: muninn
+  **149 passed** (141+8), huginn **115 passed** (110+5);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). Public config surface changed
+  additively, so the **Bifröst contract re-verification
+  was run before banking**: fresh venv
+  (`ravens-rm027-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id+huginn_id; search 2 merged results;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three
+  backends; both raven health dicts carry
+  `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm027_bifrost.log`). Founding
+  tree NEEDS A SYNC for the config fields + enforcement
+  (extends the RM-008/RM-011/RM-012/RM-016/RM-017/
+  RM-025/RM-026 sync note).

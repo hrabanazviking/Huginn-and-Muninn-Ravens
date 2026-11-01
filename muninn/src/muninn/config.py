@@ -88,6 +88,16 @@ class MuninnConfig:
             consolidate maintenance.
         max_nodes: Backpressure ceiling inherited from the ancestor:
             storing beyond it prunes the lowest-value nodes.
+        max_content_bytes: Oversize policy (RM-027): the ceiling on
+            one node's stored content, measured in UTF-8 bytes of
+            the stored text (the raw string, or its JSON
+            serialization for non-string content). Content above
+            the ceiling is refused with a typed validation error
+            before any write.
+        max_metadata_bytes: Oversize policy (RM-027): the ceiling
+            on one node's metadata, measured in UTF-8 bytes of its
+            serialized JSON form. Metadata above the ceiling is
+            refused the same way.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -100,6 +110,8 @@ class MuninnConfig:
     backup_keep: int = 3
     auto_backup: bool = True
     max_nodes: int = 20000
+    max_content_bytes: int = 1048576
+    max_metadata_bytes: int = 65536
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
@@ -128,6 +140,12 @@ class MuninnConfig:
         max_nodes = _coerce_int(self.max_nodes)
         if max_nodes is None or max_nodes < 1:
             raise MuninnConfigurationError("max_nodes must be >= 1")
+        max_content_bytes = _coerce_int(self.max_content_bytes)
+        if max_content_bytes is None or max_content_bytes < 1:
+            raise MuninnConfigurationError("max_content_bytes must be >= 1")
+        max_metadata_bytes = _coerce_int(self.max_metadata_bytes)
+        if max_metadata_bytes is None or max_metadata_bytes < 1:
+            raise MuninnConfigurationError("max_metadata_bytes must be >= 1")
 
     def resolved_path(self) -> Path:
         """The store path with ``~`` expanded (not symlink-resolved)."""

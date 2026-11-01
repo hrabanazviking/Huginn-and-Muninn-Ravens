@@ -754,3 +754,53 @@ has an entry here with its Class and Commit fields present.
   CAMPAIGN_STATE.md). Founding tree NEEDS A SYNC for the
   validator hardening (extends the standing package-source
   sync note).
+
+## RM-027 — Oversize content policy
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/OVERSIZE_POLICY.md`. Explicit,
+  configurable ceilings replace unbounded acceptance:
+  `MuninnConfig.max_content_bytes` (default 1048576 = 1 MiB)
+  and `max_metadata_bytes` (default 65536 = 64 KiB);
+  `HuginnConfig.max_content_bytes` (default 1048576 — Huginn
+  memories carry no caller metadata, so no metadata ceiling
+  there). Sizes are UTF-8 bytes of what the store holds
+  (stored content text — raw string or its JSON
+  serialization; metadata's serialized JSON). Above a
+  ceiling the write is refused with the typed validation
+  error (`content size {} bytes exceeds max_content_bytes
+  ({} bytes)` and the metadata twin) before any write;
+  Muninn enforces on `remember` and on `update` (content and
+  metadata), Huginn in the facade before any backend is
+  touched, so the policy holds on local and Qdrant alike.
+  Ceilings are validated at config construction (`>= 1`,
+  typed configuration error; `dataclasses.replace`
+  re-validates). Pinned by new `tests/test_oversize_policy.py`
+  in both packages (muninn 8 tests, huginn 5): boundary tests
+  below / at / above each ceiling, UTF-8 byte counting
+  (5 × `é` = 10 bytes), JSON content measured as serialized
+  text, refused writes leaving counts unchanged and the
+  store functional. Negation: the new suites fail in full
+  against the pre-RM-027 installed packages (muninn 8
+  failed, huginn 5 failed). RM-018 goldens extended
+  deliberately (muninn 35 cases / 42 templates, huginn 43
+  cases / 46 templates) and the RM-019 API-surface goldens
+  gained the new config fields. Full suites green in a
+  fresh venv (`ravens-rm027-venv`, non-editable installs):
+  muninn **149 passed**, huginn **115 passed**; ruff +
+  mypy floors clean. Public config surface changed
+  additively, so the **Bifröst contract re-verification was
+  run before banking** — fresh venv
+  (`ravens-rm027-bifrost-venv`), bifrost at b66e98cc, its
+  suites **25 passed**, BifrostBridge smoke PASS (store
+  mimir_id+huginn_id; search 2 merged results; recall grew
+  the Muninn activation log exactly +1; decay/consolidate
+  reports; `decay_wall_clock()` through the bridge armed at
+  0 days; stats over all three backends; both raven health
+  dicts carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm027_bifrost.log`). Founding
+  tree NEEDS A SYNC for the config fields + enforcement
+  (extends the standing package-source sync note).

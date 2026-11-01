@@ -29,6 +29,7 @@ FIELD | HuginnConfig.busy_timeout_ms | type=int | default=5000
 FIELD | HuginnConfig.collection_name | type=str | default='huginn_memories'
 FIELD | HuginnConfig.embedder | type=str | default='tfidf'
 FIELD | HuginnConfig.local_db_path | type=str | default='~/.hermes/memory/huginn_local.db'
+FIELD | HuginnConfig.max_content_bytes | type=int | default=1048576
 FIELD | HuginnConfig.qdrant_api_key | type=str | None | default=None
 FIELD | HuginnConfig.qdrant_timeout | type=float | default=2.0
 FIELD | HuginnConfig.qdrant_url | type=str | default='http://localhost:6333'
@@ -44,7 +45,7 @@ FIELD | RetrievalResult.source_realm | type=str | default=<required>
 FIELD | RetrievalResult.timestamp | type=datetime | default=<factory>
 FUNCTION | analyze_query | query:POSITIONAL_OR_KEYWORD=<required>
 FUNCTION | semantic_search | query:POSITIONAL_OR_KEYWORD=<required>;documents:POSITIONAL_OR_KEYWORD=<required>;top_k:POSITIONAL_OR_KEYWORD=3
-METHOD | HuginnConfig.__init__ | backend:POSITIONAL_OR_KEYWORD='auto';qdrant_url:POSITIONAL_OR_KEYWORD='http://localhost:6333';qdrant_api_key:POSITIONAL_OR_KEYWORD=None;collection_name:POSITIONAL_OR_KEYWORD='huginn_memories';local_db_path:POSITIONAL_OR_KEYWORD='~/.hermes/memory/huginn_local.db';embedder:POSITIONAL_OR_KEYWORD='tfidf';vector_dim:POSITIONAL_OR_KEYWORD=384;st_model:POSITIONAL_OR_KEYWORD='all-MiniLM-L6-v2';qdrant_timeout:POSITIONAL_OR_KEYWORD=2.0;busy_timeout_ms:POSITIONAL_OR_KEYWORD=5000;backup_keep:POSITIONAL_OR_KEYWORD=3;auto_backup:POSITIONAL_OR_KEYWORD=True
+METHOD | HuginnConfig.__init__ | backend:POSITIONAL_OR_KEYWORD='auto';qdrant_url:POSITIONAL_OR_KEYWORD='http://localhost:6333';qdrant_api_key:POSITIONAL_OR_KEYWORD=None;collection_name:POSITIONAL_OR_KEYWORD='huginn_memories';local_db_path:POSITIONAL_OR_KEYWORD='~/.hermes/memory/huginn_local.db';embedder:POSITIONAL_OR_KEYWORD='tfidf';vector_dim:POSITIONAL_OR_KEYWORD=384;st_model:POSITIONAL_OR_KEYWORD='all-MiniLM-L6-v2';qdrant_timeout:POSITIONAL_OR_KEYWORD=2.0;busy_timeout_ms:POSITIONAL_OR_KEYWORD=5000;backup_keep:POSITIONAL_OR_KEYWORD=3;auto_backup:POSITIONAL_OR_KEYWORD=True;max_content_bytes:POSITIONAL_OR_KEYWORD=1048576
 METHOD | HuginnConfig.resolved_local_path | 
 METHOD | HuginnMemory.__init__ | config:POSITIONAL_OR_KEYWORD=None;overrides:VAR_KEYWORD=<required>
 METHOD | HuginnMemory.analyze_query | query:POSITIONAL_OR_KEYWORD=<required>

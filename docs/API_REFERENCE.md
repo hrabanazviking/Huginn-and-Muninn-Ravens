@@ -51,6 +51,8 @@ class MuninnConfig:
     backup_keep: int = 3
     auto_backup: bool = True
     max_nodes: int = 20000
+    max_content_bytes: int = 1048576
+    max_metadata_bytes: int = 65536
 ```
 
 | Field | Meaning |
@@ -65,6 +67,8 @@ class MuninnConfig:
 | `backup_keep` | Rolling backup generations kept beside the store (`>= 0`; `0` disables backups). |
 | `auto_backup` | Take/refresh a rolling backup on open (when the store changed since the last backup) and before `decay()` / `consolidate()`. |
 | `max_nodes` | Backpressure ceiling (`>= 1`): storing beyond it prunes the lowest-value nodes (lowest importance, then lowest access count, then oldest update). |
+| `max_content_bytes` | Oversize ceiling (`>= 1`, RM-027): one node's stored content, in UTF-8 bytes of the stored text. Above it, `remember`/`update` refuse with a typed validation error before any write. See `docs/OVERSIZE_POLICY.md`. |
+| `max_metadata_bytes` | Oversize ceiling (`>= 1`, RM-027): one node's metadata, in UTF-8 bytes of its serialized JSON form. Same refusal discipline as `max_content_bytes`. |
 
 All values are validated in `__post_init__`; an illegal value raises
 `MuninnConfigurationError` at construction, never mid-write.
@@ -609,6 +613,7 @@ class HuginnConfig:
     busy_timeout_ms: int = 5000
     backup_keep: int = 3
     auto_backup: bool = True
+    max_content_bytes: int = 1048576
 ```
 
 | Field | Meaning |
@@ -623,6 +628,7 @@ class HuginnConfig:
 | `st_model` | sentence-transformers model name. |
 | `qdrant_timeout` | Seconds for the auto-probe and Qdrant calls. Must be `> 0`. |
 | `busy_timeout_ms` / `backup_keep` / `auto_backup` | Same store discipline as Muninn's config. |
+| `max_content_bytes` | Oversize ceiling (`>= 1`, RM-027): one memory's content, in UTF-8 bytes. Above it, `upsert_memory` refuses with a typed validation error in the facade, before any backend is touched. Huginn memories carry no caller metadata, so there is no metadata ceiling here. See `docs/OVERSIZE_POLICY.md`. |
 
 All values are validated in `__post_init__`; illegal values raise
 `HuginnConfigurationError` at construction.

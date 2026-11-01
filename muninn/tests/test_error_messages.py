@@ -66,6 +66,13 @@ def _cases(tmp_path):
     circular["loop"] = circular
     closed = HebbianMemory(MuninnConfig(db_path=str(tmp_path / "closed.db")))
     closed.close()
+    tight = HebbianMemory(
+        MuninnConfig(
+            db_path=str(tmp_path / "tight.db"),
+            max_content_bytes=8,
+            max_metadata_bytes=8,
+        )
+    )
     bad_path = tmp_path / "bad.db"
     bad_path.write_bytes(b"this is not a sqlite database at all........")
 
@@ -82,6 +89,12 @@ def _cases(tmp_path):
         "config_busy_timeout": cfg(busy_timeout_ms=-1),
         "config_backup_keep": cfg(backup_keep=-1),
         "config_max_nodes": cfg(max_nodes=0),
+        "config_max_content_bytes": cfg(max_content_bytes=0),
+        "config_max_metadata_bytes": cfg(max_metadata_bytes=0),
+        "content_oversize": lambda: tight.remember("123456789"),
+        "metadata_oversize": lambda: tight.remember(
+            "ok", metadata={"k": "12345678"}
+        ),
         "memory_id_type": lambda: m.activate("x"),
         "memory_id_negative": lambda: m.activate(-1),
         "importance_type": lambda: m.remember("a", importance="high"),

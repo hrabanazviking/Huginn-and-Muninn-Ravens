@@ -157,6 +157,13 @@ def _qdrant_backend(client):
 def _cases(tmp_path):
     local_cfg = HuginnConfig(backend="local", local_db_path=str(tmp_path / "h.db"))
     h = HuginnMemory(local_cfg)
+    tight = HuginnMemory(
+        HuginnConfig(
+            backend="local",
+            local_db_path=str(tmp_path / "tight.db"),
+            max_content_bytes=8,
+        )
+    )
     first_id = h.upsert_memory("shared content")
     assert first_id == 1
     closed_local = LocalBackend(
@@ -198,6 +205,8 @@ def _cases(tmp_path):
         "config_qdrant_timeout": cfg(qdrant_timeout=0),
         "config_busy_timeout": cfg(busy_timeout_ms=-1),
         "config_backup_keep": cfg(backup_keep=-1),
+        "config_max_content_bytes": cfg(max_content_bytes=0),
+        "content_oversize": lambda: tight.upsert_memory("123456789"),
         "config_st_model": cfg(st_model=""),
         "config_api_key_type": cfg(qdrant_api_key=123),
         "content_empty": lambda: h.upsert_memory(""),
