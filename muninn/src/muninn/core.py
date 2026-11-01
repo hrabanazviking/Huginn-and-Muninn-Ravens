@@ -448,6 +448,11 @@ class MemoryNode:
         )
 
 
+# RM-035: at or above this many unique ids, activate_batch takes
+# the bulk road (_activate_batch_bulk_locked). Below it, the
+# original per-pair loop is both faster and already proven.
+_HUGE_BATCH_MIN_IDS = 64
+
 _R = TypeVar("_R")
 
 
@@ -787,6 +792,15 @@ class HebbianMemory:
         each unique id is activated once, then every unordered pair is
         strengthened in both directions. Fully transactional — a crash
         leaves either the whole batch or none of it.
+
+        RM-035: batches of ``_HUGE_BATCH_MIN_IDS`` or more unique ids
+        take the bulk road (``_activate_batch_bulk_locked``) — the
+        same writes, the same counts, the same one transaction, but
+        the pairs are generated inside SQLite instead of one Python
+        loop iteration (and four statements) per pair, so a 10k-id
+        batch is bounded by the size of its own result set, not by
+        Python-side pair handling. Smaller batches keep the original
+        per-pair loop.
         """
         if not isinstance(memory_ids, (list, tuple)):
             raise MuninnValidationError("memory_ids must be a list of ints")
@@ -795,6 +809,10 @@ class HebbianMemory:
         at = self._tick()
         with self._lock:
             self._get_conn()
+            if len(ids) >= _HUGE_BATCH_MIN_IDS:
+                return self._activate_batch_bulk_locked(
+                    ids, emotional_valence, str(source), at
+                )
             for mid in ids:
                 self._log_activation_locked(mid, emotional_valence, str(source), at)
             created = 0
@@ -810,6 +828,112 @@ class HebbianMemory:
                 "connections_created": created,
                 "connections_strengthened": pairs - created,
             }
+
+    def _activate_batch_bulk_locked(
+        self, ids: list[int], emotional_valence: float, source: str, at: str
+    ) -> dict[str, Any]:
+        """RM-035: ``activate_batch`` for huge batches, in bulk SQL.
+
+        Caller holds the lock and has validated every id. The writes
+        are exactly the per-id / per-pair writes of the loop road,
+        restated set-at-a-time:
+
+        * activations: the four writes of ``_log_activation_locked``
+          as ``executemany`` over generators — the id list is the
+          only Python-side structure, so peak memory is O(ids), never
+          O(pairs) (a 10k batch wires ~50M pairs);
+        * pair counts come from arithmetic (``n(n-1)/2``) minus a
+          count of the pairs already wired in BOTH directions (the
+          loop road's ``created`` is exactly "not already complete":
+          ``_wire_pair_locked`` reports a pair created when either
+          directed row was missing, drift included);
+        * the wiring itself is one ``INSERT … SELECT`` over a TEMP
+          staging table joined to itself, with the same
+          insert-strength (``learning_rate``) and the same bounded
+          strengthening update on conflict as ``_wire_pair_locked``.
+
+        The secondary index ``idx_conn_b`` is dropped for the insert
+        and recreated before commit, inside the same transaction:
+        maintaining it row-by-row turns the insert's sequential
+        primary-key writes into random secondary-index writes (the
+        measured bottleneck — docs/HUGE_BATCH_ATOMICITY.md), while a
+        rollback restores the dropped index with everything else, so
+        the store never observably lacks it. The recreated index is
+        created with the exact ``SCHEMA_SQL`` statement, so the
+        RM-004/RM-022 schema pins are untouched.
+        """
+        conn = self._conn
+        lr = self.config.learning_rate
+        conn.executemany(
+            "INSERT INTO activation_log (memory_id, activated_at, emotional_valence, source)"
+            " VALUES (?, ?, ?, ?)",
+            ((mid, at, emotional_valence, source) for mid in ids),
+        )
+        conn.executemany(
+            "INSERT INTO node_activation (memory_id, total_activations, confidence,"
+            " last_activated_at)"
+            " VALUES (?, 1, 1.0, ?)"
+            " ON CONFLICT(memory_id) DO UPDATE SET"
+            "   total_activations = total_activations + 1,"
+            "   confidence = MIN(1.0, confidence + ? * (1.0 - confidence)),"
+            "   last_activated_at = excluded.last_activated_at",
+            ((mid, at, lr) for mid in ids),
+        )
+        conn.executemany(
+            "UPDATE nodes SET access_count = access_count + 1, updated_at = ? WHERE id = ?",
+            ((at, mid) for mid in ids),
+        )
+        conn.executemany(
+            "DELETE FROM deleted_nodes WHERE memory_id = ?",
+            ((mid,) for mid in ids),
+        )
+        pairs = len(ids) * (len(ids) - 1) // 2
+        created = 0
+        if pairs:
+            conn.execute("DROP TABLE IF EXISTS temp.muninn_batch_ids")
+            conn.execute(
+                "CREATE TEMP TABLE muninn_batch_ids (memory_id INTEGER PRIMARY KEY)"
+            )
+            conn.executemany(
+                "INSERT INTO muninn_batch_ids (memory_id) VALUES (?)",
+                ((mid,) for mid in ids),
+            )
+            complete = conn.execute(
+                "SELECT COUNT(*) FROM hebbian_connections f"
+                " JOIN hebbian_connections r"
+                "   ON r.memory_a_id = f.memory_b_id"
+                "  AND r.memory_b_id = f.memory_a_id"
+                " JOIN muninn_batch_ids x ON x.memory_id = f.memory_a_id"
+                " JOIN muninn_batch_ids y ON y.memory_id = f.memory_b_id"
+                " WHERE f.memory_a_id < f.memory_b_id"
+            ).fetchone()
+            created = pairs - int(complete[0])
+            conn.execute("DROP INDEX IF EXISTS idx_conn_b")
+            conn.execute(
+                "INSERT INTO hebbian_connections"
+                " (memory_a_id, memory_b_id, strength, co_activation_count,"
+                "  consolidated, created_at, last_coactivated_at)"
+                " SELECT x.memory_id, y.memory_id, ?, 1, 0, ?, ?"
+                " FROM muninn_batch_ids x"
+                " JOIN muninn_batch_ids y ON x.memory_id <> y.memory_id"
+                " ON CONFLICT(memory_a_id, memory_b_id) DO UPDATE SET"
+                "   strength = 1.0 - (1.0 - strength) * ?,"
+                "   co_activation_count = co_activation_count + 1,"
+                "   last_coactivated_at = excluded.last_coactivated_at",
+                (lr, at, at, 1.0 - lr),
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conn_b"
+                " ON hebbian_connections(memory_b_id)"
+            )
+            conn.execute("DROP TABLE IF EXISTS temp.muninn_batch_ids")
+        conn.commit()
+        return {
+            "activated": len(ids),
+            "pairs_wired": pairs,
+            "connections_created": created,
+            "connections_strengthened": pairs - created,
+        }
 
     @_storage_write("associate")
     def associate(

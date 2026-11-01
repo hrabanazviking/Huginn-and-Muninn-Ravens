@@ -449,6 +449,15 @@ batch lands or none of it does. Calling it again strengthens the same
 pair instead of creating a new one (`connections_created` drops to 0,
 `connections_strengthened` rises).
 
+Huge batches scale (RM-035, `docs/HUGE_BATCH_ATOMICITY.md`): at 64
+or more unique ids the batch is generated inside SQLite in the same
+one transaction — the counts stay exact (a 10k-id batch wires
+49,995,000 pairs, proven row-for-row by
+`muninn/scripts/huge_batch_bench.py`) and Python-side memory stays
+bounded by the id list, never by the pair count. What a huge batch
+costs is what it must: ~105 bytes of store per directed row, so a
+first-time 10k batch grows the database by roughly 10 GB.
+
 ### Wire manually: `associate`, `get_associations`
 
 ```python

@@ -52,9 +52,42 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
 - Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
-  RM-030, RM-031, RM-032, RM-033, RM-034. Part III (Robustness)
-  is under way — 10 of 14 slices banked.
-- Next: RM-035 in roadmap order (Part III — Robustness).
+  RM-030, RM-031, RM-032, RM-033, RM-034, RM-035. Part III
+  (Robustness) is under way — 11 of 14 slices banked.
+- Next: RM-036 in roadmap order (Part III — Robustness).
+- **RM-035 BANKED 2026-11-01 (keeper ticks ~17:04–18:20 EST):**
+  the slice stood built but unbanked when the first tick
+  opened (bulk `activate_batch` road in `muninn/core.py`,
+  7 tests, bench script, `docs/HUGE_BATCH_ATOMICITY.md`,
+  guide/API updates — all uncommitted). That tick verified:
+  installed venv copy byte-identical to the tree; targeted
+  suite 7 passed; FULL suites green with TMPDIR on the
+  workspace disk (muninn **215 passed** (208+7), huginn
+  **154 passed**); ruff + mypy floors clean; **Bifröst
+  re-verification PASS** (fresh venv
+  `ravens-rm035-bifrost-venv`, bifrost at b66e98cc — its
+  own suites **25 passed**; BifrostBridge smoke PASS,
+  evidence `~/workspace/.verify-tmp/rm035/bifrost_smoke.log`).
+  An earlier full-suite run (21:27 UTC logs) failed en masse
+  through /tmp — environment class, superseded by the
+  TMPDIR-redirected green runs. The 10k bench (detached
+  pid 12693, started 22:15 UTC) completed at 22:42:34 UTC:
+  49,995,000 pairs / 99,990,000 directed rows in 1629.6 s,
+  peak RSS 47.5 MB, all eight checks passed (record
+  `~/workspace/.verify-tmp/rm035/bench10k.json`). The
+  following keeper tick (~18:04 EST) found the work stopped
+  with the bench done and finished the banking: BENCH10K
+  placeholder filled from the record, SLICE_LOG entry
+  appended + EXPECTED pins extended to RM-035 in both
+  packages, both suites re-run green on the final tree
+  (muninn **215 passed**, huginn **154 passed**; logs
+  `~/workspace/.verify-tmp/rm035/muninn_final.log`,
+  `huginn_final.log`), commit + push (hash in the slice
+  log below). The bench's ~12 GB scratch workdir was
+  deleted after its record was banked into the doc (a
+  first final-suite attempt hit a disk-quota error on the
+  log write with the scratch still in place; the record
+  JSON is preserved and the scratch held nothing else).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1438,3 +1471,59 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
   RM-027/RM-028/RM-029/RM-030/RM-031/RM-032/RM-033 sync
   note).
+- **RM-035 — Huge-batch atomicity. BANKED 2026-11-01.
+  Class: BENCH.** Record: `docs/HUGE_BATCH_ATOMICITY.md`.
+  `activate_batch` gained a bulk road at ≥64 unique ids
+  (`_activate_batch_bulk_locked`): the same single
+  transaction and writes restated set-at-a-time —
+  activations as `executemany` over generators, wiring as
+  one `INSERT … SELECT` over a TEMP staging table
+  self-joined on `<>`, arithmetic `pairs_wired`,
+  `connections_created` subtracting pairs already wired
+  in both directions (one-direction drift counts as
+  created and is repaired — the per-pair loop's exact
+  rule), and `idx_conn_b` dropped + recreated inside the
+  same transaction (rollback restores it; RM-004/RM-022
+  schema pins pass unchanged). Below 64 ids the original
+  loop runs unchanged. Pinned by new
+  `tests/test_huge_batch_atomicity.py` (7 tests): exact
+  counts at 800 ids, de-duplication, exact repeat
+  strengthening, pre-wired + drift repair, loop/bulk
+  agreement across the threshold, disk-full rollback at
+  bulk scale including index restoration, subprocess
+  memory pin (16× pairs → peak RSS +<40 MB). Bench:
+  pre-RM-035 loop probed 500 ids in 16.90 s; the bulk
+  road runs 500 in **0.64 s** and the full 10k batch
+  (49,995,000 pairs, 99,990,000 directed rows) in
+  **1629.6 s** at peak RSS **47.5 MB**, all eight bench
+  checks passed (record
+  `~/workspace/.verify-tmp/rm035/bench10k.json`,
+  2026-11-01T22:42:34Z, load_avg [11.23, 8.76, 7.77];
+  store 12,232,638,464 bytes after). Full suites green
+  in the RM-035 venv (non-editable installs, TMPDIR on
+  the workspace disk), verified twice — before the bench
+  and re-run on the final banking tree: muninn **215
+  passed** (208+7), huginn **154 passed**; ruff + mypy
+  floors clean. Behaviour at bulk scale is new (no
+  signature or schema change; RM-003/RM-004 pins green),
+  so the **Bifröst contract re-verification was run
+  before banking**: fresh venv
+  (`ravens-rm035-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=6; search 1 merged result;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()`
+  through the bridge armed at 0 days; stats over all
+  three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT
+  PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm035/bifrost_smoke.log`).
+  Banking was completed by the following keeper tick
+  after the building tick stopped with the bench still
+  running (see the Status note above). Founding tree
+  NEEDS A SYNC for the bulk `activate_batch` road
+  (extends the RM-008/RM-011/RM-012/RM-016/RM-017/
+  RM-025/RM-026/RM-027/RM-028/RM-029/RM-030/RM-031/
+  RM-032/RM-033/RM-034 sync note). Huginn has no batch
+  operation — this slice is Muninn-only.

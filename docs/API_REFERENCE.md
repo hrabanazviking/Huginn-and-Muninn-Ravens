@@ -225,7 +225,11 @@ by the bounded rule `strength ← 1 − (1 − strength)(1 − learning_rate)`
 (a first wiring starts at `learning_rate`), with
 `co_activation_count += 1`. Fully transactional — a crash leaves
 either the whole batch or none of it. Accepts a list or tuple;
-anything else raises `MuninnValidationError`.
+anything else raises `MuninnValidationError`. Batches of 64 or more
+unique ids are generated in bulk inside SQLite with identical
+semantics and counts (RM-035, `docs/HUGE_BATCH_ATOMICITY.md`):
+Python-side memory is O(unique ids) at any batch size, and the
+report below is exact at 10k ids (49,995,000 pairs).
 
 Returns:
 
