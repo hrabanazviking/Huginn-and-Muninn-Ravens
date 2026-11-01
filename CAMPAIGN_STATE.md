@@ -52,9 +52,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
 - Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
-  RM-030, RM-031. Part III (Robustness) is under way — 7 of
+  RM-030, RM-031, RM-032. Part III (Robustness) is under way — 8 of
   14 slices banked.
-- Next: RM-032 in roadmap order (Part III — Robustness).
+- Next: RM-033 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1230,3 +1230,75 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   write guards' contention shape (extends the
   RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
   RM-027/RM-028/RM-029/RM-030 sync note).
+- **RM-032 — Partial-file states. BANKED 2026-11-01.
+  Class: FAULT.** Record: `docs/PARTIAL_FILE_STATES.md`.
+  Partial file combinations at open — previously undefined,
+  two of them silently losing memory (measured by probe
+  against the RM-031 packages): a main store truncated to
+  zero bytes opened as a fresh empty store even with a
+  verified `.bak-1` beside it (and the empty store then
+  rotated into the backup chain on later opens); a non-empty
+  WAL without its main file was silently discarded by a
+  fresh start; a `.bak-tmp` left by a killed backup
+  lingered indefinitely. Defined now in each package's
+  `_db.py` `open_store`, after the RM-030 pre-flight: a
+  leftover `.bak-tmp` is removed on open and never read
+  (`_discard_stale_backup_tmp`); a zero-length main file is
+  classified truncated before any connection and takes the
+  corruption road (restore newest verified generation, else
+  the existing typed corrupt refusal, file left untouched);
+  a non-empty WAL with no main file restores a verified
+  backup (the restore consumes the orphaned sidecars) or
+  raises the new typed refusal `… store {path} has a
+  write-ahead log but no main file and no rolling backup
+  verified; refusing to start empty over lost memory` — on
+  refusal no main file is created and the WAL stands; an
+  empty/absent WAL is not evidence, and a missing main
+  without one is an ordinary new store. WAL-missing and
+  garbage-WAL opens were already sound and are now pinned.
+  Pinned by new `tests/test_partial_file_states.py` (10
+  tests each): the temp-removal test forces a quiet open
+  (store older than its generation, generation digest
+  unchanged) so the removal is the new cleanup, and the
+  never-a-candidate tests are adversarial (a complete valid
+  store copy at the temp path still gets the refusal beside
+  a corrupt main; generation-beats-temp proven by content).
+  Negation: 7 failed / 3 passed per package against the
+  RM-031 venv, the passes being the already-held behaviours.
+  RM-018 goldens extended deliberately (muninn 43 cases /
+  60 template lines, huginn 48 cases / 61 template lines,
+  counted from the files — +1 CASE +1 TEMPLATE each for the
+  partial-state message; noted in the slice log: the RM-031
+  record's template figures do not match a line count of
+  its goldens, a pre-existing discrepancy, not rewritten).
+  Full suites green in a fresh venv (`ravens-rm032-venv`,
+  non-editable installs, final banking tree): muninn
+  **183 passed** (173+10), huginn **136 passed** (126+10);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). Verification history, honestly:
+  a first muninn full run showed one golden-test failure
+  and a later burst of huginn golden-test failures, all
+  inside a VM Python-write-gate closure window (Python
+  tempfile creation refused machine-wide, the RM-015/
+  RM-020 pattern, then probed open 5/5); outside the window
+  the golden test passed 8/8 loop runs plus 4/4 per-case
+  debug runs with an exact manual capture match, and both
+  disk-logged full suites are the green counts above (logs
+  `~/workspace/.verify-tmp/rm032/`) — environment class, no
+  code changed for it. Open error behaviour changed (no
+  signature or schema change; RM-003/RM-004 pins green),
+  so the **Bifröst contract re-verification was run before
+  banking**: fresh venv (`ravens-rm032-bifrost-venv`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id=2 huginn_id=5;
+  search 2 merged results; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge armed at 0 days;
+  stats over all three backends; both raven health dicts
+  carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm032_bifrost.log`). Founding
+  tree NEEDS A SYNC for the partial-state open handling
+  (extends the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/
+  RM-026/RM-027/RM-028/RM-029/RM-030/RM-031 sync note).

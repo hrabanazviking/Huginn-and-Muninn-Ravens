@@ -770,6 +770,19 @@ Contention is never mistaken for corruption, and pure reads
 proceed against a WAL snapshot while a writer holds the lock
 (RM-031, see `docs/LOCKED_STORE.md`).
 
+Partial file states are defined too (local backend): a main
+store truncated to zero bytes takes the corruption road
+(restore from a verified backup, else the typed refusal)
+instead of opening as a silently empty store; a non-empty
+write-ahead log left without its main file restores a
+verified backup or raises `huginn store {path} has a
+write-ahead log but no main file and no rolling backup
+verified; refusing to start empty over lost memory` —
+reported by `health()` as `unhealthy` with that error named;
+and a `.bak-tmp` left behind by a killed backup is removed on
+open and is never read as a store or a restore candidate
+(RM-032, see `docs/PARTIAL_FILE_STATES.md`).
+
 ### Threading
 
 All backends serialize internally with a lock, and `HuginnMemory`

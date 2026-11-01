@@ -1042,3 +1042,82 @@ has an entry here with its Class and Commit fields present.
   write guards' contention shape (extends the
   RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
   RM-027/RM-028/RM-029/RM-030 sync note).
+
+## RM-032 — Partial-file states
+
+- **Class:** FAULT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Partial file states now have defined, pinned
+  open behaviour in both packages, recorded in
+  `docs/PARTIAL_FILE_STATES.md` and pinned by new
+  `tests/test_partial_file_states.py` (muninn 10 tests,
+  huginn 10). Pre-fix probes (RM-031 venv) measured the
+  undefined states: a main store truncated to zero bytes
+  opened as a silently empty store — even with a verified
+  `.bak-1` beside it, which the empty store then rotated
+  into the chain on later opens; a non-empty WAL without
+  its main file was silently discarded by a fresh start;
+  and a `.bak-tmp` left by a killed backup lingered until
+  some later backup overwrote it. Defined now, in each
+  package's `_db.py` `open_store` (after the RM-030
+  pre-flight): a zero-length main file takes the corruption
+  road before any connection (restore the newest verified
+  generation, else the existing typed corrupt refusal, the
+  truncated file left untouched); a non-empty WAL without
+  its main file restores a verified backup (sidecars
+  consumed by the restore) or raises the new typed refusal
+  `… store {path} has a write-ahead log but no main file
+  and no rolling backup verified; refusing to start empty
+  over lost memory` — on refusal no main file is created
+  and the WAL stands; an empty/absent WAL is not evidence
+  and a missing main without one is an ordinary new store;
+  and a leftover `.bak-tmp` is removed on open and never
+  read — proven adversarially: a complete valid store copy
+  at the temp path beside a corrupt main gets the refusal,
+  not a resurrection, and when a generation and a valid
+  temp coexist the restore provably comes from the
+  generation. WAL-missing and garbage-WAL opens were
+  already sound (checkpointed data intact, no recovery)
+  and are now pinned. RM-018 goldens extended deliberately
+  (muninn 43 cases / 60 template lines, huginn 48 cases /
+  61 template lines, counted from the golden files — one
+  new partial-state CASE + TEMPLATE in each; the RM-031
+  record's template figures in CAMPAIGN_STATE.md do not
+  match a line count of its goldens, a pre-existing record
+  discrepancy noted here, not rewritten); guides + API
+  reference + format-stability doc updated. Negation: the new suites fail 7 / pass 3 per
+  package against the pre-RM-032 installed packages
+  (RM-031 venv) — the passes are the already-held
+  behaviours. Full suites green in a fresh venv
+  (`ravens-rm032-venv`, non-editable installs): muninn
+  **183 passed** (173+10), huginn **136 passed** (126+10);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). One first full-suite run showed
+  a single muninn golden-test failure during a VM
+  Python-write-gate closure (the RM-015/RM-020 environment
+  pattern; Python tempfile creation was refused machine-
+  wide minutes later, then probed open 5/5); the disk-
+  logged re-run in the open window is the 183 above
+  (logs `~/workspace/.verify-tmp/rm032/`). The same test
+  later failed in a burst of huginn runs inside the same
+  window and passed 8/8 consecutive loop runs (plus 4/4
+  per-case debug runs and an exact manual per-case capture
+  match) once it closed — environment class, never
+  reproduced outside the window; no code changed for it. Open error
+  behaviour changed (no signature or schema change;
+  RM-003/RM-004 pins green), so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm032-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=5; search 2 merged results;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three
+  backends; both raven health dicts carry `sqlite_version`
+  3.45.1; huginn degraded via auto-fallback to local —
+  live Qdrant still NOT PROVEN; double close safe;
+  evidence `~/workspace/.verify-tmp/rm032_bifrost.log`).
+  Founding tree NEEDS A SYNC for the partial-state open
+  handling (extends the RM-008/RM-011/RM-012/RM-016/
+  RM-017/RM-025/RM-026/RM-027/RM-028/RM-029/RM-030/RM-031
+  sync note).

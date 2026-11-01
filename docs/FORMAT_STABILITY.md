@@ -19,7 +19,7 @@ A store is a small family of files around the configured
 | `<db_path>` | The SQLite database (WAL mode, `synchronous=FULL`) | The format this document governs. |
 | `<db_path>-wal`, `<db_path>-shm` | SQLite's own WAL sidecars | SQLite-owned; never hand-edited, never part of the promise beyond "the store opens in WAL mode". Safe to leave to SQLite. |
 | `<db_path>.bak-1` … `.bak-N` | Rolling backup generations (N = `backup_keep`, default 3) | Each is a complete store file in exactly the live store's format (made through SQLite's backup API from a verified-healthy store), so a generation can be restored by the open path — or copied over the main file by hand in an emergency — with no conversion. |
-| `<db_path>.bak-tmp` | Transient snapshot target during a backup | Not a store; may be absent or partial after a crash and is never read as one. |
+| `<db_path>.bak-tmp` | Transient snapshot target during a backup | Not a store; may be absent or partial after a crash and is never read as one. A leftover is removed on open and is never a restore candidate (RM-032). |
 
 Durability contract (both stores): WAL + `synchronous=FULL`
 — a `kill -9` loses at most the uncommitted transaction. On

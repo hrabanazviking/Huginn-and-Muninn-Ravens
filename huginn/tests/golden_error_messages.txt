@@ -58,6 +58,7 @@ CASE disk_full_upsert | HuginnStorageError | huginn write failed during upsert: 
 CASE readonly_open | HuginnStorageError | huginn store <tmp_path>/ro.db is read-only and cannot be opened for writing
 CASE locked_open | HuginnStorageError | huginn store <tmp_path>/locked.db is locked by another process (busy timeout 300 ms expired)
 CASE locked_upsert | HuginnStorageError | huginn write failed during upsert: store is locked by another process (busy timeout expired)
+CASE missing_main_wal | HuginnStorageError | huginn store <tmp_path>/walonly.db has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 CASE qdrant_closed | HuginnBackendError | Huginn Qdrant backend is closed
 CASE qdrant_missing_extra | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 CASE st_missing_extra | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
@@ -118,6 +119,7 @@ TEMPLATE | HuginnStorageError | huginn store {} is read-only and cannot be opene
 TEMPLATE | HuginnStorageError | huginn store {} is read-only and cannot be opened for writing
 TEMPLATE | HuginnStorageError | huginn store {} is read-only and cannot be opened for writing
 TEMPLATE | HuginnStorageError | huginn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | HuginnStorageError | huginn store {} has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (busy timeout {} ms expired)

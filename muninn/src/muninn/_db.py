@@ -30,6 +30,16 @@ Durability contract
   Contention is never mistaken for corruption and never takes
   the backup-restore road. Pure reads are unaffected by a held
   write lock: WAL readers proceed against a snapshot.
+* Partial file states have defined open behaviour (RM-032; see
+  ``docs/PARTIAL_FILE_STATES.md``): a leftover ``.bak-tmp`` from
+  a killed backup is removed on open and is never read as a
+  store or a restore candidate; a main store truncated to zero
+  bytes takes the corruption road (restore from a verified
+  backup, else the typed refusal) instead of opening as a
+  silently empty store; and a non-empty write-ahead log left
+  without its main file is evidence of lost memory — a verified
+  backup is restored, else opening raises a typed
+  :class:`MuninnStorageError` naming the partial state.
 """
 
 from __future__ import annotations
@@ -159,6 +169,27 @@ def _backup_path(db_path: Path, generation: int) -> Path:
     return db_path.with_name(f"{db_path.name}.bak-{generation}")
 
 
+def _backup_tmp_path(db_path: Path) -> Path:
+    return db_path.with_name(f"{db_path.name}.bak-tmp")
+
+
+def _discard_stale_backup_tmp(db_path: Path) -> None:
+    """RM-032: remove a ``.bak-tmp`` left behind by a killed backup.
+
+    The temp snapshot is transient by contract (see
+    ``docs/FORMAT_STABILITY.md``): it is never read as a store
+    and never a restore candidate, so a leftover carries no
+    information — the last *completed* backup is the newest
+    ``.bak-N`` generation. Removing it on open keeps the store
+    directory honest and stops a later reader mistaking it for
+    a generation.
+    """
+    tmp = _backup_tmp_path(db_path)
+    if tmp.exists():
+        logger.warning("muninn: removing stale backup temp file %s", tmp)
+        tmp.unlink(missing_ok=True)
+
+
 def _sidecars(db_path: Path) -> list[Path]:
     return [Path(str(db_path) + "-wal"), Path(str(db_path) + "-shm")]
 
@@ -173,7 +204,7 @@ def take_backup(db_path: Path, keep: int) -> Path | None:
     if keep <= 0:
         return None
     newest = _backup_path(db_path, 1)
-    tmp = db_path.with_name(f"{db_path.name}.bak-tmp")
+    tmp = _backup_tmp_path(db_path)
     try:
         src = sqlite3.connect(str(db_path))
         try:
@@ -253,48 +284,83 @@ def open_store(
                 f"muninn store {db_path} is read-only and cannot be opened for writing"
             ) from exc
         raise
+    _discard_stale_backup_tmp(db_path)
     existed = db_path.exists()
     mtime_before = db_path.stat().st_mtime if existed else 0.0
 
+    if not existed:
+        # RM-032: a non-empty write-ahead log without its main
+        # file is a partial state — frames of committed memory
+        # whose store file is gone. Never start empty over it:
+        # restore a verified backup (which removes the orphaned
+        # sidecars) or refuse loudly. An empty or absent WAL
+        # carries no frames and is not evidence of a lost store.
+        wal_path = Path(str(db_path) + "-wal")
+        if wal_path.exists() and wal_path.stat().st_size > 0:
+            logger.error(
+                "muninn: store %s is missing its main file but a "
+                "write-ahead log remains — attempting restore from backup",
+                db_path,
+            )
+            restored = _restore_from_backup(db_path, backup_keep) if backup_keep > 0 else None
+            if restored is None:
+                raise MuninnStorageError(
+                    f"muninn store {db_path} has a write-ahead log but no main "
+                    f"file and no rolling backup verified; refusing to start "
+                    f"empty over lost memory"
+                )
+            report.recovered_from_backup = True
+            report.restored_backup = str(restored)
+            logger.error("muninn: RECOVERED store %s from backup %s", db_path, restored)
+            existed = True
+            mtime_before = db_path.stat().st_mtime
+
     if existed:
-        try:
-            probe = _connect(db_path, busy_timeout_ms)
-            try:
-                try:
-                    row = probe.execute("PRAGMA quick_check").fetchone()
-                    healthy = bool(row) and str(row[0]) == "ok"
-                except sqlite3.Error as exc:
-                    if _is_readonly_error(exc):
-                        raise MuninnStorageError(
-                            f"muninn store {db_path} is read-only and cannot be "
-                            f"opened for writing"
-                        ) from exc
-                    if _is_locked_error(exc):
-                        # RM-031: contention is not corruption —
-                        # never take the restore road for it.
-                        raise MuninnStorageError(
-                            f"muninn store {db_path} is locked by another process "
-                            f"(busy timeout {busy_timeout_ms} ms expired)"
-                        ) from exc
-                    healthy = False
-            finally:
-                probe.close()
-        except sqlite3.Error as exc:
-            if _is_readonly_error(exc):
-                # RM-030: read-only is not corruption — never take
-                # the restore road for it; fail loudly at once.
-                raise MuninnStorageError(
-                    f"muninn store {db_path} is read-only and cannot be opened for writing"
-                ) from exc
-            if _is_locked_error(exc):
-                # RM-031: contention is not corruption either.
-                raise MuninnStorageError(
-                    f"muninn store {db_path} is locked by another process "
-                    f"(busy timeout {busy_timeout_ms} ms expired)"
-                ) from exc
-            # Not a database at all, unreadable header, etc. — same
-            # road as a failed quick_check: restore or raise loudly.
+        if db_path.stat().st_size == 0:
+            # RM-032: a zero-length main file is a truncated
+            # store, not a fresh one — SQLite alone would call
+            # it an empty database and open it silently. Take
+            # the corruption road instead: restore or refuse.
             healthy = False
+        else:
+            try:
+                probe = _connect(db_path, busy_timeout_ms)
+                try:
+                    try:
+                        row = probe.execute("PRAGMA quick_check").fetchone()
+                        healthy = bool(row) and str(row[0]) == "ok"
+                    except sqlite3.Error as exc:
+                        if _is_readonly_error(exc):
+                            raise MuninnStorageError(
+                                f"muninn store {db_path} is read-only and cannot be "
+                                f"opened for writing"
+                            ) from exc
+                        if _is_locked_error(exc):
+                            # RM-031: contention is not corruption —
+                            # never take the restore road for it.
+                            raise MuninnStorageError(
+                                f"muninn store {db_path} is locked by another process "
+                                f"(busy timeout {busy_timeout_ms} ms expired)"
+                            ) from exc
+                        healthy = False
+                finally:
+                    probe.close()
+            except sqlite3.Error as exc:
+                if _is_readonly_error(exc):
+                    # RM-030: read-only is not corruption — never take
+                    # the restore road for it; fail loudly at once.
+                    raise MuninnStorageError(
+                        f"muninn store {db_path} is read-only and cannot be opened for writing"
+                    ) from exc
+                if _is_locked_error(exc):
+                    # RM-031: contention is not corruption either.
+                    raise MuninnStorageError(
+                        f"muninn store {db_path} is locked by another process "
+                        f"(busy timeout {busy_timeout_ms} ms expired)"
+                    ) from exc
+                # Not a database at all, unreadable header, etc. — same
+                # road as a failed quick_check: restore or raise loudly.
+                healthy = False
         if not healthy:
             logger.error(
                 "muninn: store %s failed integrity — attempting restore from backup",

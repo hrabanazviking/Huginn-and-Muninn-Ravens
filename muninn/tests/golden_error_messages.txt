@@ -59,6 +59,7 @@ CASE disk_full_remember | MuninnStorageError | muninn write failed during rememb
 CASE readonly_open | MuninnStorageError | muninn store <tmp_path>/ro.db is read-only and cannot be opened for writing
 CASE locked_open | MuninnStorageError | muninn store <tmp_path>/locked.db is locked by another process (busy timeout 300 ms expired)
 CASE locked_remember | MuninnStorageError | muninn write failed during remember: store is locked by another process (busy timeout expired)
+CASE missing_main_wal | MuninnStorageError | muninn store <tmp_path>/walonly.db has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 # TEMPLATE lines (55 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
@@ -96,6 +97,7 @@ TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opene
 TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opened for writing
 TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opened for writing
 TEMPLATE | MuninnStorageError | muninn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | MuninnStorageError | muninn store {} has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)

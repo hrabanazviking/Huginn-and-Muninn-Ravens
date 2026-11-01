@@ -103,6 +103,22 @@ def _cases(tmp_path):
     _holder.execute("BEGIN EXCLUSIVE")
     _holder.execute("CREATE TABLE IF NOT EXISTS rm031_hold (x INTEGER)")
     _holder.execute("INSERT INTO rm031_hold VALUES (1)")
+    # RM-032: a store whose main file is gone but whose WAL
+    # remains — the partial-state refusal names the lost main
+    # file. The WAL is crafted through a raw connection and
+    # restored to disk after its close checkpoints it away.
+    walonly_path = tmp_path / "walonly.db"
+    walonly = HebbianMemory(MuninnConfig(db_path=str(walonly_path)))
+    walonly.remember("stranded")
+    walonly.close()
+    _wal_conn = sqlite3.connect(str(walonly_path))
+    _wal_conn.execute("PRAGMA journal_mode=WAL")
+    _wal_conn.execute("INSERT INTO meta(key, value) VALUES ('rm032', 'x')")
+    _wal_conn.commit()
+    _wal_bytes = Path(f"{walonly_path}-wal").read_bytes()
+    _wal_conn.close()
+    Path(f"{walonly_path}-wal").write_bytes(_wal_bytes)
+    walonly_path.unlink()
 
     def cfg(**overrides):
         return lambda: MuninnConfig(db_path=str(tmp_path / "m.db"), **overrides)
@@ -158,6 +174,9 @@ def _cases(tmp_path):
             MuninnConfig(db_path=str(locked_path), busy_timeout_ms=300)
         ),
         "locked_remember": lambda: locked.remember("blocked"),
+        "missing_main_wal": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(walonly_path), backup_keep=0)
+        ),
     }
     return cases, m
 
