@@ -107,10 +107,17 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `ravens-rm036-bifrost-venv`, bifrost at b66e98cc — its
   own suites **25 passed**; BifrostBridge smoke PASS,
   evidence `~/workspace/.verify-tmp/rm036/bifrost_smoke.log`).
-  Negation against the RM-035 packages: muninn 10 failed /
-  6 passed, huginn 5 failed / 2 passed (passes = the
-  preserved behaviours). Commit + push in the slice log
-  entry below.
+  Negation against the RM-035 packages (disk logs
+  `~/workspace/.verify-tmp/rm036/muninn_negation.log`,
+  `huginn_negation.log`): muninn 9 failed / 7 passed,
+  huginn 3 failed / 4 passed (passes = the behaviours the
+  slice preserves). Commit + push in the slice log
+  entry below. CORRECTION (same evening): the tallies
+  first recorded here (10/6, 5/2) came from a runtime
+  delivery that matches neither negation session's disk
+  log — the crossed-notification pattern of RM-028/RM-034;
+  the disk-log counts above are authoritative and the
+  SLICE_LOG entry is corrected with them.
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1587,11 +1594,18 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   refused typed with the measured size, before any write,
   on both Muninn write paths. Pinned by new
   `tests/test_adversarial_tags_metadata.py` (muninn 16,
-  huginn 7). Negation against the pre-RM-036 packages:
-  muninn **10 failed / 6 passed**, huginn **5 failed /
-  2 passed** — the passes are exactly the preserved
-  behaviours (at-bound storage, circular refusals, DAG
-  sharing, ellipsis tags). RM-018 goldens extended
+  huginn 7). Negation against the pre-RM-036 packages
+  (disk logs `~/workspace/.verify-tmp/rm036/
+  muninn_negation.log`, `huginn_negation.log`): muninn
+  **9 failed / 7 passed**, huginn **3 failed / 4 passed**
+  — the failures are exactly the new behaviours, and the
+  passes are exactly the behaviours the slice preserves
+  (at-bound and at-ceiling shapes stored, circular
+  refusals, DAG sharing, ellipsis tags). (Tallies
+  corrected the same evening: the first-recorded 10/6
+  and 5/2 came from a crossed runtime delivery matching
+  neither session's disk log — see the Status note.)
+  RM-018 goldens extended
   deliberately (muninn 50 cases / 65 templates, huginn
   54 cases / 66 templates, counted from the files — +3
   CASEs +2 TEMPLATEs muninn: `metadata_too_deep`,

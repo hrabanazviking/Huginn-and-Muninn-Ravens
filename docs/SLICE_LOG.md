@@ -1358,8 +1358,14 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   stored and above it refused with the measured size, a
   200,000-tag flood refused under the default ceilings.
   Negation against the pre-RM-036 packages: muninn
-  **10 failed / 6 passed**, huginn **5 failed / 2 passed**
-  (the passes are exactly the preserved behaviours).
+  **9 failed / 7 passed**, huginn **3 failed / 4 passed**
+  (disk logs `~/workspace/.verify-tmp/rm036/
+  muninn_negation.log`, `huginn_negation.log`; the
+  failures are exactly the new behaviours, the passes
+  exactly the behaviours the slice preserves. Tallies
+  corrected the same evening — the first-recorded 10/6
+  and 5/2 came from a crossed runtime delivery matching
+  neither session's disk log).
   RM-018 goldens extended deliberately (muninn 50 cases /
   65 templates, huginn 54 cases / 66 templates, counted
   from the files — +3 CASEs +2 TEMPLATEs muninn, +2 +2
