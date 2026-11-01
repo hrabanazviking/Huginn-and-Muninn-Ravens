@@ -356,3 +356,42 @@ has an entry here with its Class and Commit fields present.
   assignment the floor prescribes). Founding tree
   (`~/workspace/ravens`) NEEDS A SYNC for the frozen configs
   (extends the RM-008/RM-011/RM-012/RM-016 sync note).
+
+## RM-018 — Stable error messages
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Error strings treated as API, pinned two ways
+  in new `tests/test_error_messages.py` +
+  `tests/golden_error_messages.txt` per package (record:
+  `docs/ERROR_MESSAGES.md`). Behavioural pin: every
+  deterministically triggerable typed error raised with
+  fixed inputs and its exact message compared to the golden
+  — muninn **31 cases**, huginn **33 cases** (Qdrant
+  translations produced against a fake client raising
+  `RuntimeError("boom")`; no live server, live Qdrant still
+  NOT PROVEN). Template pin: every `raise <Typed>Error(...)`
+  site re-extracted from the source AST (f-string values
+  normalised to `{}`) and the multiset compared to the
+  golden — muninn **33 sites**, huginn **36 sites** (35
+  distinct; the no-row-id guard stands at two insert paths).
+  The template pin is the only cover for the sites no
+  deterministic trigger can reach (per package: the
+  schema-preparation failure; the RM-008 no-row-id guards) —
+  named in the doc, not silently skipped. Acceptance proven
+  by negation on a scratch copy: rewording muninn's
+  `"strength must be in [0, 1]"` fails the template test,
+  rewording huginn's `"query_text must be a string"` fails
+  the template test, and altering one muninn CASE line in
+  the golden fails the behavioural test (muninn 2 failed /
+  1 passed, huginn 1 failed / 2 passed on the drifted
+  copies; the copies were discarded). Full suites green in
+  a fresh venv (`ravens-rm018-venv`, non-editable installs):
+  muninn **110 passed** (107+3), huginn **86 passed**
+  (83+3); ruff + mypy floors clean (rm014 venv: mypy muninn
+  5 files, huginn 8 files, no issues). No package code,
+  public API, or schema change (RM-003 freeze + RM-004
+  snapshot green), so no Bifröst re-verification required.
+  Founding tree needs no sync for this slice (tests + docs
+  only); the RM-008/RM-011/RM-012/RM-016/RM-017
+  package-source sync note stands.

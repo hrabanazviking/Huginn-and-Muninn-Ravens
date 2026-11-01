@@ -1,0 +1,94 @@
+# RM-018 — Golden error messages for huginn.
+#
+# Error strings are API: callers match on them, so every typed
+# error's message shape is pinned here. CASE lines are exact
+# messages produced by deterministic triggers in
+# test_error_messages.py (a store path under the test's tmp dir
+# is normalised to <tmp_path>; Qdrant failures are produced
+# against a fake client whose methods raise RuntimeError("boom")
+# — no live server is involved, and live Qdrant stays NOT
+# PROVEN). TEMPLATE lines are the message template of every
+# `raise Huginn*Error(...)` site in src/, extracted by AST with
+# f-string interpolations shown as {} — the test re-extracts
+# them, so adding or editing a raise site fails until this
+# file is updated deliberately in the same commit as the
+# change.
+#
+# CASE lines (33): every raise site except the three that
+# cannot be triggered deterministically — "could not be
+# prepared" (needs a store whose schema script fails mid-open)
+# and the two "document insert reported success but returned
+# no row id" guards (unreachable by construction; RM-008).
+# All three are pinned below as TEMPLATE lines (the insert
+# guard appears twice, once per insert path).
+CASE config_backend | HuginnConfigurationError | backend must be one of ('auto', 'local', 'qdrant')
+CASE config_embedder | HuginnConfigurationError | embedder must be one of ('tfidf', 'hashing', 'sentence-transformers')
+CASE config_qdrant_url | HuginnConfigurationError | qdrant_url must be a non-empty string
+CASE config_local_db_path | HuginnConfigurationError | local_db_path must be a non-empty string
+CASE config_collection_name | HuginnConfigurationError | collection_name must be a non-empty string
+CASE config_vector_dim | HuginnConfigurationError | vector_dim must be >= 8
+CASE config_qdrant_timeout | HuginnConfigurationError | qdrant_timeout must be > 0
+CASE config_busy_timeout | HuginnConfigurationError | busy_timeout_ms must be >= 0
+CASE config_backup_keep | HuginnConfigurationError | backup_keep must be >= 0
+CASE content_empty | HuginnValidationError | content must be a non-empty string
+CASE importance_type | HuginnValidationError | importance must be an int in [1, 10], got 'high'
+CASE importance_range | HuginnValidationError | importance must be in [1, 10], got 11
+CASE valence_type | HuginnValidationError | emotional_valence must be a number in [-1, 1], got 'warm'
+CASE valence_range | HuginnValidationError | emotional_valence must be in [-1, 1], got 1.5
+CASE memory_id_type | HuginnValidationError | memory_id must be an int, got str
+CASE memory_id_negative | HuginnValidationError | memory_id must be >= 0, got -1
+CASE query_text_type | HuginnValidationError | query_text must be a string
+CASE min_importance_type | HuginnValidationError | min_importance must be an int
+CASE embedder_unknown | HuginnConfigurationError | no vector embedder named 'bogus'
+CASE local_id_clash | HuginnValidationError | memory_id 99 is free but this content already lives at id 1; upsert there instead
+CASE facade_closed | HuginnBackendError | HuginnMemory is closed
+CASE local_closed | HuginnStorageError | Huginn local backend is closed
+CASE corrupt_store | HuginnStorageError | huginn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
+CASE qdrant_closed | HuginnBackendError | Huginn Qdrant backend is closed
+CASE qdrant_missing_extra | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
+CASE st_missing_extra | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
+CASE qdrant_unreachable | HuginnBackendError | Qdrant at http://localhost:6333 unreachable: down
+CASE qdrant_collection_create | HuginnBackendError | could not create Qdrant collection 'huginn_memories': nope
+CASE qdrant_upsert_failed | HuginnBackendError | Qdrant upsert failed: boom
+CASE qdrant_delete_failed | HuginnBackendError | Qdrant delete failed: boom
+CASE qdrant_retrieve_failed | HuginnBackendError | Qdrant retrieve failed: boom
+CASE qdrant_search_failed | HuginnBackendError | Qdrant search failed: boom
+CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: boom
+# TEMPLATE lines (36 raise sites, 35 distinct — the insert
+# guard's line is duplicated, once per insert path).
+TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
+TEMPLATE | HuginnBackendError | HuginnMemory is closed
+TEMPLATE | HuginnBackendError | Qdrant at {} unreachable: {}
+TEMPLATE | HuginnBackendError | Qdrant count failed: {}
+TEMPLATE | HuginnBackendError | Qdrant delete failed: {}
+TEMPLATE | HuginnBackendError | Qdrant retrieve failed: {}
+TEMPLATE | HuginnBackendError | Qdrant search failed: {}
+TEMPLATE | HuginnBackendError | Qdrant upsert failed: {}
+TEMPLATE | HuginnBackendError | could not create Qdrant collection {}: {}
+TEMPLATE | HuginnConfigurationError | backend must be one of {}
+TEMPLATE | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
+TEMPLATE | HuginnConfigurationError | backup_keep must be >= 0
+TEMPLATE | HuginnConfigurationError | busy_timeout_ms must be >= 0
+TEMPLATE | HuginnConfigurationError | collection_name must be a non-empty string
+TEMPLATE | HuginnConfigurationError | embedder must be one of {}
+TEMPLATE | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
+TEMPLATE | HuginnConfigurationError | local_db_path must be a non-empty string
+TEMPLATE | HuginnConfigurationError | no vector embedder named {}
+TEMPLATE | HuginnConfigurationError | qdrant_timeout must be > 0
+TEMPLATE | HuginnConfigurationError | qdrant_url must be a non-empty string
+TEMPLATE | HuginnConfigurationError | vector_dim must be >= 8
+TEMPLATE | HuginnStorageError | Huginn local backend is closed
+TEMPLATE | HuginnStorageError | document insert reported success but returned no row id
+TEMPLATE | HuginnStorageError | document insert reported success but returned no row id
+TEMPLATE | HuginnStorageError | huginn store {} could not be prepared: {}
+TEMPLATE | HuginnStorageError | huginn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | HuginnValidationError | content must be a non-empty string
+TEMPLATE | HuginnValidationError | emotional_valence must be a number in [-1, 1], got {}
+TEMPLATE | HuginnValidationError | emotional_valence must be in [-1, 1], got {}
+TEMPLATE | HuginnValidationError | importance must be an int in [1, 10], got {}
+TEMPLATE | HuginnValidationError | importance must be in [1, 10], got {}
+TEMPLATE | HuginnValidationError | memory_id must be >= 0, got {}
+TEMPLATE | HuginnValidationError | memory_id must be an int, got {}
+TEMPLATE | HuginnValidationError | memory_id {} is free but this content already lives at id {}; upsert there instead
+TEMPLATE | HuginnValidationError | min_importance must be an int
+TEMPLATE | HuginnValidationError | query_text must be a string

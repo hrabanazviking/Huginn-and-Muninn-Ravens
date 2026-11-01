@@ -1,0 +1,306 @@
+"""RM-018 — Stable error messages for huginn.
+
+Error strings are API: a caller matching on a message must not
+be broken by a casual rewording. Two pins enforce that:
+
+1. Behavioural — every deterministically triggerable typed
+   error is raised through the public API, the backends, or
+   config construction with fixed inputs, and its exact message
+   must equal the CASE lines of ``golden_error_messages.txt``.
+   Qdrant failures are produced against a fake client whose
+   methods raise ``RuntimeError("boom")`` — the translation
+   into ``HuginnBackendError`` is what is pinned; a live
+   Qdrant round-trip stays NOT PROVEN.
+2. Template — every ``raise Huginn*Error(...)`` site in
+   ``src/huginn`` is re-extracted by AST (f-string values
+   normalised to ``{}``) and the multiset must equal the
+   golden's TEMPLATE lines. This is the pin that also covers
+   the three sites no deterministic trigger can reach (the
+   schema-preparation failure and the two RM-008 no-row-id
+   guards): any new or reworded raise site fails here until
+   the golden is updated deliberately in the same commit.
+"""
+
+import ast
+import contextlib
+import sys
+import types
+from collections import Counter
+from pathlib import Path
+
+import pytest
+
+from huginn import HuginnMemory
+from huginn.config import HuginnConfig
+from huginn.local_backend import LocalBackend
+from huginn.qdrant_backend import QdrantBackend
+from huginn.text import HashingEmbedder, SentenceTransformerEmbedder
+
+GOLDEN = Path(__file__).parent / "golden_error_messages.txt"
+ERROR_NAMES = {
+    "HuginnValidationError",
+    "HuginnConfigurationError",
+    "HuginnStorageError",
+    "HuginnBackendError",
+}
+
+
+def _golden():
+    cases = {}
+    templates = Counter()
+    for line in GOLDEN.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("CASE "):
+            case_id, exc_name, message = line[5:].split(" | ", 2)
+            cases[case_id] = (exc_name, message)
+        elif line.startswith("TEMPLATE | "):
+            _, exc_name, template = line.split(" | ", 2)
+            templates[(exc_name, template)] += 1
+    return cases, templates
+
+
+def _capture(fn, tmp_path):
+    try:
+        fn()
+    except Exception as exc:
+        return type(exc).__name__, str(exc).replace(str(tmp_path), "<tmp_path>")
+    raise AssertionError("trigger did not raise")
+
+
+@contextlib.contextmanager
+def _hidden_module(name):
+    """Make ``import name`` raise ImportError, whatever is installed.
+
+    The missing-extra errors must be triggerable even on a
+    machine where the extra happens to be present: a ``None``
+    in ``sys.modules`` is CPython's documented import blocker.
+    """
+    missing = object()
+    saved = sys.modules.get(name, missing)
+    sys.modules[name] = None
+    try:
+        yield
+    finally:
+        if saved is missing:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = saved
+
+
+class _FakeModels:
+    Distance = types.SimpleNamespace(COSINE="cosine")
+
+    @staticmethod
+    def VectorParams(size, distance):
+        return types.SimpleNamespace(size=size, distance=distance)
+
+    @staticmethod
+    def PointStruct(id, vector, payload):
+        return types.SimpleNamespace(id=id, vector=vector, payload=payload)
+
+    @staticmethod
+    def PointIdsList(points):
+        return types.SimpleNamespace(points=points)
+
+
+class _BoomClient:
+    """Answers ping/collection checks; every operation fails."""
+
+    def get_collections(self):
+        return types.SimpleNamespace(collections=[])
+
+    def get_collection(self, name):
+        return types.SimpleNamespace(name=name)
+
+    def upsert(self, **kwargs):
+        raise RuntimeError("boom")
+
+    def delete(self, **kwargs):
+        raise RuntimeError("boom")
+
+    def retrieve(self, **kwargs):
+        raise RuntimeError("boom")
+
+    def query_points(self, **kwargs):
+        raise RuntimeError("boom")
+
+    def count(self, **kwargs):
+        raise RuntimeError("boom")
+
+
+class _DownClient:
+    def get_collections(self):
+        raise RuntimeError("down")
+
+
+class _NoCollectionClient:
+    def get_collections(self):
+        return types.SimpleNamespace(collections=[])
+
+    def get_collection(self, name):
+        raise RuntimeError("missing")
+
+    def create_collection(self, **kwargs):
+        raise RuntimeError("nope")
+
+
+def _qdrant_backend(client):
+    backend = QdrantBackend(
+        HuginnConfig(backend="qdrant"), HashingEmbedder(dim=384)
+    )
+    backend._client = client
+    backend._models = _FakeModels
+    return backend
+
+
+def _cases(tmp_path):
+    local_cfg = HuginnConfig(backend="local", local_db_path=str(tmp_path / "h.db"))
+    h = HuginnMemory(local_cfg)
+    first_id = h.upsert_memory("shared content")
+    assert first_id == 1
+    closed_local = LocalBackend(
+        HuginnConfig(backend="local", local_db_path=str(tmp_path / "l.db"))
+    )
+    closed_local.close()
+    bad_path = tmp_path / "bad.db"
+    bad_path.write_bytes(b"this is not a sqlite database at all........")
+    embedder = HashingEmbedder(dim=384)
+    qdrant_cfg = HuginnConfig(backend="qdrant")
+    closed_qdrant = QdrantBackend(qdrant_cfg, embedder)
+    closed_qdrant.close()
+    boom = _qdrant_backend(_BoomClient())
+    down = _qdrant_backend(_DownClient())
+    no_collection = _qdrant_backend(_NoCollectionClient())
+
+    def cfg(**overrides):
+        return lambda: HuginnConfig(**overrides)
+
+    def missing_qdrant_extra():
+        with _hidden_module("qdrant_client"):
+            QdrantBackend(qdrant_cfg, embedder)._ensure_client()
+
+    def missing_st_extra():
+        with _hidden_module("sentence_transformers"):
+            SentenceTransformerEmbedder()
+
+    def close_facade():
+        h.close()
+        h.search("hello")
+
+    cases = {
+        "config_backend": cfg(backend="bogus"),
+        "config_embedder": cfg(embedder="bogus"),
+        "config_qdrant_url": cfg(qdrant_url=""),
+        "config_local_db_path": cfg(local_db_path=""),
+        "config_collection_name": cfg(collection_name=""),
+        "config_vector_dim": cfg(vector_dim=7),
+        "config_qdrant_timeout": cfg(qdrant_timeout=0),
+        "config_busy_timeout": cfg(busy_timeout_ms=-1),
+        "config_backup_keep": cfg(backup_keep=-1),
+        "content_empty": lambda: h.upsert_memory(""),
+        "importance_type": lambda: h.upsert_memory("a", importance="high"),
+        "importance_range": lambda: h.upsert_memory("a", importance=11),
+        "valence_type": lambda: h.upsert_memory("a", emotional_valence="warm"),
+        "valence_range": lambda: h.upsert_memory("a", emotional_valence=1.5),
+        "memory_id_type": lambda: h.get("x"),
+        "memory_id_negative": lambda: h.get(-1),
+        "query_text_type": lambda: h.search(123),
+        "min_importance_type": lambda: h.search("hello", min_importance=1.5),
+        "embedder_unknown": lambda: h._make_embedder("bogus"),
+        "local_id_clash": lambda: h.upsert_memory("shared content", memory_id=99),
+        "facade_closed": close_facade,
+        "local_closed": lambda: closed_local.upsert(
+            "x", category="general", importance=5, tags=[], emotional_valence=0.0
+        ),
+        "corrupt_store": lambda: LocalBackend(
+            HuginnConfig(
+                backend="local", local_db_path=str(bad_path), backup_keep=0
+            )
+        ),
+        "qdrant_closed": lambda: closed_qdrant._ensure_client(),
+        "qdrant_missing_extra": missing_qdrant_extra,
+        "st_missing_extra": missing_st_extra,
+        "qdrant_unreachable": lambda: down.ping(),
+        "qdrant_collection_create": lambda: no_collection.upsert(
+            "text", category="general", importance=5, tags=[], emotional_valence=0.0
+        ),
+        "qdrant_upsert_failed": lambda: boom.upsert(
+            "text", category="general", importance=5, tags=[], emotional_valence=0.0
+        ),
+        "qdrant_delete_failed": lambda: boom.delete(1),
+        "qdrant_retrieve_failed": lambda: boom.get(1),
+        "qdrant_search_failed": lambda: boom.search(
+            "text", limit=5, category=None, min_importance=1
+        ),
+        "qdrant_count_failed": lambda: boom.count(),
+    }
+    return cases
+
+
+def test_error_messages_match_golden(tmp_path):
+    golden_cases, _ = _golden()
+    cases = _cases(tmp_path)
+    actual = {case_id: _capture(fn, tmp_path) for case_id, fn in cases.items()}
+    assert actual == golden_cases
+
+
+def _template_of(expr):
+    if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+        return expr.value
+    if isinstance(expr, ast.JoinedStr):
+        parts = []
+        for value in expr.values:
+            if isinstance(value, ast.Constant):
+                parts.append(str(value.value))
+            else:
+                parts.append("{}")
+        return "".join(parts)
+    raise AssertionError(f"unsupported raise-message expression: {ast.dump(expr)[:80]}")
+
+
+def _source_templates():
+    here = Path(__file__).resolve()
+    src = None
+    for parent in here.parents:
+        candidate = parent / "huginn" / "src" / "huginn"
+        if candidate.is_dir() and (parent / "RAVENS_ROADMAP_2026-10-31.md").is_file():
+            src = candidate
+            break
+    if src is None:
+        pytest.skip("not running inside a repo checkout (no src/huginn)")
+    found = Counter()
+    for path in sorted(src.glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
+                continue
+            func = node.exc.func
+            name = func.id if isinstance(func, ast.Name) else None
+            if name in ERROR_NAMES:
+                assert node.exc.args, f"raise without a message at {path}:{node.lineno}"
+                found[(name, _template_of(node.exc.args[0]))] += 1
+    return found
+
+
+def test_every_raise_site_template_is_pinned():
+    _, golden_templates = _golden()
+    actual = _source_templates()
+    if actual != golden_templates:
+        lines = []
+        for key in sorted((actual - golden_templates) + (golden_templates - actual)):
+            lines.append(
+                f"{key[0]} | {key[1]} "
+                f"(source x{actual[key]}, golden x{golden_templates[key]})"
+            )
+        raise AssertionError(
+            "huginn raise sites drifted from the RM-018 golden templates. "
+            "If a message change is deliberate, update "
+            "golden_error_messages.txt in the same commit.\n" + "\n".join(lines)
+        )
+
+
+def test_golden_cases_cover_every_typed_error_class():
+    golden_cases, _ = _golden()
+    covered = {exc_name for exc_name, _ in golden_cases.values()}
+    assert covered == ERROR_NAMES

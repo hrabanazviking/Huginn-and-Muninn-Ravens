@@ -37,7 +37,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016, RM-017.
+  RM-016, RM-017, RM-018.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +48,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-018 in roadmap order (Part II — Stability).
+- Next: RM-019 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -570,3 +570,36 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   files; one B010 on the new tests fixed in-slice). Founding
   tree NEEDS A SYNC for the frozen configs (extends the
   RM-008/RM-011/RM-012/RM-016 sync note).
+- **RM-018 — Stable error messages. BANKED 2026-11-01. Class: UNIT.**
+  Record: `docs/ERROR_MESSAGES.md`. Error strings are now
+  treated as API and pinned two ways by new
+  `tests/test_error_messages.py` +
+  `tests/golden_error_messages.txt` in both packages.
+  Behavioural pin: every deterministically triggerable typed
+  error raised with fixed inputs, exact message compared to
+  the golden — muninn **31 cases**, huginn **33 cases**
+  (Qdrant translations against a fake client raising
+  `RuntimeError("boom")`; live Qdrant still NOT PROVEN).
+  Template pin: every `raise <Typed>Error(...)` site
+  re-extracted from the source AST (f-string values → `{}`)
+  and the multiset compared to the golden — muninn **33
+  sites**, huginn **36 sites** (35 distinct; the no-row-id
+  guard stands at two insert paths). The template pin alone
+  covers the sites no deterministic trigger can reach (per
+  package the schema-preparation failure + the RM-008
+  no-row-id guards) — named in the doc, not skipped.
+  Acceptance proven by negation on a scratch copy (discarded):
+  rewording muninn's "strength must be in [0, 1]" and
+  huginn's "query_text must be a string" each fail the
+  template test; altering one muninn CASE line in the golden
+  fails the behavioural test (muninn 2 failed / 1 passed,
+  huginn 1 failed / 2 passed on the drifted copies). Full
+  suites green in a fresh venv (`ravens-rm018-venv`,
+  non-editable installs): muninn **110 passed** (107+3),
+  huginn **86 passed** (83+3); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files). No
+  package code, public API, or schema change (RM-003 freeze
+  + RM-004 snapshot green), so no Bifröst re-verification
+  required. Founding tree needs no sync for this slice
+  (tests + docs only); the RM-008/RM-011/RM-012/RM-016/
+  RM-017 package-source sync note stands.

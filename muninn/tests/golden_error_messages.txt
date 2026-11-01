@@ -1,0 +1,84 @@
+# RM-018 — Golden error messages for muninn.
+#
+# Error strings are API: callers match on them, so every typed
+# error's message shape is pinned here. CASE lines are exact
+# messages produced by deterministic triggers in
+# test_error_messages.py (a store path under the test's tmp dir
+# is normalised to <tmp_path>). TEMPLATE lines are the message
+# template of every `raise Muninn*Error(...)` site in src/,
+# extracted by AST with f-string interpolations shown as {} —
+# the test re-extracts them, so adding or editing a raise site
+# fails until this file is updated deliberately in the same
+# commit as the change.
+#
+# CASE lines (31): every raise site except the two that cannot
+# be triggered deterministically — "could not be prepared"
+# (needs a store whose schema script fails mid-open) and "node
+# insert reported success but returned no row id" (unreachable
+# by construction; the RM-008 guard). Both are pinned below as
+# TEMPLATE lines.
+CASE config_db_path | MuninnConfigurationError | db_path must be a non-empty string
+CASE config_learning_rate | MuninnConfigurationError | learning_rate must be in (0, 1]
+CASE config_decay_half_life | MuninnConfigurationError | decay_half_life_days must be > 0
+CASE config_confidence_half_life | MuninnConfigurationError | confidence_half_life_days must be > 0
+CASE config_prune_threshold | MuninnConfigurationError | prune_threshold must be in [0, 1)
+CASE config_consolidation_threshold | MuninnConfigurationError | consolidation_threshold must be in (0, 1]
+CASE config_busy_timeout | MuninnConfigurationError | busy_timeout_ms must be >= 0
+CASE config_backup_keep | MuninnConfigurationError | backup_keep must be >= 0
+CASE config_max_nodes | MuninnConfigurationError | max_nodes must be >= 1
+CASE memory_id_type | MuninnValidationError | memory_id must be an int, got str
+CASE memory_id_negative | MuninnValidationError | memory_id must be >= 0, got -1
+CASE importance_type | MuninnValidationError | importance must be an int in [1, 10], got 'high'
+CASE importance_range | MuninnValidationError | importance must be in [1, 10], got 11
+CASE valence_type | MuninnValidationError | emotional_valence must be a number in [-1, 1], got 'warm'
+CASE valence_range | MuninnValidationError | emotional_valence must be in [-1, 1], got 1.5
+CASE content_not_serializable | MuninnValidationError | content must be a string or JSON-serializable value
+CASE batch_not_a_list | MuninnValidationError | memory_ids must be a list of ints
+CASE associate_self | MuninnValidationError | cannot associate a memory with itself
+CASE associate_both | MuninnValidationError | pass strength or delta, not both
+CASE associate_strength_range | MuninnValidationError | strength must be in [0, 1]
+CASE associate_delta_range | MuninnValidationError | delta must be in (0, 1]
+CASE min_strength_range | MuninnValidationError | min_strength must be in [0, 1]
+CASE attenuation_range | MuninnValidationError | attenuation must be in (0, 1]
+CASE content_none | MuninnValidationError | content must not be None
+CASE metadata_not_serializable | MuninnValidationError | metadata must be JSON-serializable
+CASE unknown_node_fields | MuninnValidationError | unknown node fields: ['bogus']
+CASE update_duplicate | MuninnValidationError | update would duplicate an existing node (same content, category, path)
+CASE decay_days | MuninnValidationError | days must be a number >= 0
+CASE consolidate_threshold | MuninnValidationError | threshold must be in (0, 1]
+CASE closed | MuninnStorageError | HebbianMemory is closed
+CASE corrupt_store | MuninnStorageError | muninn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
+# TEMPLATE lines (33 raise sites).
+TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
+TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
+TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
+TEMPLATE | MuninnConfigurationError | consolidation_threshold must be in (0, 1]
+TEMPLATE | MuninnConfigurationError | db_path must be a non-empty string
+TEMPLATE | MuninnConfigurationError | decay_half_life_days must be > 0
+TEMPLATE | MuninnConfigurationError | learning_rate must be in (0, 1]
+TEMPLATE | MuninnConfigurationError | max_nodes must be >= 1
+TEMPLATE | MuninnConfigurationError | prune_threshold must be in [0, 1)
+TEMPLATE | MuninnStorageError | HebbianMemory is closed
+TEMPLATE | MuninnStorageError | muninn store {} could not be prepared: {}
+TEMPLATE | MuninnStorageError | muninn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | MuninnStorageError | node insert reported success but returned no row id
+TEMPLATE | MuninnValidationError | attenuation must be in (0, 1]
+TEMPLATE | MuninnValidationError | cannot associate a memory with itself
+TEMPLATE | MuninnValidationError | content must be a string or JSON-serializable value
+TEMPLATE | MuninnValidationError | content must not be None
+TEMPLATE | MuninnValidationError | days must be a number >= 0
+TEMPLATE | MuninnValidationError | delta must be in (0, 1]
+TEMPLATE | MuninnValidationError | emotional_valence must be a number in [-1, 1], got {}
+TEMPLATE | MuninnValidationError | emotional_valence must be in [-1, 1], got {}
+TEMPLATE | MuninnValidationError | importance must be an int in [1, 10], got {}
+TEMPLATE | MuninnValidationError | importance must be in [1, 10], got {}
+TEMPLATE | MuninnValidationError | memory_id must be >= 0, got {}
+TEMPLATE | MuninnValidationError | memory_id must be an int, got {}
+TEMPLATE | MuninnValidationError | memory_ids must be a list of ints
+TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
+TEMPLATE | MuninnValidationError | min_strength must be in [0, 1]
+TEMPLATE | MuninnValidationError | pass strength or delta, not both
+TEMPLATE | MuninnValidationError | strength must be in [0, 1]
+TEMPLATE | MuninnValidationError | threshold must be in (0, 1]
+TEMPLATE | MuninnValidationError | unknown node fields: {}
+TEMPLATE | MuninnValidationError | update would duplicate an existing node (same content, category, path)
