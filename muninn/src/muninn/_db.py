@@ -40,6 +40,16 @@ Durability contract
   without its main file is evidence of lost memory — a verified
   backup is restored, else opening raises a typed
   :class:`MuninnStorageError` naming the partial state.
+* A path that is not a database file at all is refused before
+  anything else (RM-033; see ``docs/NON_DATABASE_FILES.md``):
+  a directory at the store path raises a typed
+  :class:`MuninnStorageError` naming the directory — never a
+  raw ``OSError`` from the restore copy, even when a verified
+  backup sits beside it (a directory is never deleted or
+  replaced to make room for a restore) — and any other
+  non-regular file (FIFO, socket, device) raises the typed
+  not-a-regular-file refusal. A plain text file is a corrupt
+  store and takes the corruption road above.
 """
 
 from __future__ import annotations
@@ -82,6 +92,35 @@ def _connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def _check_store_path_shape(db_path: Path) -> None:
+    """RM-033 pre-flight: the store path must be a file-shaped path.
+
+    Runs before every other open step, so a path that is not a
+    database file at all is answered with a typed error naming
+    the shape — never a traceback. A directory is refused as a
+    directory: before this check, a directory with a verified
+    backup beside it took the corruption road and the restore's
+    file copy raised a raw ``IsADirectoryError`` out of the
+    open, and a directory without one was misreported as a
+    corrupt store. A directory is never deleted or replaced to
+    make room for a restore. Any other existing non-regular
+    file (FIFO, socket, device node) is refused the same way;
+    opening one could block or worse, and none can be a store.
+    A path that does not exist yet is the ordinary new-store
+    case and passes, as does a regular file (whose *contents*
+    the later stages judge).
+    """
+    if db_path.is_dir():
+        raise MuninnStorageError(
+            f"muninn store {db_path} is a directory, not a database "
+            f"file; refusing to open"
+        )
+    if db_path.exists() and not db_path.is_file():
+        raise MuninnStorageError(
+            f"muninn store {db_path} is not a regular file; refusing to open"
+        )
 
 
 def _is_readonly_error(exc: BaseException) -> bool:
@@ -275,6 +314,7 @@ def open_store(
     :class:`OpenReport` describing any recovery that happened.
     """
     report = OpenReport()
+    _check_store_path_shape(db_path)
     _check_not_readonly(db_path)
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)

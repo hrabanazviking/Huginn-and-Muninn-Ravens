@@ -783,6 +783,18 @@ and a `.bak-tmp` left behind by a killed backup is removed on
 open and is never read as a store or a restore candidate
 (RM-032, see `docs/PARTIAL_FILE_STATES.md`).
 
+A path that is not a database file at all is refused before
+anything else (local backend): a directory at the store path
+raises `huginn store {path} is a directory, not a database
+file; refusing to open` — with or without a backup beside
+it, and the directory is never deleted or replaced to make
+room for a restore — and any other non-regular file raises
+`huginn store {path} is not a regular file; refusing to
+open`; `health()` reports both as `unhealthy` with the error
+named. A text file is a corrupt store and takes the
+corruption road above (RM-033, see
+`docs/NON_DATABASE_FILES.md`).
+
 ### Threading
 
 All backends serialize internally with a lock, and `HuginnMemory`

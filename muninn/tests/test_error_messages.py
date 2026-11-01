@@ -99,6 +99,13 @@ def _cases(tmp_path):
         MuninnConfig(db_path=str(locked_path), busy_timeout_ms=300)
     )
     locked.remember("seed")
+    # RM-033 fix: the holder must stay referenced for the whole
+    # capture pass — it is returned to the caller below. Before
+    # this, only an incidental reference cycle kept it alive;
+    # when the cyclic GC collected it before the locked cases
+    # ran, its connection closed, the lock rolled back, and
+    # locked_open/locked_remember intermittently did not raise
+    # (diagnosed by per-case capture, RM-033 slice record).
     _holder = sqlite3.connect(str(locked_path))
     _holder.execute("BEGIN EXCLUSIVE")
     _holder.execute("CREATE TABLE IF NOT EXISTS rm031_hold (x INTEGER)")
@@ -118,6 +125,12 @@ def _cases(tmp_path):
     _wal_bytes = Path(f"{walonly_path}-wal").read_bytes()
     _wal_conn.close()
     Path(f"{walonly_path}-wal").write_bytes(_wal_bytes)
+    # RM-033: a directory at the store path and a FIFO are
+    # refused by the shape pre-flight with their own messages.
+    dir_path = tmp_path / "dir.db"
+    dir_path.mkdir()
+    fifo_path = tmp_path / "fifo.db"
+    os.mkfifo(fifo_path)
     walonly_path.unlink()
 
     def cfg(**overrides):
@@ -177,13 +190,19 @@ def _cases(tmp_path):
         "missing_main_wal": lambda: HebbianMemory(
             MuninnConfig(db_path=str(walonly_path), backup_keep=0)
         ),
+        "directory_store": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(dir_path))
+        ),
+        "nonfile_store": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(fifo_path))
+        ),
     }
-    return cases, m
+    return cases, m, _holder
 
 
 def test_error_messages_match_golden(tmp_path):
     golden_cases, _ = _golden()
-    cases, m = _cases(tmp_path)
+    cases, m, _holder = _cases(tmp_path)
     try:
         actual = {case_id: _capture(fn, tmp_path) for case_id, fn in cases.items()}
     finally:

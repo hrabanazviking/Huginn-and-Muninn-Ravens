@@ -52,9 +52,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
 - Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
-  RM-030, RM-031, RM-032. Part III (Robustness) is under way — 8 of
-  14 slices banked.
-- Next: RM-033 in roadmap order (Part III — Robustness).
+  RM-030, RM-031, RM-032, RM-033. Part III (Robustness) is under
+  way — 9 of 14 slices banked.
+- Next: RM-034 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1302,3 +1302,59 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   tree NEEDS A SYNC for the partial-state open handling
   (extends the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/
   RM-026/RM-027/RM-028/RM-029/RM-030/RM-031 sync note).
+- **RM-033 — Non-database files. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/NON_DATABASE_FILES.md`.
+  (This slice's banking also completed RM-032's: its tree
+  stood built, tested and documented but uncommitted when
+  this tick opened — verified against its disk logs,
+  targeted pins re-run green, then committed and pushed as
+  d2dbfa4 before RM-033 work began.) Shapes at the store
+  path that are not databases at all — previously answered
+  only incidentally, one of them leaking a traceback
+  (measured by probe against the RM-032 packages): a
+  directory with a verified backup beside it took the
+  corruption road and the restore's file copy raised a raw
+  `IsADirectoryError` out of `open_store`; a directory
+  without one was misreported as a corrupt store. Defined
+  now in each package's `_db.py` `open_store`: a shape
+  pre-flight (`_check_store_path_shape`) runs before every
+  other open step — a directory raises the typed refusal
+  `… store {path} is a directory, not a database file;
+  refusing to open` (directory and contents untouched,
+  backup neither consumed nor rotated, never deleted or
+  replaced to make room for a restore; Huginn's facade
+  reports it as an `unhealthy` `health()` dict), and any
+  other non-regular file raises `… store {path} is not a
+  regular file; refusing to open` before any open is
+  attempted on it. A text file (long or short) and an empty
+  file take the corruption road — restore a verified
+  backup, else the typed corrupt refusal, the refused file
+  left byte-identical with no sidecars created. Pinned by
+  new `tests/test_non_database_files.py` (8 tests each).
+  Negation: 3 failed / 5 passed per package against the
+  RM-032 venv, the failures exactly the new shape
+  behaviours. RM-018 goldens extended deliberately (muninn
+  45 cases / 62 template lines, huginn 50 cases / 63
+  template lines, counted from the files — +2 CASEs +2
+  TEMPLATEs each: `directory_store`, `nonfile_store`).
+  Full suites green in a fresh venv (`ravens-rm033-venv`,
+  non-editable installs, final banking tree): muninn
+  **191 passed** (183+8), huginn **144 passed** (136+8);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). Open error behaviour changed (no
+  signature or schema change; RM-003/RM-004 pins green),
+  so the **Bifröst contract re-verification was run before
+  banking**: fresh venv (`ravens-rm033-bifrost-venv`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id=2 huginn_id=5;
+  search 2 merged results; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge armed at 0 days;
+  stats over all three backends; both raven health dicts
+  carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+Discovered-bug fix in this slice (test harness, no package code): the RM-031 golden-case lock holder in `tests/test_error_messages.py` was kept alive only by an incidental reference cycle; when the cyclic GC collected it before the locked cases ran, its connection closed, the lock rolled back, and `locked_open` / `locked_remember` (huginn: `locked_upsert`) intermittently did not raise — diagnosed by per-case capture (first capture pass of a fresh process failed, later passes passed; a direct probe showed the lock held 4/4 after `_cases` returns, so collection timing was the race). `_cases` now returns the holder and the test holds a strong reference for the whole pass: per-case loop 6/6 clean per package, fresh processes included. Verification history, honestly: a first final muninn full run inside a machine-wide Python/SQLite write-gate closure (plain sqlite WAL creates then failing 5/5 in every directory, `tempfile` refused — the RM-015/RM-020 environment pattern, reproduced identically against the RM-032 packages) showed that one golden failure; the disk-logged re-runs outside the window, after the holder fix, are the green counts above (logs `~/workspace/.verify-tmp/rm033/`).   `~/workspace/.verify-tmp/rm033_bifrost.log`). Founding
+  tree NEEDS A SYNC for the shape pre-flight (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/RM-027/
+  RM-028/RM-029/RM-030/RM-031/RM-032 sync note).

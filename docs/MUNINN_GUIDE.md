@@ -759,6 +759,17 @@ lost memory`; and a `.bak-tmp` left behind by a killed backup
 is removed on open and is never read as a store or a restore
 candidate (RM-032, see `docs/PARTIAL_FILE_STATES.md`).
 
+A path that is not a database file at all is refused before
+anything else: a directory at the store path raises
+`muninn store {path} is a directory, not a database file;
+refusing to open` — with or without a backup beside it, and
+the directory is never deleted or replaced to make room for
+a restore — and any other non-regular file raises
+`muninn store {path} is not a regular file; refusing to
+open`. A text file is a corrupt store and takes the
+corruption road above (RM-033, see
+`docs/NON_DATABASE_FILES.md`).
+
 Durability: the store runs in WAL mode with `synchronous=FULL`, and
 batch writes are single transactions. A `kill -9` mid-write loses at
 most the uncommitted transaction; committed work survives reopening.
