@@ -37,7 +37,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016, RM-017, RM-018.
+  RM-016, RM-017, RM-018, RM-019.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +48,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-019 in roadmap order (Part II — Stability).
+- Next: RM-020 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -603,3 +603,41 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   required. Founding tree needs no sync for this slice
   (tests + docs only); the RM-008/RM-011/RM-012/RM-016/
   RM-017 package-source sync note stands.
+- **RM-019 — API surface freeze test. BANKED 2026-11-01. Class: UNIT.**
+  Record: `docs/API_SURFACE.md`. The whole public surface of
+  both packages is now snapshotted in
+  `tests/golden_api_surface.txt` per package, enforced by new
+  `tests/test_api_surface.py`: every `__all__` name; every
+  exported class with its direct bases (error hierarchy and
+  the `Muninn` facade's inheritance from `HebbianMemory`
+  pinned); every public method of every exported class —
+  inherited methods included, so the facade keeps the whole
+  ancestor surface — in the RM-003 (name, kind, default)
+  shape; every dataclass field of the exported dataclasses
+  (`MuninnConfig`, `MemoryNode`, `HuginnConfig`,
+  `RetrievalResult`) with declared type and default;
+  properties (`MemoryNode.category`), public class attributes
+  (`MAX_QUERY_RESULTS`), huginn's exported module functions
+  (`analyze_query`, `semantic_search`), and the presence of
+  `__version__`. Builtin-inherited members are excluded as
+  not package surface. Muninn golden **101 lines**, huginn
+  golden **57 lines**. Semantics per the roadmap: additions
+  allowed (a companion test pins that the freeze inventory
+  and `__all__` agree exactly, so a new export cannot slip in
+  unlisted), removals / renames / signature changes fail
+  until a major-version slice updates the golden. Acceptance
+  proven by negation on scratch copies of the installed
+  packages (discarded): renaming muninn `stats` fails the
+  freeze test (1 failed / 2 passed); changing `decay`'s
+  default 1.0 → 2.0 fails it (1 failed / 2 passed); dropping
+  `semantic_search` from huginn's `__all__` fails it
+  (2 failed / 1 passed); adding a new public method to
+  `HebbianMemory` passes (3 passed). Full suites green in a
+  fresh venv (`ravens-rm019-venv`, non-editable installs):
+  muninn **113 passed** (110+3), huginn **89 passed** (86+3);
+  ruff + mypy floors clean (mypy muninn 5 files, huginn 8
+  files). No package code, public API, or schema change
+  (RM-003 freeze + RM-004 snapshot green), so no Bifröst
+  re-verification required. Founding tree needs no sync for
+  this slice (tests + docs only); the RM-008/RM-011/RM-012/
+  RM-016/RM-017 package-source sync note stands.

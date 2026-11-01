@@ -395,3 +395,41 @@ has an entry here with its Class and Commit fields present.
   Founding tree needs no sync for this slice (tests + docs
   only); the RM-008/RM-011/RM-012/RM-016/RM-017
   package-source sync note stands.
+
+## RM-019 — API surface freeze test
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The whole public surface of both packages is
+  now snapshotted in `tests/golden_api_surface.txt` per
+  package, enforced by new `tests/test_api_surface.py`
+  (record: `docs/API_SURFACE.md`). Snapshot contents: every
+  `__all__` name; every exported class with its direct bases
+  (error hierarchy + the `Muninn` facade's inheritance
+  pinned); every public method of every exported class —
+  inherited methods included — in the RM-003
+  (name, kind, default) shape; every dataclass field of the
+  exported dataclasses with declared type and default;
+  properties, public class attributes, huginn's exported
+  module functions, and the presence of `__version__`.
+  Muninn golden **101 lines**, huginn golden **57 lines**.
+  Semantics per the roadmap: additions allowed, removals /
+  renames / signature changes fail. Acceptance proven by
+  negation on scratch copies of the installed packages
+  (discarded): renaming muninn `stats` fails the freeze
+  test (1 failed / 2 passed); changing `decay`'s default
+  1.0 → 2.0 fails it (1 failed / 2 passed); dropping
+  `semantic_search` from huginn's `__all__` fails it
+  (2 failed / 1 passed); adding a new public method to
+  `HebbianMemory` passes (3 passed). A companion test pins
+  that the freeze inventory and `__all__` agree exactly, so
+  a new export cannot slip in unlisted. Full suites green
+  in a fresh venv (`ravens-rm019-venv`, non-editable
+  installs): muninn **113 passed** (110+3), huginn
+  **89 passed** (86+3); ruff + mypy floors clean. No
+  package code, public API, or schema change (RM-003
+  freeze + RM-004 snapshot green), so no Bifröst
+  re-verification required. Founding tree needs no sync
+  for this slice (tests + docs only); the
+  RM-008/RM-011/RM-012/RM-016/RM-017 package-source sync
+  note stands.

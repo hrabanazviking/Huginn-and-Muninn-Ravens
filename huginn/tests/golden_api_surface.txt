@@ -1,0 +1,62 @@
+# RM-019 golden API surface for huginn — snapshot, sorted.
+# Additions are allowed (add new lines in the commit that
+# adds the surface). Removals, renames and signature
+# changes fail test_api_surface.py until a deliberate
+# major-version slice updates this file.
+ALL | HuginnBackendError
+ALL | HuginnConfig
+ALL | HuginnConfigurationError
+ALL | HuginnError
+ALL | HuginnMemory
+ALL | HuginnStorageError
+ALL | HuginnValidationError
+ALL | RetrievalResult
+ALL | __version__
+ALL | analyze_query
+ALL | semantic_search
+CLASS | HuginnBackendError | bases=HuginnError
+CLASS | HuginnConfig | bases=object
+CLASS | HuginnConfigurationError | bases=HuginnError,ValueError
+CLASS | HuginnError | bases=Exception
+CLASS | HuginnMemory | bases=object
+CLASS | HuginnStorageError | bases=HuginnError
+CLASS | HuginnValidationError | bases=HuginnError,ValueError
+CLASS | RetrievalResult | bases=object
+FIELD | HuginnConfig.auto_backup | type=bool | default=True
+FIELD | HuginnConfig.backend | type=str | default='auto'
+FIELD | HuginnConfig.backup_keep | type=int | default=3
+FIELD | HuginnConfig.busy_timeout_ms | type=int | default=5000
+FIELD | HuginnConfig.collection_name | type=str | default='huginn_memories'
+FIELD | HuginnConfig.embedder | type=str | default='tfidf'
+FIELD | HuginnConfig.local_db_path | type=str | default='~/.hermes/memory/huginn_local.db'
+FIELD | HuginnConfig.qdrant_api_key | type=str | None | default=None
+FIELD | HuginnConfig.qdrant_timeout | type=float | default=2.0
+FIELD | HuginnConfig.qdrant_url | type=str | default='http://localhost:6333'
+FIELD | HuginnConfig.st_model | type=str | default='all-MiniLM-L6-v2'
+FIELD | HuginnConfig.vector_dim | type=int | default=384
+FIELD | RetrievalResult.compressed | type=bool | default=<required>
+FIELD | RetrievalResult.error | type=str | None | default=None
+FIELD | RetrievalResult.query | type=str | default=<required>
+FIELD | RetrievalResult.relevance_scores | type=list[float] | default=<required>
+FIELD | RetrievalResult.results | type=list[dict[str, Any]] | default=<required>
+FIELD | RetrievalResult.retrieval_time | type=float | default=<required>
+FIELD | RetrievalResult.source_realm | type=str | default=<required>
+FIELD | RetrievalResult.timestamp | type=datetime | default=<factory>
+FUNCTION | analyze_query | query:POSITIONAL_OR_KEYWORD=<required>
+FUNCTION | semantic_search | query:POSITIONAL_OR_KEYWORD=<required>;documents:POSITIONAL_OR_KEYWORD=<required>;top_k:POSITIONAL_OR_KEYWORD=3
+METHOD | HuginnConfig.__init__ | backend:POSITIONAL_OR_KEYWORD='auto';qdrant_url:POSITIONAL_OR_KEYWORD='http://localhost:6333';qdrant_api_key:POSITIONAL_OR_KEYWORD=None;collection_name:POSITIONAL_OR_KEYWORD='huginn_memories';local_db_path:POSITIONAL_OR_KEYWORD='~/.hermes/memory/huginn_local.db';embedder:POSITIONAL_OR_KEYWORD='tfidf';vector_dim:POSITIONAL_OR_KEYWORD=384;st_model:POSITIONAL_OR_KEYWORD='all-MiniLM-L6-v2';qdrant_timeout:POSITIONAL_OR_KEYWORD=2.0;busy_timeout_ms:POSITIONAL_OR_KEYWORD=5000;backup_keep:POSITIONAL_OR_KEYWORD=3;auto_backup:POSITIONAL_OR_KEYWORD=True
+METHOD | HuginnConfig.resolved_local_path | 
+METHOD | HuginnMemory.__init__ | config:POSITIONAL_OR_KEYWORD=None;overrides:VAR_KEYWORD=<required>
+METHOD | HuginnMemory.analyze_query | query:POSITIONAL_OR_KEYWORD=<required>
+METHOD | HuginnMemory.close | 
+METHOD | HuginnMemory.delete | memory_id:POSITIONAL_OR_KEYWORD=<required>
+METHOD | HuginnMemory.fly | query:POSITIONAL_OR_KEYWORD=<required>;max_results:POSITIONAL_OR_KEYWORD=5;compress:POSITIONAL_OR_KEYWORD=True
+METHOD | HuginnMemory.get | memory_id:POSITIONAL_OR_KEYWORD=<required>
+METHOD | HuginnMemory.get_flight_stats | 
+METHOD | HuginnMemory.health | 
+METHOD | HuginnMemory.multi_hop_retrieve | initial_query:POSITIONAL_OR_KEYWORD=<required>;hop_count:POSITIONAL_OR_KEYWORD=2;max_results_per_hop:POSITIONAL_OR_KEYWORD=3
+METHOD | HuginnMemory.search | query_text:POSITIONAL_OR_KEYWORD=<required>;limit:POSITIONAL_OR_KEYWORD=10;category:POSITIONAL_OR_KEYWORD=None;min_importance:POSITIONAL_OR_KEYWORD=1
+METHOD | HuginnMemory.stats | 
+METHOD | HuginnMemory.upsert_memory | content:POSITIONAL_OR_KEYWORD=<required>;category:POSITIONAL_OR_KEYWORD='general';importance:POSITIONAL_OR_KEYWORD=5;tags:POSITIONAL_OR_KEYWORD=None;emotional_valence:POSITIONAL_OR_KEYWORD=0.0;memory_id:KEYWORD_ONLY=None
+METHOD | RetrievalResult.__init__ | query:POSITIONAL_OR_KEYWORD=<required>;results:POSITIONAL_OR_KEYWORD=<required>;relevance_scores:POSITIONAL_OR_KEYWORD=<required>;source_realm:POSITIONAL_OR_KEYWORD=<required>;retrieval_time:POSITIONAL_OR_KEYWORD=<required>;compressed:POSITIONAL_OR_KEYWORD=<required>;error:POSITIONAL_OR_KEYWORD=None;timestamp:POSITIONAL_OR_KEYWORD=<factory>
+VERSION | __version__
