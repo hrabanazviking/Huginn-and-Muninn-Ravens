@@ -702,3 +702,55 @@ has an entry here with its Class and Commit fields present.
   25 passed, bridge smoke PASS (see CAMPAIGN_STATE.md).
   Founding tree NEEDS A SYNC for the validator hardening
   (extends the standing package-source sync note).
+
+## RM-026 — Input fuzzing, huginn
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/INPUT_FUZZING_HUGINN.md`.
+  Property-style fuzz over every Huginn validator (content,
+  category, importance, valence, tags, memory ids, the search
+  arguments, and every query-text entry point), stdlib-only
+  with recorded seeds 20261031, 20261101, 42, pinned by new
+  `huginn/tests/test_input_fuzz.py` (10 tests): every
+  generated input either succeeds or raises a typed
+  `HuginnError`, every rejected write leaves the document
+  count byte-identical, and huge / unicode-edge / NUL-bearing
+  content and queries round-trip and search exactly.
+  Acceptance proven by negation: against the pre-fix code the
+  suite failed 8 of 10 tests (importance/valence and the
+  huge/unicode/NUL corpora already passed). Nine defects
+  found and fixed in-slice: oversized ids overflowing SQLite
+  untyped (ceiling now 2⁶³−1 in `_check_memory_id`, the
+  RM-025 fix mirrored); `search(limit=…)` bare `int()`
+  errors and silent float truncation (one typed count
+  checker now serves limit / top_k / max_results /
+  hop_count / max_results_per_hop); a huge `min_importance`
+  overflowing at SQL bind time (same ceiling); categories
+  unvalidated on both paths (write-side `str()` coercion
+  silently storing `"123"`/`"None"`, read-side lists dying
+  as untyped SQLite `ProgrammingError`) — one checker now
+  guards both; tags crashing on non-iterables and bare
+  strings exploding into character tags (list/tuple only);
+  the flight paths crashing with `AttributeError` on
+  non-string queries (`fly` now validates inside its error
+  envelope and returns an error flight); `analyze_query`
+  sharing the crash and silently analysing None;
+  `semantic_search` trusting query / documents / top_k
+  entirely; and `HuginnConfig`'s numeric fields raising
+  untyped on non-convertible values with a NaN
+  `qdrant_timeout` passing (never-raising coercion helpers,
+  messages unchanged), plus first-time type validation for
+  `st_model` and `qdrant_api_key`. RM-018 golden extended
+  deliberately in this commit (44 templates, 41 cases; the
+  moved validators keep their exact messages). Full suites
+  green in a fresh venv: muninn **141 passed** (no muninn
+  code change; slice-log EXPECTED pin only), huginn
+  **110 passed** (100+10); ruff + mypy floors clean.
+  Validation behaviour tightened (no signature or schema
+  change), so the Bifröst contract re-verification was run
+  before banking — fresh venv, bifrost at b66e98cc, its
+  suites 25 passed, bridge smoke PASS (see
+  CAMPAIGN_STATE.md). Founding tree NEEDS A SYNC for the
+  validator hardening (extends the standing package-source
+  sync note).

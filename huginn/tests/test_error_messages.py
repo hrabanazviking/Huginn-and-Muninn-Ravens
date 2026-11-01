@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-from huginn import HuginnMemory
+from huginn import HuginnMemory, semantic_search
 from huginn.config import HuginnConfig
 from huginn.local_backend import LocalBackend
 from huginn.qdrant_backend import QdrantBackend
@@ -198,6 +198,8 @@ def _cases(tmp_path):
         "config_qdrant_timeout": cfg(qdrant_timeout=0),
         "config_busy_timeout": cfg(busy_timeout_ms=-1),
         "config_backup_keep": cfg(backup_keep=-1),
+        "config_st_model": cfg(st_model=""),
+        "config_api_key_type": cfg(qdrant_api_key=123),
         "content_empty": lambda: h.upsert_memory(""),
         "importance_type": lambda: h.upsert_memory("a", importance="high"),
         "importance_range": lambda: h.upsert_memory("a", importance=11),
@@ -205,8 +207,14 @@ def _cases(tmp_path):
         "valence_range": lambda: h.upsert_memory("a", emotional_valence=1.5),
         "memory_id_type": lambda: h.get("x"),
         "memory_id_negative": lambda: h.get(-1),
+        "memory_id_ceiling": lambda: h.get(2**63),
         "query_text_type": lambda: h.search(123),
         "min_importance_type": lambda: h.search("hello", min_importance=1.5),
+        "min_importance_ceiling": lambda: h.search("hello", min_importance=2**63),
+        "limit_type": lambda: h.search("hello", limit="x"),
+        "category_type": lambda: h.search("hello", category=123),
+        "tags_type": lambda: h.upsert_memory("a", tags=42),
+        "documents_type": lambda: semantic_search("ravens", 123),
         "embedder_unknown": lambda: h._make_embedder("bogus"),
         "local_id_clash": lambda: h.upsert_memory("shared content", memory_id=99),
         "facade_closed": close_facade,

@@ -26,6 +26,44 @@ BACKENDS = ("auto", "local", "qdrant")
 EMBEDDERS = ("tfidf", "hashing", "sentence-transformers")
 
 
+def _coerce_float(value: object) -> float | None:
+    """RM-026: the value as a float, or None — never an untyped raise.
+
+    Accepts exactly the shapes the pre-RM-026 ``float()`` checks
+    accepted for sane callers (bool / int / float / numeric
+    string); anything else is None, and the caller raises the
+    field's typed configuration error. (Twin of muninn's RM-025
+    helper.)
+    """
+    if isinstance(value, (bool, int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_int(value: object) -> int | None:
+    """RM-026: the value as an int, or None — never an untyped raise."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        try:
+            return int(value)
+        except (ValueError, OverflowError):
+            return None
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 @dataclass(frozen=True)
 class HuginnConfig:
     """Configuration for :class:`huginn.HuginnMemory`.
@@ -81,13 +119,21 @@ class HuginnConfig:
             raise HuginnConfigurationError("local_db_path must be a non-empty string")
         if not isinstance(self.collection_name, str) or not self.collection_name.strip():
             raise HuginnConfigurationError("collection_name must be a non-empty string")
-        if int(self.vector_dim) < 8:
+        if not isinstance(self.st_model, str) or not self.st_model.strip():
+            raise HuginnConfigurationError("st_model must be a non-empty string")
+        if self.qdrant_api_key is not None and not isinstance(self.qdrant_api_key, str):
+            raise HuginnConfigurationError("qdrant_api_key must be a string or None")
+        vector_dim = _coerce_int(self.vector_dim)
+        if vector_dim is None or vector_dim < 8:
             raise HuginnConfigurationError("vector_dim must be >= 8")
-        if float(self.qdrant_timeout) <= 0:
+        qdrant_timeout = _coerce_float(self.qdrant_timeout)
+        if qdrant_timeout is None or not qdrant_timeout > 0:
             raise HuginnConfigurationError("qdrant_timeout must be > 0")
-        if int(self.busy_timeout_ms) < 0:
+        busy_timeout_ms = _coerce_int(self.busy_timeout_ms)
+        if busy_timeout_ms is None or busy_timeout_ms < 0:
             raise HuginnConfigurationError("busy_timeout_ms must be >= 0")
-        if int(self.backup_keep) < 0:
+        backup_keep = _coerce_int(self.backup_keep)
+        if backup_keep is None or backup_keep < 0:
             raise HuginnConfigurationError("backup_keep must be >= 0")
 
     def resolved_local_path(self) -> Path:

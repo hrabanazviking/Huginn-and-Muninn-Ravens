@@ -14,7 +14,7 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (33): every raise site except the three that
+# CASE lines (41): every raise site except the three that
 # cannot be triggered deterministically — "could not be
 # prepared" (needs a store whose schema script fails mid-open)
 # and the two "document insert reported success but returned
@@ -30,6 +30,8 @@ CASE config_vector_dim | HuginnConfigurationError | vector_dim must be >= 8
 CASE config_qdrant_timeout | HuginnConfigurationError | qdrant_timeout must be > 0
 CASE config_busy_timeout | HuginnConfigurationError | busy_timeout_ms must be >= 0
 CASE config_backup_keep | HuginnConfigurationError | backup_keep must be >= 0
+CASE config_st_model | HuginnConfigurationError | st_model must be a non-empty string
+CASE config_api_key_type | HuginnConfigurationError | qdrant_api_key must be a string or None
 CASE content_empty | HuginnValidationError | content must be a non-empty string
 CASE importance_type | HuginnValidationError | importance must be an int in [1, 10], got 'high'
 CASE importance_range | HuginnValidationError | importance must be in [1, 10], got 11
@@ -37,8 +39,14 @@ CASE valence_type | HuginnValidationError | emotional_valence must be a number i
 CASE valence_range | HuginnValidationError | emotional_valence must be in [-1, 1], got 1.5
 CASE memory_id_type | HuginnValidationError | memory_id must be an int, got str
 CASE memory_id_negative | HuginnValidationError | memory_id must be >= 0, got -1
+CASE memory_id_ceiling | HuginnValidationError | memory_id must be <= 9223372036854775807, got 9223372036854775808
 CASE query_text_type | HuginnValidationError | query_text must be a string
 CASE min_importance_type | HuginnValidationError | min_importance must be an int
+CASE min_importance_ceiling | HuginnValidationError | min_importance must be <= 9223372036854775807, got 9223372036854775808
+CASE limit_type | HuginnValidationError | limit must be an int, got str
+CASE category_type | HuginnValidationError | category must be a string
+CASE tags_type | HuginnValidationError | tags must be a list of strings
+CASE documents_type | HuginnValidationError | documents must be a list of strings
 CASE embedder_unknown | HuginnConfigurationError | no vector embedder named 'bogus'
 CASE local_id_clash | HuginnValidationError | memory_id 99 is free but this content already lives at id 1; upsert there instead
 CASE facade_closed | HuginnBackendError | HuginnMemory is closed
@@ -54,7 +62,7 @@ CASE qdrant_delete_failed | HuginnBackendError | Qdrant delete failed: boom
 CASE qdrant_retrieve_failed | HuginnBackendError | Qdrant retrieve failed: boom
 CASE qdrant_search_failed | HuginnBackendError | Qdrant search failed: boom
 CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: boom
-# TEMPLATE lines (36 raise sites, 35 distinct — the insert
+# TEMPLATE lines (44 raise sites, 43 distinct — the insert
 # guard's line is duplicated, once per insert path).
 TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
 TEMPLATE | HuginnBackendError | HuginnMemory is closed
@@ -74,6 +82,8 @@ TEMPLATE | HuginnConfigurationError | embedder must be one of {}
 TEMPLATE | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
 TEMPLATE | HuginnConfigurationError | local_db_path must be a non-empty string
 TEMPLATE | HuginnConfigurationError | no vector embedder named {}
+TEMPLATE | HuginnConfigurationError | qdrant_api_key must be a string or None
+TEMPLATE | HuginnConfigurationError | st_model must be a non-empty string
 TEMPLATE | HuginnConfigurationError | qdrant_timeout must be > 0
 TEMPLATE | HuginnConfigurationError | qdrant_url must be a non-empty string
 TEMPLATE | HuginnConfigurationError | vector_dim must be >= 8
@@ -83,12 +93,18 @@ TEMPLATE | HuginnStorageError | document insert reported success but returned no
 TEMPLATE | HuginnStorageError | huginn store {} could not be prepared: {}
 TEMPLATE | HuginnStorageError | huginn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
 TEMPLATE | HuginnValidationError | content must be a non-empty string
+TEMPLATE | HuginnValidationError | category must be a string
+TEMPLATE | HuginnValidationError | documents must be a list of strings
+TEMPLATE | HuginnValidationError | tags must be a list of strings
+TEMPLATE | HuginnValidationError | {} must be an int, got {}
 TEMPLATE | HuginnValidationError | emotional_valence must be a number in [-1, 1], got {}
 TEMPLATE | HuginnValidationError | emotional_valence must be in [-1, 1], got {}
 TEMPLATE | HuginnValidationError | importance must be an int in [1, 10], got {}
 TEMPLATE | HuginnValidationError | importance must be in [1, 10], got {}
 TEMPLATE | HuginnValidationError | memory_id must be >= 0, got {}
+TEMPLATE | HuginnValidationError | memory_id must be <= 9223372036854775807, got {}
 TEMPLATE | HuginnValidationError | memory_id must be an int, got {}
 TEMPLATE | HuginnValidationError | memory_id {} is free but this content already lives at id {}; upsert there instead
 TEMPLATE | HuginnValidationError | min_importance must be an int
+TEMPLATE | HuginnValidationError | min_importance must be <= 9223372036854775807, got {}
 TEMPLATE | HuginnValidationError | query_text must be a string

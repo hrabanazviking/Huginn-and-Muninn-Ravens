@@ -51,9 +51,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Banked (Part III): RM-025. Part III (Robustness) is
-  under way — 1 of 14 slices banked.
-- Next: RM-026 in roadmap order (Part III — Robustness).
+- Banked (Part III): RM-025, RM-026. Part III (Robustness)
+  is under way — 2 of 14 slices banked.
+- Next: RM-027 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -859,3 +859,69 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   **100 passed**; ruff + mypy floors clean. Founding tree
   NEEDS A SYNC for the validator hardening (extends the
   RM-008/RM-011/RM-012/RM-016/RM-017 sync note).
+- **RM-026 — Input fuzzing, huginn. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/INPUT_FUZZING_HUGINN.md`.
+  Stdlib-only property-style fuzz (seeds 20261031, 20261101,
+  42) over every Huginn validator — upsert/search/get/delete
+  arguments and query text (empty, huge, unicode-edge,
+  NUL-bearing) — pinned by new `tests/test_input_fuzz.py`
+  (10 tests): every generated input either succeeds or
+  raises a typed `HuginnError`, every rejected write leaves
+  the document count byte-identical, and `fly` returns an
+  error flight instead of raising. Negation recorded in the
+  slice doc: the suite failed **8 of 10** against the
+  pre-fix code. Nine defects fixed in-slice: oversized ids
+  overflowing SQLite untyped (ceiling 2⁶³−1 in
+  `_check_memory_id`, the RM-025 fix mirrored); bare `int()`
+  errors / silent float truncation in `search(limit=…)`
+  (one typed count checker now serves limit / top_k /
+  max_results / hop_count / max_results_per_hop); a huge
+  `min_importance` overflowing at SQL bind time (same
+  ceiling); categories unvalidated on both paths (write-side
+  `str()` coercion silently storing `"123"`/`"None"`,
+  read-side lists dying as untyped SQLite
+  `ProgrammingError`) — one checker now guards both; tags
+  crashing on non-iterables and bare strings exploding into
+  character tags (list/tuple only); flight paths crashing
+  with `AttributeError` on non-string queries (`fly`
+  validates inside its error envelope); `analyze_query`
+  sharing the crash and silently analysing None;
+  `semantic_search` trusting query / documents / top_k
+  entirely; `HuginnConfig` numeric fields raising untyped
+  on non-convertible values with a NaN `qdrant_timeout`
+  passing (never-raising coercion helpers, messages
+  unchanged), plus first-time type validation for
+  `st_model` and `qdrant_api_key`. RM-018 golden extended
+  deliberately (44 templates, 41 cases; moved validators
+  keep their exact messages). Build history, honestly: the
+  slice was built in an earlier tick (~09:33–09:39 EST) and
+  left unbanked; its first verification run
+  (`~/workspace/.verify-tmp/rm026_verify.log`) hit the VM's
+  environment disk-I/O failures (muninn 55 failed on WAL
+  `disk I/O error` under heavy cross-campaign load) and
+  huginn's only 2 failures were the then-missing
+  `docs/SLICE_LOG.md` RM-026 entry. The banking tick
+  (2026-11-01 ~10:28–10:40 EST) appended the entry,
+  re-probed the write gate (5/5 WAL probes OK) and re-ran
+  everything green in the fresh venv (`ravens-rm026-venv`,
+  non-editable installs, byte-identical to the tree):
+  muninn **141 passed** (no muninn code change; slice-log
+  EXPECTED pin only), huginn **110 passed** (100+10); ruff
+  + mypy floors clean. Validation behaviour tightened (no
+  signature or schema change), so the **Bifröst contract
+  re-verification was run before banking** in the banking
+  tick: fresh venv (`ravens-rm026-bifrost-venv`, installed
+  huginn verified byte-identical to this repo's source),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id;
+  search 1 merged result; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge armed at 0
+  days; stats over all three backends; both raven health
+  dicts carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm026_bifrost.log`). Founding
+  tree NEEDS A SYNC for the validator hardening (extends
+  the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025 sync
+  note).

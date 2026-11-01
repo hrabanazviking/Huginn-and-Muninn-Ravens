@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import threading
 import time
 from dataclasses import dataclass, field
@@ -74,7 +75,7 @@ def analyze_query(query: str) -> dict[str, Any]:
     Returns ``query_type``, ``key_terms`` (stopwords removed),
     ``strategy``, ``recommended_hops`` and ``word_count``.
     """
-    safe_query = (query or "").strip()[:MAX_QUERY_CHARS]
+    safe_query = _check_query_text(query).strip()[:MAX_QUERY_CHARS]
     query_lower = safe_query.lower()
     words = query_lower.split()
 
@@ -117,14 +118,17 @@ def semantic_search(
     (no sklearn). Returns ``(index, score)`` pairs, best first,
     positive scores only.
     """
-    if not documents:
+    _check_query_text(query)
+    docs = _check_documents(documents)
+    bounded_top_k = _check_count(top_k, "top_k")
+    if not docs:
         return []
-    doc_counts = [term_counts(tokenize(doc)) for doc in documents]
+    doc_counts = [term_counts(tokenize(doc)) for doc in docs]
     df: dict[str, int] = {}
     for counts in doc_counts:
         for term in counts:
             df[term] = df.get(term, 0) + 1
-    total = len(documents)
+    total = len(docs)
     query_vec = sparse_tfidf(term_counts(tokenize(query)), df, total)
     scored = []
     for idx, counts in enumerate(doc_counts):
@@ -133,7 +137,7 @@ def semantic_search(
             scored.append((idx, score))
     # RM-011 determinism pin: equal scores resolve by document index.
     scored.sort(key=lambda item: (-item[1], item[0]))
-    bounded = max(1, min(int(top_k), len(documents)))
+    bounded = max(1, min(bounded_top_k, len(docs)))
     return [(idx, float(score)) for idx, score in scored[:bounded]]
 
 
@@ -173,7 +177,85 @@ def _check_memory_id(value: Any) -> int:
         raise HuginnValidationError(f"memory_id must be an int, got {type(value).__name__}")
     if value < 0:
         raise HuginnValidationError(f"memory_id must be >= 0, got {value}")
+    if value > 9223372036854775807:
+        raise HuginnValidationError(f"memory_id must be <= 9223372036854775807, got {value}")
     return int(value)
+
+
+def _check_count(value: Any, what: str) -> int:
+    """RM-026: an integer count (limit / top_k / max_results /
+    hop_count), typed — the twin of muninn's RM-025 checker.
+
+    Plain ints pass; finite integral floats are accepted as
+    before (``int()`` semantics); everything else — strings,
+    containers, NaN, infinities, bools — is a typed refusal
+    instead of a bare ``TypeError``/``ValueError`` from ``int()``.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or (
+        isinstance(value, float) and not (math.isfinite(value) and value.is_integer())
+    ):
+        raise HuginnValidationError(f"{what} must be an int, got {type(value).__name__}")
+    return int(value)
+
+
+def _check_query_text(value: Any) -> str:
+    """RM-026: every query-shaped argument is a string, typed.
+
+    The one checker behind ``search`` / ``analyze_query`` /
+    ``semantic_search`` / ``fly`` / ``multi_hop_retrieve``, so a
+    non-string query is the same typed refusal everywhere
+    instead of an ``AttributeError`` from ``.strip()`` inside
+    the flight paths.
+    """
+    if not isinstance(value, str):
+        raise HuginnValidationError("query_text must be a string")
+    return value
+
+
+def _check_category(value: Any, *, allow_none: bool = False) -> str | None:
+    """RM-026: a category is a string (or None on reads), typed.
+
+    Before this slice the facade coerced with ``str()`` on
+    writes (silently storing ``"123"``) and passed the raw
+    value to the backends on reads, where a list died as an
+    untyped SQLite ``ProgrammingError`` at bind time.
+    """
+    if value is None and allow_none:
+        return None
+    if not isinstance(value, str):
+        raise HuginnValidationError("category must be a string")
+    return value
+
+
+def _check_tag_list(tags: Any) -> list[Any]:
+    """RM-026: the tags argument is a list/tuple (or None).
+
+    A bare string is refused instead of exploding into
+    single-character tags, and a non-iterable is a typed
+    refusal instead of a bare ``TypeError``. Elements keep the
+    historical ``str()`` coercion at the call site.
+    """
+    if tags is None:
+        return []
+    if isinstance(tags, (str, bytes)) or not isinstance(tags, (list, tuple)):
+        raise HuginnValidationError("tags must be a list of strings")
+    return list(tags)
+
+
+def _check_documents(documents: Any) -> list[str]:
+    """RM-026: ``semantic_search`` documents are a list of strings.
+
+    Before this slice a bare string was silently iterated
+    character by character and non-string documents were
+    coerced inside the tokenizer; neither is a document list.
+    """
+    if (
+        isinstance(documents, (str, bytes))
+        or not isinstance(documents, (list, tuple))
+        or any(not isinstance(doc, str) for doc in documents)
+    ):
+        raise HuginnValidationError("documents must be a list of strings")
+    return list(documents)
 
 
 class HuginnMemory:
@@ -282,11 +364,13 @@ class HuginnMemory:
         emotional_valence = _check_valence(emotional_valence)
         if memory_id is not None:
             memory_id = _check_memory_id(memory_id)
-        clean_tags = [str(t) for t in (tags or [])]
+        clean_category = _check_category(category)
+        assert clean_category is not None  # allow_none=False: None already raised
+        clean_tags = [str(t) for t in _check_tag_list(tags)]
         backend = self._ensure_backend()
         return backend.upsert(
             content,
-            category=str(category),
+            category=clean_category,
             importance=importance,
             tags=clean_tags,
             emotional_valence=emotional_valence,
@@ -306,18 +390,21 @@ class HuginnMemory:
         emotional_valence, score`` — best first. A blank query is an
         honest empty result, not an error.
         """
-        if not isinstance(query_text, str):
-            raise HuginnValidationError("query_text must be a string")
+        _check_query_text(query_text)
         if not query_text.strip():
             return []
-        limit = max(1, min(int(limit), 1000))
+        limit = max(1, min(_check_count(limit, "limit"), 1000))
         if isinstance(min_importance, bool) or not isinstance(min_importance, int):
             raise HuginnValidationError("min_importance must be an int")
+        if min_importance > 9223372036854775807:
+            raise HuginnValidationError(
+                f"min_importance must be <= 9223372036854775807, got {min_importance}"
+            )
         backend = self._ensure_backend()
         return backend.search(
             query_text,
             limit=limit,
-            category=category,
+            category=_check_category(category, allow_none=True),
             min_importance=min_importance,
         )
 
@@ -394,11 +481,14 @@ class HuginnMemory:
         flights did, rather than crashing the thinker.
         """
         start = time.time()
-        bounded = max(1, min(int(max_results), MAX_RESULTS_CAP))
-        safe_query = (query or "").strip()[:MAX_QUERY_CHARS]
         error: str | None = None
         results: list[dict[str, Any]] = []
         try:
+            # RM-026: the count and the query are validated inside
+            # the flight's error envelope — a bad argument comes
+            # home as an error flight, never as an untyped raise.
+            bounded = max(1, min(_check_count(max_results, "max_results"), MAX_RESULTS_CAP))
+            safe_query = _check_query_text(query).strip()[:MAX_QUERY_CHARS]
             results = self.search(safe_query, limit=bounded)
         except HuginnError as exc:
             error = str(exc)
@@ -441,10 +531,11 @@ class HuginnMemory:
     ) -> list[RetrievalResult]:
         """Chained flights: each hop's findings seed the next query."""
         flights: list[RetrievalResult] = []
-        current_query = (initial_query or "").strip()[:MAX_QUERY_CHARS]
-        bounded_hops = max(1, min(int(hop_count), 5))
+        current_query = _check_query_text(initial_query).strip()[:MAX_QUERY_CHARS]
+        bounded_hops = max(1, min(_check_count(hop_count, "hop_count"), 5))
+        bounded_per_hop = _check_count(max_results_per_hop, "max_results_per_hop")
         for _ in range(bounded_hops):
-            flight = self.fly(current_query, max_results=max_results_per_hop)
+            flight = self.fly(current_query, max_results=bounded_per_hop)
             flights.append(flight)
             if not flight.results:
                 break
