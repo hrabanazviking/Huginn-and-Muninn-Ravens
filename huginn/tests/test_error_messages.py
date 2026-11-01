@@ -156,6 +156,15 @@ def _qdrant_backend(client):
     return backend
 
 
+def _deep_list(depth):
+    root = cur = []
+    for _ in range(depth):
+        nxt = []
+        cur.append(nxt)
+        cur = nxt
+    return root
+
+
 def _cases(tmp_path):
     local_cfg = HuginnConfig(backend="local", local_db_path=str(tmp_path / "h.db"))
     h = HuginnMemory(local_cfg)
@@ -340,6 +349,8 @@ def _cases(tmp_path):
         ),
         "content_surrogate": lambda: h.upsert_memory("bad \ud800 end"),
         "query_surrogate": lambda: h.search("bad \ud800"),
+        "tags_too_deep": lambda: h.upsert_memory("ok", tags=[_deep_list(101)]),
+        "tags_oversize": lambda: tight.upsert_memory("ok", tags=["abcdefghij"]),
     }
     return cases, _holder
 

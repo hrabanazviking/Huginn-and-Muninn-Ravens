@@ -790,6 +790,19 @@ path and the `retrieve` filters are checked before any
 write and refused with `… must not contain lone
 surrogates` (RM-034, see `docs/UNICODE_GAUNTLET.md`).
 
+Adversarial annotation shapes are bounded too: JSON-shaped
+content, metadata and tag elements may nest at most 100
+containers deep — deeper is refused with
+`… nesting depth exceeds maximum of 100`, checked
+iteratively before any recursive walk, so a value nested
+thousands deep is a typed refusal and never a
+`RecursionError` — and the cleaned tags list, in its stored
+JSON form, must fit `max_metadata_bytes`, the same ceiling
+that bounds metadata. Self-referential content/metadata are
+still refused as not JSON-serializable, and a
+self-referential tag element still renders through `repr`'s
+ellipsis (RM-036, see `docs/ADVERSARIAL_TAGS_METADATA.md`).
+
 Durability: the store runs in WAL mode with `synchronous=FULL`, and
 batch writes are single transactions. A `kill -9` mid-write loses at
 most the uncommitted transaction; committed work survives reopening.

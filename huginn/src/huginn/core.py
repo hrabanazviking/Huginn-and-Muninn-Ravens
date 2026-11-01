@@ -33,6 +33,7 @@ vector form); true neural embeddings need
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import math
 import threading
@@ -274,6 +275,73 @@ def _check_content_size(content: str, ceiling: int) -> None:
         )
 
 
+# RM-036: nesting bound for tag elements, the twin of muninn's.
+# 100 containers deep is far beyond any honest tag shape, and
+# far below the depth at which ``repr`` (the ``str()`` coercion
+# of a container tag element) overflows the interpreter stack.
+_MAX_STRUCTURE_DEPTH = 100
+
+
+def _check_structure_depth(value: Any, what: str) -> None:
+    """RM-036: a structured value must not nest too deep.
+
+    The walk is iterative (explicit stack, path-scoped id set),
+    so the check itself cannot overflow the stack it guards:
+    before this slice, a tag element nested tens of thousands
+    of containers deep escaped ``upsert_memory`` as a raw
+    ``RecursionError`` from its ``repr``. A container already
+    on the current path (a circular structure) is not
+    descended into — ``repr`` renders those with an ellipsis,
+    as it always has. A shared (DAG-shaped) substructure is
+    walked once per occurrence and is not circular. Enforced
+    in the facade, so the refusal holds on the local and
+    Qdrant backends alike.
+    """
+    if not isinstance(value, (dict, list, tuple, set, frozenset)):
+        return
+    on_path: set[int] = set()
+    stack: list[tuple[Any, int, bool]] = [(value, 1, False)]
+    while stack:
+        node, depth, exiting = stack.pop()
+        if exiting:
+            on_path.discard(id(node))
+            continue
+        if not isinstance(node, (dict, list, tuple, set, frozenset)):
+            continue
+        if id(node) in on_path:
+            continue
+        if depth > _MAX_STRUCTURE_DEPTH:
+            raise HuginnValidationError(
+                f"{what} nesting depth exceeds maximum of {_MAX_STRUCTURE_DEPTH}"
+            )
+        on_path.add(id(node))
+        stack.append((node, depth, True))
+        children: list[Any] = (
+            list(node.keys()) + list(node.values())
+            if isinstance(node, dict)
+            else list(node)
+        )
+        stack.extend((child, depth + 1, False) for child in children)
+
+
+def _check_tags_size(clean_tags: list[str], ceiling: int) -> None:
+    """RM-036: the stored tags must fit the content ceiling.
+
+    Huginn memories carry no caller metadata, so tags are the
+    annotation payload and the RM-027 content ceiling bounds
+    them uniformly: the measure is the UTF-8 byte length of
+    the tags' JSON form, as the local backend stores them.
+    Before this slice a tags list of any length was accepted,
+    however enormous. Enforced in the facade, before any
+    backend is touched.
+    """
+    size = len(json.dumps(clean_tags).encode("utf-8"))
+    if size > ceiling:
+        raise HuginnValidationError(
+            f"tags size {size} bytes exceeds max_content_bytes ({ceiling} bytes)"
+        )
+
+
 def _check_documents(documents: Any) -> list[str]:
     """RM-026: ``semantic_search`` documents are a list of strings.
 
@@ -402,9 +470,13 @@ class HuginnMemory:
             memory_id = _check_memory_id(memory_id)
         clean_category = _check_category(category)
         assert clean_category is not None  # allow_none=False: None already raised
-        clean_tags = [str(t) for t in _check_tag_list(tags)]
+        clean_tags = []
+        for raw_tag in _check_tag_list(tags):
+            _check_structure_depth(raw_tag, "tags")
+            clean_tags.append(str(raw_tag))
         for tag in clean_tags:
             _check_no_lone_surrogates(tag, "tags")
+        _check_tags_size(clean_tags, self.config.max_content_bytes)
         backend = self._ensure_backend()
         return backend.upsert(
             content,

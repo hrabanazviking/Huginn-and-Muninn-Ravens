@@ -809,6 +809,16 @@ not contain lone surrogates` (RM-034, see
 `docs/UNICODE_GAUNTLET.md`). Inside `fly`, the refusal
 comes home as an error flight naming it, as flights do.
 
+Adversarial tag shapes are bounded too: a tag element may
+nest at most 100 containers deep — deeper is refused with
+`tags nesting depth exceeds maximum of 100`, checked
+iteratively in the facade before the `str()` coercion whose
+`repr` used to overflow the stack — and the cleaned tags
+list, in its JSON form, must fit `max_content_bytes`, the
+ceiling that bounds content. A self-referential tag element
+still renders through `repr`'s ellipsis (RM-036, see
+`docs/ADVERSARIAL_TAGS_METADATA.md`).
+
 ### Threading
 
 All backends serialize internally with a lock, and `HuginnMemory`

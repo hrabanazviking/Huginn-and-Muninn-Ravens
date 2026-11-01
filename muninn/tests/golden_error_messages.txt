@@ -64,6 +64,9 @@ CASE directory_store | MuninnStorageError | muninn store <tmp_path>/dir.db is a 
 CASE nonfile_store | MuninnStorageError | muninn store <tmp_path>/fifo.db is not a regular file; refusing to open
 CASE content_surrogate | MuninnValidationError | content must not contain lone surrogates
 CASE path_surrogate | MuninnValidationError | path must not contain lone surrogates
+CASE metadata_too_deep | MuninnValidationError | metadata nesting depth exceeds maximum of 100
+CASE content_too_deep | MuninnValidationError | content nesting depth exceeds maximum of 100
+CASE tags_oversize | MuninnValidationError | tags size 14 bytes exceeds max_metadata_bytes (8 bytes)
 # TEMPLATE lines (55 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
@@ -129,8 +132,10 @@ TEMPLATE | MuninnValidationError | memory_id must be <= 9223372036854775807, got
 TEMPLATE | MuninnValidationError | memory_ids must be a list of ints
 TEMPLATE | MuninnValidationError | seed_ids must be a list of ints
 TEMPLATE | MuninnValidationError | tags must be a list of strings
+TEMPLATE | MuninnValidationError | tags size {} bytes exceeds max_metadata_bytes ({} bytes)
 TEMPLATE | MuninnValidationError | {} must be an int, got {}
 TEMPLATE | MuninnValidationError | {} must not contain lone surrogates
+TEMPLATE | MuninnValidationError | {} nesting depth exceeds maximum of {}
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata size {} bytes exceeds max_metadata_bytes ({} bytes)

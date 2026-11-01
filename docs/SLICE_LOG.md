@@ -1314,3 +1314,74 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   RM-029/RM-030/RM-031/RM-032/RM-033/RM-034 sync note).
   Huginn has no batch operation — this slice is
   Muninn-only.
+
+## RM-036 — Adversarial tags/metadata
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The annotation payload's *shape* is bounded
+  now, in both ravens. Probed first against the RM-035
+  packages: Muninn metadata or JSON-shaped content nested
+  5,000 containers deep escaped `remember` as a raw
+  `RecursionError` (inside the recursive RM-034 surrogate
+  walk or `json.dumps` itself, before the RM-027 size check
+  ran); a 200,000-entry tags list was accepted by both
+  ravens unbounded; a Huginn tag element nested 50,000 deep
+  escaped `upsert_memory` as a raw `RecursionError` from
+  the `repr` of the facade's `str()` coercion. Defined now
+  (record `docs/ADVERSARIAL_TAGS_METADATA.md`): one
+  iterative depth bound (`_check_structure_depth`,
+  `_MAX_STRUCTURE_DEPTH = 100` containers — explicit stack,
+  path-scoped id set, so the check cannot overflow the
+  stack it guards) over Muninn's JSON-shaped content,
+  metadata (`remember` + `update`) and every tag element
+  (`remember`, `update`, `retrieve` filter), and over
+  Huginn's tag elements in the facade — deeper is the typed
+  refusal `{field} nesting depth exceeds maximum of 100`
+  before any write. The walker does not descend into a
+  container already on its path, so self-referential
+  content/metadata keep their established typed
+  serializability refusals and a circular tag element still
+  renders through `repr`'s ellipsis; shared (DAG)
+  substructures are walked per occurrence and stored as
+  before. The RM-027 ceilings are applied uniformly to the
+  one payload they had not reached: the cleaned tags list,
+  measured as its stored JSON form in UTF-8 bytes, must fit
+  Muninn's `max_metadata_bytes` / Huginn's
+  `max_content_bytes` — `tags size {n} bytes exceeds
+  max_metadata_bytes ({c} bytes)` and its Huginn twin,
+  before any write, on both write paths. Pinned by new
+  `tests/test_adversarial_tags_metadata.py` (muninn 16,
+  huginn 7): at-bound shapes stored verbatim, above-bound
+  and thousands-deep refused typed with counts unchanged,
+  circular/DAG behaviour preserved, tags at the ceiling
+  stored and above it refused with the measured size, a
+  200,000-tag flood refused under the default ceilings.
+  Negation against the pre-RM-036 packages: muninn
+  **10 failed / 6 passed**, huginn **5 failed / 2 passed**
+  (the passes are exactly the preserved behaviours).
+  RM-018 goldens extended deliberately (muninn 50 cases /
+  65 templates, huginn 54 cases / 66 templates, counted
+  from the files — +3 CASEs +2 TEMPLATEs muninn, +2 +2
+  huginn). Full suites green in a fresh venv
+  (`ravens-rm036-venv`, non-editable installs, TMPDIR on
+  the workspace disk): muninn **231 passed** (215+16),
+  huginn **161 passed** (154+7); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files).
+  Validation behaviour changed (no signature or schema
+  change; RM-003/RM-004 pins green), so the **Bifröst
+  contract re-verification was run before banking**: fresh
+  venv (`ravens-rm036-bifrost-venv`), bifrost at b66e98cc
+  — its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=6; search 1 merged result;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three
+  backends; both raven health dicts carry `sqlite_version`
+  3.45.1; huginn degraded via auto-fallback to local —
+  live Qdrant still NOT PROVEN; double close safe;
+  evidence `~/workspace/.verify-tmp/rm036/bifrost_smoke.log`).
+  Founding tree NEEDS A SYNC for the depth bound and the
+  tags ceiling (extends the RM-008/RM-011/RM-012/RM-016/
+  RM-017/RM-025/RM-026/RM-027/RM-028/RM-029/RM-030/RM-031/
+  RM-032/RM-033/RM-034/RM-035 sync note).

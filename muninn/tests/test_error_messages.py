@@ -59,6 +59,23 @@ def _capture(fn, tmp_path):
     raise AssertionError("trigger did not raise")
 
 
+def _deep_dict(depth):
+    root = cur = {}
+    for _ in range(depth):
+        cur["a"] = {}
+        cur = cur["a"]
+    return root
+
+
+def _deep_list(depth):
+    root = cur = []
+    for _ in range(depth):
+        nxt = []
+        cur.append(nxt)
+        cur = nxt
+    return root
+
+
 def _cases(tmp_path):
     m = HebbianMemory(MuninnConfig(db_path=str(tmp_path / "m.db")))
     alpha = m.remember("alpha")
@@ -198,6 +215,9 @@ def _cases(tmp_path):
         ),
         "content_surrogate": lambda: m.remember("bad \ud800 end"),
         "path_surrogate": lambda: m.remember("clean", path="a/\ud800"),
+        "metadata_too_deep": lambda: m.remember("ok", metadata=_deep_dict(101)),
+        "content_too_deep": lambda: m.remember(_deep_list(101)),
+        "tags_oversize": lambda: tight.remember("ok", tags=["abcdefghij"]),
     }
     return cases, m, _holder
 

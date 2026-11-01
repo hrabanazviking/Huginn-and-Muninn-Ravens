@@ -63,6 +63,8 @@ CASE directory_store | HuginnStorageError | huginn store <tmp_path>/dir.db is a 
 CASE nonfile_store | HuginnStorageError | huginn store <tmp_path>/fifo.db is not a regular file; refusing to open
 CASE content_surrogate | HuginnValidationError | content must not contain lone surrogates
 CASE query_surrogate | HuginnValidationError | query_text must not contain lone surrogates
+CASE tags_too_deep | HuginnValidationError | tags nesting depth exceeds maximum of 100
+CASE tags_oversize | HuginnValidationError | tags size 14 bytes exceeds max_content_bytes (8 bytes)
 CASE qdrant_closed | HuginnBackendError | Huginn Qdrant backend is closed
 CASE qdrant_missing_extra | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 CASE st_missing_extra | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
@@ -138,8 +140,10 @@ TEMPLATE | HuginnValidationError | content size {} bytes exceeds max_content_byt
 TEMPLATE | HuginnValidationError | category must be a string
 TEMPLATE | HuginnValidationError | documents must be a list of strings
 TEMPLATE | HuginnValidationError | tags must be a list of strings
+TEMPLATE | HuginnValidationError | tags size {} bytes exceeds max_content_bytes ({} bytes)
 TEMPLATE | HuginnValidationError | {} must be an int, got {}
 TEMPLATE | HuginnValidationError | {} must not contain lone surrogates
+TEMPLATE | HuginnValidationError | {} nesting depth exceeds maximum of {}
 TEMPLATE | HuginnValidationError | emotional_valence must be a number in [-1, 1], got {}
 TEMPLATE | HuginnValidationError | emotional_valence must be in [-1, 1], got {}
 TEMPLATE | HuginnValidationError | importance must be an int in [1, 10], got {}

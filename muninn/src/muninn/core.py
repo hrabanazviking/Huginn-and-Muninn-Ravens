@@ -290,6 +290,7 @@ def _content_payload(content: Any) -> tuple[str, int, str]:
     if isinstance(content, str):
         _check_no_lone_surrogates(content, "content")
         return content, 0, hashlib.sha256(("s:" + content).encode()).hexdigest()
+    _check_structure_depth(content, "content")
     _check_value_no_lone_surrogates(content, "content")
     try:
         text = json.dumps(content, sort_keys=True)
@@ -321,6 +322,72 @@ def _check_metadata_size(meta_text: str, ceiling: int) -> None:
     if size > ceiling:
         raise MuninnValidationError(
             f"metadata size {size} bytes exceeds max_metadata_bytes ({ceiling} bytes)"
+        )
+
+
+# RM-036: nesting bound for JSON-shaped values (content,
+# metadata) and for tag elements. 100 containers deep is far
+# beyond any honest memory shape, and far below the depth at
+# which the recursive walks below (surrogate check,
+# ``json.dumps``, ``repr`` of a tag element) overflow the
+# interpreter stack.
+_MAX_STRUCTURE_DEPTH = 100
+
+
+def _check_structure_depth(value: Any, what: str) -> None:
+    """RM-036: a JSON-shaped value must not nest too deep.
+
+    The walk is iterative (explicit stack, path-scoped id set),
+    so the check itself cannot overflow the stack it guards:
+    before this slice, content or metadata nested a few
+    thousand containers deep escaped as a raw
+    ``RecursionError``. A container already on the current
+    path (a circular structure) is not descended into —
+    ``json.dumps`` refuses those itself with the established
+    typed serializability message, and ``repr`` renders them
+    with an ellipsis. A shared (DAG-shaped) substructure is
+    walked once per occurrence and is not circular.
+    """
+    if not isinstance(value, (dict, list, tuple, set, frozenset)):
+        return
+    on_path: set[int] = set()
+    stack: list[tuple[Any, int, bool]] = [(value, 1, False)]
+    while stack:
+        node, depth, exiting = stack.pop()
+        if exiting:
+            on_path.discard(id(node))
+            continue
+        if not isinstance(node, (dict, list, tuple, set, frozenset)):
+            continue
+        if id(node) in on_path:
+            continue
+        if depth > _MAX_STRUCTURE_DEPTH:
+            raise MuninnValidationError(
+                f"{what} nesting depth exceeds maximum of {_MAX_STRUCTURE_DEPTH}"
+            )
+        on_path.add(id(node))
+        stack.append((node, depth, True))
+        children: list[Any] = (
+            list(node.keys()) + list(node.values())
+            if isinstance(node, dict)
+            else list(node)
+        )
+        stack.extend((child, depth + 1, False) for child in children)
+
+
+def _check_tags_size(clean_tags: list[str], ceiling: int) -> None:
+    """RM-036: the stored tags must fit the metadata ceiling.
+
+    Tags are the node's annotation payload alongside metadata,
+    so the RM-027 metadata ceiling bounds them uniformly: the
+    measure is the UTF-8 byte length of the tags' stored JSON
+    form. Before this slice a tags list of any length was
+    accepted, however enormous.
+    """
+    size = len(json.dumps(clean_tags).encode("utf-8"))
+    if size > ceiling:
+        raise MuninnValidationError(
+            f"tags size {size} bytes exceeds max_metadata_bytes ({ceiling} bytes)"
         )
 
 
@@ -1123,11 +1190,16 @@ class HebbianMemory:
         clean_category = _check_no_lone_surrogates(str(category), "category")
         text, is_json, content_hash = _content_payload(content)
         _check_content_size(text, self.config.max_content_bytes)
-        clean_tags = [
-            str(t).strip().lower()[:64] for t in _check_tag_list(tags) if str(t).strip()
-        ]
+        clean_tags = []
+        for raw_tag in _check_tag_list(tags):
+            _check_structure_depth(raw_tag, "tags")
+            cleaned_tag = str(raw_tag).strip().lower()[:64]
+            if cleaned_tag:
+                clean_tags.append(cleaned_tag)
         for tag in clean_tags:
             _check_no_lone_surrogates(tag, "tags")
+        _check_tags_size(clean_tags, self.config.max_metadata_bytes)
+        _check_structure_depth(metadata or {}, "metadata")
         _check_value_no_lone_surrogates(metadata or {}, "metadata")
         try:
             meta_text = json.dumps(metadata or {}, sort_keys=True, default=str)
@@ -1239,7 +1311,11 @@ class HebbianMemory:
         top_k = max(1, min(_check_count(top_k, "top_k"), self.MAX_QUERY_RESULTS))
         if query:
             _check_no_lone_surrogates(str(query), "query")
-        wanted_tags = [str(t).lower() for t in _check_tag_list(tags)] if tags else []
+        wanted_tags = []
+        if tags:
+            for raw_tag in _check_tag_list(tags):
+                _check_structure_depth(raw_tag, "tags")
+                wanted_tags.append(str(raw_tag).lower())
         for tag in wanted_tags:
             _check_no_lone_surrogates(tag, "tags")
         wanted_type = category or memory_type
@@ -1339,15 +1415,18 @@ class HebbianMemory:
             if "emotional_valence" in fields:
                 updates["emotional_valence"] = _check_valence(fields["emotional_valence"])
             if "tags" in fields:
-                clean_update_tags = [
-                    str(t).strip().lower()[:64]
-                    for t in _check_tag_list(fields["tags"])
-                    if str(t).strip()
-                ]
+                clean_update_tags = []
+                for raw_tag in _check_tag_list(fields["tags"]):
+                    _check_structure_depth(raw_tag, "tags")
+                    cleaned_tag = str(raw_tag).strip().lower()[:64]
+                    if cleaned_tag:
+                        clean_update_tags.append(cleaned_tag)
                 for tag in clean_update_tags:
                     _check_no_lone_surrogates(tag, "tags")
+                _check_tags_size(clean_update_tags, self.config.max_metadata_bytes)
                 updates["tags"] = json.dumps(clean_update_tags)
             if "metadata" in fields:
+                _check_structure_depth(fields["metadata"] or {}, "metadata")
                 _check_value_no_lone_surrogates(fields["metadata"] or {}, "metadata")
                 try:
                     meta_text = json.dumps(
