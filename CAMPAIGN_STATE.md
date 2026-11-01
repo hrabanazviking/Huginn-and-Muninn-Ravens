@@ -1008,7 +1008,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   deliberately (38 cases / 41 templates); guides + API
   reference updated. Full suites green in a fresh venv
   (`ravens-rm028-venv`, non-editable installs), final
-  banking-tree runs: muninn **162 passed**, huginn
+  banking-tree runs: muninn **161 passed**, huginn
   **115 passed** (the pre-entry muninn run failed only
   the two slice-log pin tests, as in every prior slice);
   ruff + mypy floors clean (rm014 venv; mypy muninn 5
@@ -1030,3 +1030,18 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   Founding tree NEEDS A SYNC for the path normaliser
   (extends the RM-008/RM-011/RM-012/RM-016/RM-017/
   RM-025/RM-026/RM-027 sync note).
+- **RM-028 count correction (2026-11-01, after banking):**
+  the muninn banking count was first recorded as 162 from a
+  background-run notification that proved crossed with
+  another run (the same sessions re-delivered with 161 and
+  163 tallies). A disk-logged re-run of the banked tree
+  (commit 1cbdc20) settles it: **161 passed**
+  (`~/workspace/.verify-tmp/rm028/muninn_final_rerun.log`),
+  matching the collector's 161 tests. The RM-028 entries in
+  this file and in `docs/SLICE_LOG.md` are corrected in the
+  correction commit that carries this note. The negation
+  tally in the RM-028 entries likewise came from a crossed
+  notification: the negation run's own delivered output
+  reads **10 failed, 2 passed** (the passes are the two
+  behaviours that already held pre-fix). No other RM-028
+  claim is affected.

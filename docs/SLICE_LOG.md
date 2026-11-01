@@ -834,7 +834,7 @@ has an entry here with its Class and Commit fields present.
   storage, which already held). RM-018 goldens extended
   deliberately (38 cases / 41 templates). Full suites green
   in a fresh venv (`ravens-rm028-venv`, non-editable
-  installs): muninn **162 passed**, huginn **115 passed**; ruff +
+  installs): muninn **161 passed**, huginn **115 passed**; ruff +
   mypy floors clean. Validation behaviour tightened (no
   signature or schema change; RM-003/RM-004 pins green), so
   the Bifröst contract re-verification was run before
