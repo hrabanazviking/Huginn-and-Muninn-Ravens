@@ -603,3 +603,31 @@ has an entry here with its Class and Commit fields present.
   required. Founding tree needs no sync for this slice
   (docs + tests only); the package-source sync note
   stands.
+
+## RM-023 — Shutdown cleanliness
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/SHUTDOWN_CLEANLINESS.md`.
+  `close()` in both packages was already clean — this slice
+  proves it and pins it, per the roadmap's acceptance, with
+  new `tests/test_shutdown_cleanliness.py` in both packages
+  (3 tests each): writes, then `close()`, then the `-wal`
+  sidecar is absent or zero bytes (the final checkpoint
+  completed; no half-written tail); a reopen performs zero
+  recovery — muninn `recovered_from_backup is False` +
+  health integrity ok + node/edge data intact, huginn
+  health carries the same two facts + search still finds
+  the stored documents; after the second close a raw
+  `PRAGMA wal_checkpoint(TRUNCATE)` returns `busy == 0`
+  with 0 log pages; double `close()` is a no-op and a
+  later reopen is still recovery-free; and a
+  thread-baseline test proves close leaves no lingering
+  threads (neither package spawns workers — locks only).
+  Full suites green in the RM-021 venv: muninn
+  **129 passed** (126+3), huginn **98 passed** (95+3);
+  ruff floor clean. No package code, public API, or
+  schema change (RM-003 / RM-004 pins green), so no
+  Bifröst re-verification required. Founding tree needs
+  no sync for this slice (tests + docs only); the
+  package-source sync note stands.

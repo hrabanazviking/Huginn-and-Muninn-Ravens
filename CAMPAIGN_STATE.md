@@ -37,7 +37,8 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016, RM-017, RM-018, RM-019, RM-020, RM-021, RM-022.
+  RM-016, RM-017, RM-018, RM-019, RM-020, RM-021, RM-022,
+  RM-023.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +49,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-023 in roadmap order (Part II — Stability).
+- Next: RM-024 in roadmap order (Part II — Stability, part gate).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -774,3 +775,20 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   re-verification required. Founding tree needs no sync
   (docs + tests only); the package-source sync note
   stands.
+- **RM-023 — Shutdown cleanliness. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/SHUTDOWN_CLEANLINESS.md`.
+  `close()` in both packages proven clean and pinned by
+  new `tests/test_shutdown_cleanliness.py` (3 tests each):
+  after writes + close, the `-wal` sidecar is absent or
+  zero bytes; a reopen performs zero recovery
+  (`recovered_from_backup is False`, health integrity ok,
+  data/search intact); a raw `PRAGMA wal_checkpoint
+  (TRUNCATE)` on the closed store returns busy 0 with
+  0 log pages; double close is a no-op; no lingering
+  threads after close (locks only, no workers in either
+  package). Full suites green in the RM-021 venv: muninn
+  **129 passed** (126+3), huginn **98 passed** (95+3);
+  ruff floor clean. No package code, API, or schema
+  change, so no Bifröst re-verification required.
+  Founding tree needs no sync (tests + docs only); the
+  package-source sync note stands.
