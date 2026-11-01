@@ -227,3 +227,40 @@ has an entry here with its Class and Commit fields present.
   or schema change (RM-003 freeze + RM-004 snapshot green), so
   no Bifröst re-verification required. Suites: muninn
   **99 passed**, huginn **75 passed**.
+
+## RM-015 — Long-run soak
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Harness `scripts/soak.py` (committed with this
+  slice) cycled a mixed workload over both packages —
+  muninn remember / activate_batch / retrieve with decay +
+  consolidate maintenance, huginn upsert / search, fixed
+  500-text corpus, local backend, no network — sampling RSS
+  and store bytes every 60 s. The record spans
+  **2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m)**:
+  1,043 samples, 39 segments, **174,523 cycles** summed
+  (last-cycle-per-segment), **70 errors** summed — all
+  `muninn.decay:OperationalError` in five earlier segments,
+  each cluster paired in the log with `backup failed: disk
+  I/O error` under the VM's extreme-load / write-gate
+  episodes (environment class, cause not proven); every other
+  operation error-free for the full span and the final segment
+  clean (1,862 cycles, 0 errors). Growth verdict, published in
+  full in `docs/SOAK.md`: RSS bounded (max 39.33 MB in hour 0,
+  final 22.18 MB); huginn store flat (4.84–4.96 MB throughout);
+  muninn store linear in work at a constant ~239–254 KiB per
+  1,000 cycles from hour 4 on (428 KiB in hours 0–4 including
+  the initial fill) — proportional to operations, not an
+  accelerating leak. The process was torn down externally 38
+  times (two proven VM reboots; the rest the RM-014 silent
+  pattern, causes not proven) and resumed each time against
+  the same workdir/out by the keeper; every segment_start
+  shows both stores reopening with their existing data. One
+  resume was held a tick while a sustained probe proved the
+  write gate closed (0/60), then resumed on a fully green
+  probe (60/60). Durable record copy:
+  `rm015_soak_samples.jsonl` in the goal's hidden files. No
+  package code, API, or schema change (RM-003 freeze + RM-004
+  snapshot green), so no Bifröst re-verification required.
+  Suites: muninn **99 passed**, huginn **75 passed**.

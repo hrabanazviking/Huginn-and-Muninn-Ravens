@@ -36,9 +36,18 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
-- Banked (Part II): RM-011, RM-012, RM-013, RM-014.
-- In progress: none.
-- Next: RM-015 in roadmap order (Part II — Stability).
+- Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015.
+- RM-015 (24-hour soak) BANKED 2026-11-01: record span
+  2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
+  39 segments, 174,523 cycles, 70 errors (all
+  `muninn.decay:OperationalError`, environment-paired,
+  disclosed in docs/SOAK.md). Full growth curves in
+  docs/SOAK.md; durable record copy in the goal hidden
+  files (`rm015_soak_samples.jsonl`). The soak's 120-check
+  watch log was condensed at banking — each check was
+  recorded in this file as it happened and the outcomes
+  stand in the slice log entry below.
+- Next: RM-016 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -430,3 +439,56 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `datetime.UTC`) — behaviour unchanged, record unaffected;
   ruff + mypy floors re-verified clean at banking (mypy:
   muninn 5 files, huginn 8 files, no issues).
+- **RM-015 — Long-run soak. BANKED 2026-11-01. Class: BENCH.**
+  Acceptance met: **24-hour mixed-workload soak completed,
+  growth curves published in `docs/SOAK.md`.** Harness
+  `scripts/soak.py` (committed with this slice) cycled muninn
+  remember / activate_batch / retrieve with decay +
+  consolidate maintenance and huginn upsert / search over a
+  fixed 500-text corpus (local backend, no network), sampling
+  every 60 s. Final record read from the file itself: span
+  **2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m)**,
+  1,043 samples, **39 segments**, **174,523 cycles** summed
+  (last-cycle-per-segment), **70 errors** summed — all
+  `muninn.decay:OperationalError`, in five earlier segments
+  (7+41+3+9+10), each cluster paired in the soak log with
+  `muninn: backup failed: disk I/O error` during the VM's
+  extreme-load / write-gate episodes (environment class,
+  cause not proven, never reproduced on a quiet machine);
+  every other operation error-free across the whole span and
+  the final segment clean (1,862 cycles, 0 errors). Growth
+  verdict (full hourly table in docs/SOAK.md): RSS bounded —
+  all-time max 39.33 MB in hour 0, final 22.18 MB; huginn
+  store flat at 4.84–4.96 MB throughout; muninn store linear
+  in work done at a constant rate (428 KiB/1,000 cycles in
+  hours 0–4 including the initial corpus fill, then
+  254/244/246/249/239 KiB per 1,000 cycles across hours
+  4–24) — proportional to operations, not an accelerating
+  leak; a plateau under a remember-heavy workload would need
+  a retention policy, a design question for a later slice.
+  Interruption history, honestly: the process was torn down
+  externally 38 times (two proven VM reboots; the rest the
+  RM-014 silent-teardown pattern, causes not proven) and the
+  keeper resumed it each time against the same --workdir and
+  --out; every segment_start shows both stores reopening
+  with their existing data (38 clean heal/reopen cycles).
+  One resume was held one tick while a sustained probe
+  proved the write gate closed (0/60 writes landing), then
+  resumed on the next tick's fully green probe (60/60). The
+  keeper stopped the process after the sample at
+  10:54:18 UTC crossed the 24 h span. Durable record copy:
+  `rm015_soak_samples.jsonl` in the goal's hidden files
+  (493,406 B, 1,043 lines). No package code, public API, or
+  schema change (RM-003 freeze + RM-004 snapshot green), so
+  no Bifröst re-verification required. Founding tree needs
+  no sync for this slice (harness + docs + slice-log test
+  pin only); the RM-008/RM-011/RM-012 package-source sync
+  note stands. Full suites green at banking in the RM-013
+  venv (packages as installed there; no package code has
+  changed since): muninn **99 passed**, huginn **75 passed**;
+  ruff + mypy floors clean (rm014 venv, per-package config:
+  mypy muninn 5 files, huginn 8 files, no issues; the one
+  BLE001 a root-level ruff run reports on soak.py's counted
+  catch-all is outside the packages' floor select — the
+  catch is the harness's error-counting design, stated in
+  its comment).
