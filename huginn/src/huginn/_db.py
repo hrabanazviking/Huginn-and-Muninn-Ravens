@@ -14,6 +14,13 @@ marked read-only itself is refused on open with a typed
 or backup-restore attempt (RM-030; see
 ``docs/READONLY_FILESYSTEM.md``). There is no read-only mode:
 Huginn local stores are opened for writing or not at all.
+A store locked by another process is awaited up to the
+configured busy timeout; if the lock is still held when the
+timeout expires, opening raises :class:`HuginnStorageError`
+naming the contention (RM-031; see ``docs/LOCKED_STORE.md``).
+Contention is never mistaken for corruption and never takes
+the backup-restore road. Pure reads are unaffected by a held
+write lock: WAL readers proceed against a snapshot.
 """
 
 from __future__ import annotations
@@ -110,6 +117,22 @@ def _check_not_readonly(db_path: Path) -> None:
         raise HuginnStorageError(
             f"huginn store {db_path} is read-only and cannot be opened for writing"
         )
+
+
+def _is_locked_error(exc: BaseException) -> bool:
+    """Does this failure mean another connection holds the lock?
+
+    Matches SQLite's busy/locked wordings (``database is locked``,
+    ``database table is locked``, ``database is busy``) and, where
+    the interpreter exposes it, the SQLITE_BUSY / SQLITE_LOCKED
+    result codes (5 / 6, extended-code high bits ignored) — the
+    RM-031 classification.
+    """
+    code = getattr(exc, "sqlite_errorcode", None)
+    if isinstance(code, int) and code & 0xFF in (5, 6):
+        return True
+    text = str(exc).lower()
+    return "locked" in text or "is busy" in text
 
 
 def _quick_check_ok(conn: sqlite3.Connection) -> bool:
@@ -214,7 +237,23 @@ def open_store(
         try:
             probe = _connect(db_path, busy_timeout_ms)
             try:
-                healthy = _quick_check_ok(probe)
+                try:
+                    row = probe.execute("PRAGMA quick_check").fetchone()
+                    healthy = bool(row) and str(row[0]) == "ok"
+                except sqlite3.Error as exc:
+                    if _is_readonly_error(exc):
+                        raise HuginnStorageError(
+                            f"huginn store {db_path} is read-only and cannot be "
+                            f"opened for writing"
+                        ) from exc
+                    if _is_locked_error(exc):
+                        # RM-031: contention is not corruption —
+                        # never take the restore road for it.
+                        raise HuginnStorageError(
+                            f"huginn store {db_path} is locked by another process "
+                            f"(busy timeout {busy_timeout_ms} ms expired)"
+                        ) from exc
+                    healthy = False
             finally:
                 probe.close()
         except sqlite3.Error as exc:
@@ -223,6 +262,12 @@ def open_store(
                 # the restore road for it; fail loudly at once.
                 raise HuginnStorageError(
                     f"huginn store {db_path} is read-only and cannot be opened for writing"
+                ) from exc
+            if _is_locked_error(exc):
+                # RM-031: contention is not corruption either.
+                raise HuginnStorageError(
+                    f"huginn store {db_path} is locked by another process "
+                    f"(busy timeout {busy_timeout_ms} ms expired)"
                 ) from exc
             healthy = False
         if not healthy:
@@ -247,6 +292,11 @@ def open_store(
             raise HuginnStorageError(
                 f"huginn store {db_path} is read-only and cannot be opened for writing"
             ) from exc
+        if _is_locked_error(exc):
+            raise HuginnStorageError(
+                f"huginn store {db_path} is locked by another process "
+                f"(busy timeout {busy_timeout_ms} ms expired)"
+            ) from exc
         raise HuginnStorageError(
             f"huginn store {db_path} could not be prepared: {exc}"
         ) from exc
@@ -262,6 +312,11 @@ def open_store(
         if _is_readonly_error(exc):
             raise HuginnStorageError(
                 f"huginn store {db_path} is read-only and cannot be opened for writing"
+            ) from exc
+        if _is_locked_error(exc):
+            raise HuginnStorageError(
+                f"huginn store {db_path} is locked by another process "
+                f"(busy timeout {busy_timeout_ms} ms expired)"
             ) from exc
         raise HuginnStorageError(f"huginn store {db_path} could not be prepared: {exc}") from exc
 

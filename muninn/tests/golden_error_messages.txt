@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (40): every raise site except the two that cannot
+# CASE lines (42): every raise site except the two that cannot
 # be triggered deterministically — "could not be prepared"
 # (needs a store whose schema script fails mid-open) and "node
 # insert reported success but returned no row id" (unreachable
@@ -57,7 +57,9 @@ CASE closed | MuninnStorageError | HebbianMemory is closed
 CASE corrupt_store | MuninnStorageError | muninn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
 CASE disk_full_remember | MuninnStorageError | muninn write failed during remember: database or disk is full
 CASE readonly_open | MuninnStorageError | muninn store <tmp_path>/ro.db is read-only and cannot be opened for writing
-# TEMPLATE lines (49 raise sites; RM-025 added the
+CASE locked_open | MuninnStorageError | muninn store <tmp_path>/locked.db is locked by another process (busy timeout 300 ms expired)
+CASE locked_remember | MuninnStorageError | muninn write failed during remember: store is locked by another process (busy timeout expired)
+# TEMPLATE lines (55 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
 # RM-028 added the three path guards; RM-029 added the
@@ -66,7 +68,13 @@ CASE readonly_open | MuninnStorageError | muninn store <tmp_path>/ro.db is read-
 # translating a read-only failure at successive open stages,
 # all carrying the one read-only template, listed six times
 # below — plus a second "could not be prepared" site, where
-# the main connection itself is now wrapped in _db.py).
+# the main connection itself is now wrapped in _db.py;
+# RM-031 added the four locked-contention raise sites in
+# _db.py — probe connect, probe quick_check, main connect,
+# schema preparation, all carrying the one locked template,
+# listed four times below — a seventh read-only site (the
+# probe's quick_check stage), and the write guard's locked
+# raise in core.py).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -88,6 +96,12 @@ TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opene
 TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opened for writing
 TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opened for writing
 TEMPLATE | MuninnStorageError | muninn store {} is corrupt and no rolling backup verified; refusing to start empty over lost memory
+TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
+TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
+TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
+TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
+TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opened for writing
+TEMPLATE | MuninnStorageError | muninn write failed during {}: store is locked by another process (busy timeout expired)
 TEMPLATE | MuninnStorageError | muninn write failed during {}: {}
 TEMPLATE | MuninnStorageError | node insert reported success but returned no row id
 TEMPLATE | MuninnValidationError | attenuation must be in (0, 1]

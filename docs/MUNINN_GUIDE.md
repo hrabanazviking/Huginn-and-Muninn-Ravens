@@ -736,6 +736,18 @@ attempt, and the failed open touches nothing. There is no
 read-only mode: a Muninn store is opened for writing or not at
 all (RM-030, see `docs/READONLY_FILESYSTEM.md`).
 
+A store locked by another process is awaited up to
+`busy_timeout_ms`; if the lock is still held when the timeout
+expires, the open fails with `MuninnStorageError`
+(`muninn store {path} is locked by another process (busy timeout
+{ms} ms expired)`) and a write on an already-open store fails
+with the contention form of the write error (`muninn write
+failed during {operation}: store is locked by another process
+(busy timeout expired)`), rolled back like any failed write.
+Contention is never mistaken for corruption, and pure reads
+proceed against a WAL snapshot while a writer holds the lock
+(RM-031, see `docs/LOCKED_STORE.md`).
+
 Durability: the store runs in WAL mode with `synchronous=FULL`, and
 batch writes are single transactions. A `kill -9` mid-write loses at
 most the uncommitted transaction; committed work survives reopening.

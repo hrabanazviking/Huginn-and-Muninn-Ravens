@@ -52,9 +52,9 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
 - Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
-  RM-030. Part III (Robustness) is under way — 6 of 14 slices
-  banked.
-- Next: RM-031 in roadmap order (Part III — Robustness).
+  RM-030, RM-031. Part III (Robustness) is under way — 7 of
+  14 slices banked.
+- Next: RM-032 in roadmap order (Part III — Robustness).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -1161,3 +1161,72 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   translations and the decorator return-type repair (extends
   the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
   RM-027/RM-028/RM-029 sync note).
+- **RM-031 — Locked-store contention. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/LOCKED_STORE.md`. A second
+  process holding the store's write lock previously had no
+  defined expiry behaviour: the busy timeout was honoured,
+  but an open then reported the generic preparation failure
+  (`could not be prepared: database is locked`), a write
+  echoed SQLite's wording through the RM-029 guard, and a
+  locked failure at the open's integrity-probe stage fell
+  into the corruption bucket and took the backup-restore
+  road (all measured pre-fix by a probe against the RM-030
+  packages: open + write waits of ~1.4–5.2 s at the
+  configured timeouts, WAL pure reads unaffected). Defined
+  behaviour: contention is classified at every stage —
+  `_is_locked_error` in each package's `_db.py` (locked /
+  busy wordings, or SQLITE_BUSY / SQLITE_LOCKED codes) —
+  and every open stage (probe connect, probe quick_check,
+  main connect, schema preparation) raises the one typed
+  contention message `{package} store {path} is locked by
+  another process (busy timeout {ms} ms expired)`; the
+  RM-029 write guards raise `{package} write failed during
+  {operation}: store is locked by another process (busy
+  timeout expired)` after rollback. A lock released inside
+  the timeout makes the open/write simply succeed;
+  `busy_timeout_ms=0` fails at once; pure reads proceed
+  against the WAL snapshot mid-contention (Muninn's
+  `retrieve(touch=True)` is a write and follows the write
+  rule); Huginn's facade `health()` reports a locked open
+  as `unhealthy` naming `HuginnStorageError`. Pinned by
+  new `tests/test_locked_store.py` (muninn 5, huginn 6)
+  whose lock holder is a real second process (subprocess,
+  raw `sqlite3` `BEGIN EXCLUSIVE`) for the open/write
+  acceptance tests: waits ≥1.2 s at a 1500 ms timeout,
+  exact messages, store SHA-256 unchanged + no backup
+  created + no "corrupt" wording on a refused open, zero
+  recovery on reopen, refused writes storing nothing and
+  the same object writing after release. Negation: the
+  new suites fail against the pre-RM-031 installed
+  packages (RM-030 venv) exactly on the contention
+  messages — muninn 3 failed / 2 passed, huginn 4 failed
+  / 2 passed (the passes are release-inside-timeout and
+  WAL reads, behaviours that already held, now pinned).
+  RM-018 goldens extended deliberately (muninn 42 cases /
+  55 templates, huginn 47 cases / 58 templates; the
+  locked-open template stands four times per package, the
+  probe quick_check stage added a seventh read-only site,
+  each write guard gained its locked raise); guides + API
+  reference updated. Full suites green in a fresh venv
+  (`ravens-rm031-venv`, non-editable installs, final
+  banking tree): muninn **173 passed** (168+5), huginn
+  **126 passed** (120+6); ruff + mypy floors clean (rm014
+  venv; mypy muninn 5 files, huginn 8 files). Open/write
+  error behaviour changed (no signature or schema change;
+  RM-003/RM-004 pins green), so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm031-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=5; search 2 merged results;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three
+  backends; both raven health dicts carry
+  `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm031_bifrost.log`). Founding
+  tree NEEDS A SYNC for the locked classification + the
+  write guards' contention shape (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
+  RM-027/RM-028/RM-029/RM-030 sync note).

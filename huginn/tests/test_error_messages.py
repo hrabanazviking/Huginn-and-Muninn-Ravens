@@ -24,6 +24,7 @@ be broken by a casual rewording. Two pins enforce that:
 import ast
 import contextlib
 import os
+import sqlite3
 import sys
 import types
 from collections import Counter
@@ -190,6 +191,21 @@ def _cases(tmp_path):
     )
     ro_backend.close()
     os.chmod(ro_path, 0o444)
+    # RM-031: a store whose write lock is held by a second
+    # connection — opens and writes past a short busy timeout
+    # raise the contention messages. The holder stays open for
+    # the whole capture pass; it locks only this one file.
+    locked_path = tmp_path / "locked.db"
+    locked = HuginnMemory(
+        HuginnConfig(
+            backend="local", local_db_path=str(locked_path), busy_timeout_ms=300
+        )
+    )
+    locked.upsert_memory("seed")
+    _holder = sqlite3.connect(str(locked_path))
+    _holder.execute("BEGIN EXCLUSIVE")
+    _holder.execute("CREATE TABLE IF NOT EXISTS rm031_hold (x INTEGER)")
+    _holder.execute("INSERT INTO rm031_hold VALUES (1)")
     embedder = HashingEmbedder(dim=384)
     qdrant_cfg = HuginnConfig(backend="qdrant")
     closed_qdrant = QdrantBackend(qdrant_cfg, embedder)
@@ -273,6 +289,14 @@ def _cases(tmp_path):
         "readonly_open": lambda: LocalBackend(
             HuginnConfig(backend="local", local_db_path=str(ro_path))
         ),
+        "locked_open": lambda: LocalBackend(
+            HuginnConfig(
+                backend="local",
+                local_db_path=str(locked_path),
+                busy_timeout_ms=300,
+            )
+        ),
+        "locked_upsert": lambda: locked.upsert_memory("blocked"),
     }
     return cases
 

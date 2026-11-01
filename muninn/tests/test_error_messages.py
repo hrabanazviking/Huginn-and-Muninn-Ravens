@@ -19,6 +19,7 @@ be broken by a casual rewording. Two pins enforce that:
 
 import ast
 import os
+import sqlite3
 from collections import Counter
 from pathlib import Path
 
@@ -89,6 +90,19 @@ def _cases(tmp_path):
     ro_mem = HebbianMemory(MuninnConfig(db_path=str(ro_path)))
     ro_mem.close()
     os.chmod(ro_path, 0o444)
+    # RM-031: a store whose write lock is held by a second
+    # connection — opens and writes past a short busy timeout
+    # raise the contention messages. The holder stays open for
+    # the whole capture pass; it locks only this one file.
+    locked_path = tmp_path / "locked.db"
+    locked = HebbianMemory(
+        MuninnConfig(db_path=str(locked_path), busy_timeout_ms=300)
+    )
+    locked.remember("seed")
+    _holder = sqlite3.connect(str(locked_path))
+    _holder.execute("BEGIN EXCLUSIVE")
+    _holder.execute("CREATE TABLE IF NOT EXISTS rm031_hold (x INTEGER)")
+    _holder.execute("INSERT INTO rm031_hold VALUES (1)")
 
     def cfg(**overrides):
         return lambda: MuninnConfig(db_path=str(tmp_path / "m.db"), **overrides)
@@ -140,6 +154,10 @@ def _cases(tmp_path):
         "readonly_open": lambda: HebbianMemory(
             MuninnConfig(db_path=str(ro_path))
         ),
+        "locked_open": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(locked_path), busy_timeout_ms=300)
+        ),
+        "locked_remember": lambda: locked.remember("blocked"),
     }
     return cases, m
 

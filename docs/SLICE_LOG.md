@@ -970,3 +970,75 @@ has an entry here with its Class and Commit fields present.
   NEEDS A SYNC for the read-only pre-flight + open-stage
   translations (extends the RM-008/RM-011/RM-012/RM-016/
   RM-017/RM-025/RM-026/RM-027/RM-028/RM-029 sync note).
+
+## RM-031 — Locked-store contention
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Locked-store contention now has a defined,
+  pinned behaviour, recorded in `docs/LOCKED_STORE.md` and
+  pinned by new `tests/test_locked_store.py` in both packages
+  (muninn 5 tests, huginn 6). Before this slice the busy
+  timeout was honoured but the expiry failure was undefined:
+  an open reported the generic preparation failure
+  (`could not be prepared: database is locked`), a write
+  echoed SQLite's wording through the RM-029 guard, and a
+  locked failure at the open's integrity-probe stage fell
+  into the corruption bucket and took the backup-restore
+  road. Now every stage of the open in each package's
+  `_db.py` (probe connect, probe quick_check, main connect,
+  schema preparation) classifies a locked failure —
+  `database is locked` / `database table is locked` /
+  `database is busy` wordings or the SQLITE_BUSY /
+  SQLITE_LOCKED codes — and raises the one contention
+  message, `{package} store {path} is locked by another
+  process (busy timeout {ms} ms expired)`; the RM-029 write
+  guards in `muninn/core.py` and `huginn/local_backend.py`
+  likewise raise `{package} write failed during {operation}:
+  store is locked by another process (busy timeout expired)`
+  after rolling the failed call back. The lock holder in the
+  acceptance tests is a real second process (a subprocess
+  holding a raw `sqlite3` `BEGIN EXCLUSIVE` transaction):
+  opens and writes wait out the configured timeout (≥1.2 s
+  at 1500 ms), succeed when the holder releases inside it
+  (0.8 s hold vs 8000 ms), fail fast at a zero timeout, store
+  nothing when refused, and work again on the same object
+  after release; a locked open leaves the store's SHA-256
+  unchanged, creates no backup generation, and never says
+  "corrupt"; pure reads (Muninn stats / get_node / retrieve,
+  Huginn get / search) proceed against the WAL snapshot
+  mid-contention; Huginn's facade `health()` reports the
+  locked open as `unhealthy` naming `HuginnStorageError`.
+  RM-018 goldens extended deliberately (muninn 42 cases /
+  55 templates, huginn 47 cases / 58 templates — the locked
+  open template stands four times per package, once per open
+  stage, the probe's quick_check stage added a seventh
+  read-only site, and each write guard gained its locked
+  raise); guides + API reference updated. Negation: against
+  the pre-RM-031 installed packages (RM-030 venv) the new
+  suites fail exactly on the contention messages — muninn
+  3 failed / 2 passed, huginn 4 failed / 2 passed — the
+  passes being the behaviours that already held (release
+  inside the timeout, WAL reads) and are now pinned. Full
+  suites green in a fresh venv (`ravens-rm031-venv`,
+  non-editable installs): muninn **173 passed** (168+5),
+  huginn **126 passed** (120+6); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files).
+  Open/write error behaviour changed (no signature or
+  schema change; RM-003/RM-004 pins green), so the
+  **Bifröst contract re-verification was run before
+  banking**: fresh venv (`ravens-rm031-bifrost-venv`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id=2 huginn_id=5;
+  search 2 merged results; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge armed at 0 days;
+  stats over all three backends; both raven health dicts
+  carry `sqlite_version` 3.45.1; huginn degraded via
+  auto-fallback to local — live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm031_bifrost.log`). Founding
+  tree NEEDS A SYNC for the locked classification + the
+  write guards' contention shape (extends the
+  RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
+  RM-027/RM-028/RM-029/RM-030 sync note).

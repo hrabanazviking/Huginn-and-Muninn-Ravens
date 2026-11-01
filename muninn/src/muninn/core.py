@@ -48,7 +48,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any, TypeVar
 
-from ._db import open_store, take_backup
+from ._db import _is_locked_error, open_store, take_backup
 from .config import MuninnConfig
 from .errors import MuninnStorageError, MuninnValidationError
 
@@ -400,6 +400,12 @@ def _storage_write(
     write can leak into a later commit, and the store stays open
     and consistent for the calls that follow.
 
+    A lock held by another process past the busy timeout is the
+    same discipline with its own message shape (RM-031): the
+    guard names the contention instead of echoing SQLite's
+    wording, so a caller can tell "another process has the
+    store" apart from every other storage failure.
+
     The decorator preserves the wrapped method's return type
     (RM-030 repair: the original ``Any``-typed wrapper silently
     broke the RM-008 mypy floor — ``warn_return_any`` — in every
@@ -414,6 +420,11 @@ def _storage_write(
             except sqlite3.Error as exc:
                 with contextlib.suppress(sqlite3.Error):
                     self._conn.rollback()
+                if _is_locked_error(exc):
+                    raise MuninnStorageError(
+                        f"muninn write failed during {operation}: store is locked "
+                        f"by another process (busy timeout expired)"
+                    ) from exc
                 raise MuninnStorageError(
                     f"muninn write failed during {operation}: {exc}"
                 ) from exc
