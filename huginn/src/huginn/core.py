@@ -198,6 +198,23 @@ def _check_count(value: Any, what: str) -> int:
     return int(value)
 
 
+def _check_no_lone_surrogates(value: str, what: str) -> str:
+    """RM-034: a text must be honestly encodable as UTF-8.
+
+    The twin of muninn's checker. A Python string can hold an
+    unpaired surrogate code point (U+D800–U+DFFF) which UTF-8
+    cannot encode, JSON can only smuggle as an escape, and
+    SQLite cannot bind. Enforced in the facade, before any
+    backend is touched, so the refusal holds on the local and
+    Qdrant backends alike. Valid astral characters are single
+    code points above U+FFFF and pass untouched.
+    """
+    for ch in value:
+        if 0xD800 <= ord(ch) <= 0xDFFF:
+            raise HuginnValidationError(f"{what} must not contain lone surrogates")
+    return value
+
+
 def _check_query_text(value: Any) -> str:
     """RM-026: every query-shaped argument is a string, typed.
 
@@ -209,7 +226,7 @@ def _check_query_text(value: Any) -> str:
     """
     if not isinstance(value, str):
         raise HuginnValidationError("query_text must be a string")
-    return value
+    return _check_no_lone_surrogates(value, "query_text")
 
 
 def _check_category(value: Any, *, allow_none: bool = False) -> str | None:
@@ -224,7 +241,7 @@ def _check_category(value: Any, *, allow_none: bool = False) -> str | None:
         return None
     if not isinstance(value, str):
         raise HuginnValidationError("category must be a string")
-    return value
+    return _check_no_lone_surrogates(value, "category")
 
 
 def _check_tag_list(tags: Any) -> list[Any]:
@@ -270,6 +287,8 @@ def _check_documents(documents: Any) -> list[str]:
         or any(not isinstance(doc, str) for doc in documents)
     ):
         raise HuginnValidationError("documents must be a list of strings")
+    for doc in documents:
+        _check_no_lone_surrogates(doc, "documents")
     return list(documents)
 
 
@@ -375,6 +394,7 @@ class HuginnMemory:
         """
         if not isinstance(content, str) or not content.strip():
             raise HuginnValidationError("content must be a non-empty string")
+        _check_no_lone_surrogates(content, "content")
         _check_content_size(content, self.config.max_content_bytes)
         importance = _check_importance(importance)
         emotional_valence = _check_valence(emotional_valence)
@@ -383,6 +403,8 @@ class HuginnMemory:
         clean_category = _check_category(category)
         assert clean_category is not None  # allow_none=False: None already raised
         clean_tags = [str(t) for t in _check_tag_list(tags)]
+        for tag in clean_tags:
+            _check_no_lone_surrogates(tag, "tags")
         backend = self._ensure_backend()
         return backend.upsert(
             content,

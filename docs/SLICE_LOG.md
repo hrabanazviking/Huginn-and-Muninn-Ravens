@@ -1183,3 +1183,71 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   (extends the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/
   RM-026/RM-027/RM-028/RM-029/RM-030/RM-031/RM-032 sync
   note).
+
+## RM-034 — Unicode & encoding gauntlet
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Unicode behaviour now defined and pinned in
+  both packages, recorded in `docs/UNICODE_GAUNTLET.md` and
+  pinned by new `tests/test_unicode_gauntlet.py` (muninn 17
+  tests, huginn 10). Pre-fix probes measured the undefined
+  shapes: a lone surrogate (unpaired U+D800–U+DFFF) in Muninn
+  string content, a path or a category escaped as a raw
+  `UnicodeEncodeError` (hash/size `.encode()`, or the SQLite
+  bind for category), while Muninn tags, metadata and
+  JSON-valued content were silently stored as JSON
+  `\udXXX` escapes and handed back unencodable; in Huginn,
+  content died in the RM-027 size check, a category at the
+  SQLite bind, a tag was silently stored, and a surrogate
+  query silently searched for nothing. Defined now: one
+  checker per package (`_check_no_lone_surrogates` in each
+  `core.py`) refuses any text carrying a lone surrogate
+  with the typed validation error `{field} must not
+  contain lone surrogates`, before any write — Muninn
+  checks content (recursively over JSON-shaped values),
+  metadata (same recursive walk), tags, category, path
+  (inside the RM-028 normaliser) and the `retrieve`
+  filters; Huginn checks in the facade (content, category,
+  tags, every query-shaped argument via `_check_query_text`,
+  read-side categories, `semantic_search` documents), so
+  the refusal holds on local and Qdrant alike, and a
+  surrogate `fly` query comes home as an error flight
+  naming the refusal. The welcome half is pinned verbatim:
+  RTL (Arabic/Hebrew) and CJK content round-trips and
+  searches, emoji ZWJ sequences round-trip byte-for-byte,
+  combining marks are never normalised (decomposed and
+  precomposed spellings are distinct memories), and
+  astral-plane characters — single code points above
+  U+FFFF, not lone surrogates — pass untouched; refused
+  writes leave both stores' counts unchanged. Negation:
+  the new suites fail against the pre-RM-034 code —
+  muninn **12 failed / 5 passed**, huginn **6 failed /
+  4 passed** (the passes are the welcome half, which
+  already held). RM-018 goldens extended deliberately
+  (muninn 47 cases / 63 templates, huginn 52 cases / 64
+  templates, counted from the files — +2 CASEs +1 TEMPLATE
+  each: the shared `{} must not contain lone surrogates`
+  template). Full suites green in a fresh venv
+  (`ravens-rm034-venv`, non-editable installs, final
+  banking tree): muninn **208 passed** (191+17), huginn
+  **154 passed** (144+10); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files).
+  Validation behaviour changed (no signature or schema
+  change; RM-003/RM-004 pins green), so the **Bifröst
+  contract re-verification was run before banking**:
+  fresh venv (`ravens-rm034-bifrost-venv`), bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS (store mimir_id=2 huginn_id=5; search 2
+  merged results; recall grew the Muninn activation log
+  exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` through the bridge armed at 0
+  days; stats over all three backends; both raven health
+  dicts carry `sqlite_version` 3.45.1; huginn degraded
+  via auto-fallback to local — live Qdrant still NOT
+  PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm034_bifrost.log`). Founding
+  tree NEEDS A SYNC for the surrogate checkers (extends
+  the RM-008/RM-011/RM-012/RM-016/RM-017/RM-025/RM-026/
+  RM-027/RM-028/RM-029/RM-030/RM-031/RM-032/RM-033 sync
+  note).

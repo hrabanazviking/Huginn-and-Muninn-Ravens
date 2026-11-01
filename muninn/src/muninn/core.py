@@ -224,10 +224,73 @@ def _check_valence(value: Any) -> float:
     return v
 
 
+def _check_no_lone_surrogates(value: str, what: str) -> str:
+    """RM-034: a text must be honestly encodable as UTF-8.
+
+    A Python string can hold an unpaired surrogate code point
+    (U+D800–U+DFFF) — constructible via ``\\udXXX`` escapes or
+    a careless decode — which UTF-8 cannot encode, JSON can
+    only smuggle as an escape, and SQLite cannot bind. Before
+    this slice such a value escaped as a raw
+    ``UnicodeEncodeError``, died untyped at the SQLite bind,
+    or was silently stored as a JSON escape and handed back
+    as a string no other system can encode. Every text that
+    enters the store (or names a search over it) passes here
+    first and is refused typed. Valid astral characters are
+    single code points above U+FFFF in a Python string and
+    pass untouched — only the D800–DFFF range is refused.
+    """
+    for ch in value:
+        if 0xD800 <= ord(ch) <= 0xDFFF:
+            raise MuninnValidationError(f"{what} must not contain lone surrogates")
+    return value
+
+
+def _check_value_no_lone_surrogates(
+    value: Any, what: str, _seen: set[int] | None = None
+) -> None:
+    """RM-034: the surrogate check over a JSON-shaped value.
+
+    Strings are checked wherever they sit — dict keys and
+    values, list/tuple/set items, nested as deep as the value
+    goes. A non-string scalar that JSON would stringify
+    (metadata is dumped with ``default=str``) is checked in
+    its string form. A container already being walked (a
+    circular structure) is skipped: ``json.dumps`` refuses
+    those itself, with the established typed message.
+    """
+    if isinstance(value, str):
+        _check_no_lone_surrogates(value, what)
+        return
+    if isinstance(value, dict):
+        if _seen is None:
+            _seen = set()
+        if id(value) in _seen:
+            return
+        _seen.add(id(value))
+        for key, item in value.items():
+            _check_value_no_lone_surrogates(key, what, _seen)
+            _check_value_no_lone_surrogates(item, what, _seen)
+        return
+    if isinstance(value, (list, tuple, set, frozenset)):
+        if _seen is None:
+            _seen = set()
+        if id(value) in _seen:
+            return
+        _seen.add(id(value))
+        for item in value:
+            _check_value_no_lone_surrogates(item, what, _seen)
+        return
+    if value is not None and not isinstance(value, (bool, int, float)):
+        _check_no_lone_surrogates(str(value), what)
+
+
 def _content_payload(content: Any) -> tuple[str, int, str]:
     """(stored_text, is_json, content_hash) for node content."""
     if isinstance(content, str):
+        _check_no_lone_surrogates(content, "content")
         return content, 0, hashlib.sha256(("s:" + content).encode()).hexdigest()
+    _check_value_no_lone_surrogates(content, "content")
     try:
         text = json.dumps(content, sort_keys=True)
     except (TypeError, ValueError) as exc:
@@ -285,6 +348,7 @@ def _normalize_path(value: Any) -> str:
         raise MuninnValidationError(
             f"path must be a string, got {type(value).__name__}"
         )
+    _check_no_lone_surrogates(value, "path")
     segments: list[str] = []
     for segment in value.split("/"):
         if segment in ("", "."):
@@ -932,11 +996,15 @@ class HebbianMemory:
         importance = _check_importance(importance)
         emotional_valence = _check_valence(emotional_valence)
         clean_path = _normalize_path(path)
+        clean_category = _check_no_lone_surrogates(str(category), "category")
         text, is_json, content_hash = _content_payload(content)
         _check_content_size(text, self.config.max_content_bytes)
         clean_tags = [
             str(t).strip().lower()[:64] for t in _check_tag_list(tags) if str(t).strip()
         ]
+        for tag in clean_tags:
+            _check_no_lone_surrogates(tag, "tags")
+        _check_value_no_lone_surrogates(metadata or {}, "metadata")
         try:
             meta_text = json.dumps(metadata or {}, sort_keys=True, default=str)
         except (TypeError, ValueError) as exc:
@@ -951,7 +1019,7 @@ class HebbianMemory:
                 "  emotional_valence, tags, metadata, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    text, is_json, content_hash, clean_path, str(category), importance,
+                    text, is_json, content_hash, clean_path, clean_category, importance,
                     emotional_valence, json.dumps(clean_tags), meta_text, at, at,
                 ),
             )
@@ -965,7 +1033,7 @@ class HebbianMemory:
             else:
                 row = self._conn.execute(
                     "SELECT id FROM nodes WHERE content_hash = ? AND category = ? AND path = ?",
-                    (content_hash, str(category), clean_path),
+                    (content_hash, clean_category, clean_path),
                 ).fetchone()
                 node_id = int(row[0])
                 is_new = False
@@ -1045,8 +1113,14 @@ class HebbianMemory:
         :meth:`activate`); the default is a pure read.
         """
         top_k = max(1, min(_check_count(top_k, "top_k"), self.MAX_QUERY_RESULTS))
+        if query:
+            _check_no_lone_surrogates(str(query), "query")
         wanted_tags = [str(t).lower() for t in _check_tag_list(tags)] if tags else []
+        for tag in wanted_tags:
+            _check_no_lone_surrogates(tag, "tags")
         wanted_type = category or memory_type
+        if wanted_type:
+            _check_no_lone_surrogates(str(wanted_type), "category")
         sql = "SELECT * FROM nodes WHERE 1=1"
         params: list[Any] = []
         if wanted_type:
@@ -1141,14 +1215,16 @@ class HebbianMemory:
             if "emotional_valence" in fields:
                 updates["emotional_valence"] = _check_valence(fields["emotional_valence"])
             if "tags" in fields:
-                updates["tags"] = json.dumps(
-                    [
-                        str(t).strip().lower()[:64]
-                        for t in _check_tag_list(fields["tags"])
-                        if str(t).strip()
-                    ]
-                )
+                clean_update_tags = [
+                    str(t).strip().lower()[:64]
+                    for t in _check_tag_list(fields["tags"])
+                    if str(t).strip()
+                ]
+                for tag in clean_update_tags:
+                    _check_no_lone_surrogates(tag, "tags")
+                updates["tags"] = json.dumps(clean_update_tags)
             if "metadata" in fields:
+                _check_value_no_lone_surrogates(fields["metadata"] or {}, "metadata")
                 try:
                     meta_text = json.dumps(
                         fields["metadata"] or {}, sort_keys=True, default=str
@@ -1162,7 +1238,9 @@ class HebbianMemory:
             if "path" in fields:
                 updates["path"] = _normalize_path(fields["path"])
             if "memory_type" in fields or "category" in fields:
-                updates["category"] = str(fields.get("memory_type", fields.get("category")))
+                updates["category"] = _check_no_lone_surrogates(
+                    str(fields.get("memory_type", fields.get("category"))), "category"
+                )
             if not updates:
                 return True
             updates["updated_at"] = self._tick()

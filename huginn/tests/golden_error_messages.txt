@@ -61,6 +61,8 @@ CASE locked_upsert | HuginnStorageError | huginn write failed during upsert: sto
 CASE missing_main_wal | HuginnStorageError | huginn store <tmp_path>/walonly.db has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 CASE directory_store | HuginnStorageError | huginn store <tmp_path>/dir.db is a directory, not a database file; refusing to open
 CASE nonfile_store | HuginnStorageError | huginn store <tmp_path>/fifo.db is not a regular file; refusing to open
+CASE content_surrogate | HuginnValidationError | content must not contain lone surrogates
+CASE query_surrogate | HuginnValidationError | query_text must not contain lone surrogates
 CASE qdrant_closed | HuginnBackendError | Huginn Qdrant backend is closed
 CASE qdrant_missing_extra | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 CASE st_missing_extra | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
@@ -137,6 +139,7 @@ TEMPLATE | HuginnValidationError | category must be a string
 TEMPLATE | HuginnValidationError | documents must be a list of strings
 TEMPLATE | HuginnValidationError | tags must be a list of strings
 TEMPLATE | HuginnValidationError | {} must be an int, got {}
+TEMPLATE | HuginnValidationError | {} must not contain lone surrogates
 TEMPLATE | HuginnValidationError | emotional_valence must be a number in [-1, 1], got {}
 TEMPLATE | HuginnValidationError | emotional_valence must be in [-1, 1], got {}
 TEMPLATE | HuginnValidationError | importance must be an int in [1, 10], got {}

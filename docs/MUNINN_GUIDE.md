@@ -770,6 +770,17 @@ open`. A text file is a corrupt store and takes the
 corruption road above (RM-033, see
 `docs/NON_DATABASE_FILES.md`).
 
+Text in any script is welcome and is stored verbatim — RTL
+scripts, emoji ZWJ sequences, combining marks, astral-plane
+characters — with no normalisation: the decomposed and
+precomposed spellings of a word are different memories. The
+one refused shape is a **lone surrogate** (an unpaired
+U+D800–U+DFFF code point, which UTF-8, JSON and SQLite
+cannot hold honestly): content, metadata, tags, category,
+path and the `retrieve` filters are checked before any
+write and refused with `… must not contain lone
+surrogates` (RM-034, see `docs/UNICODE_GAUNTLET.md`).
+
 Durability: the store runs in WAL mode with `synchronous=FULL`, and
 batch writes are single transactions. A `kill -9` mid-write loses at
 most the uncommitted transaction; committed work survives reopening.

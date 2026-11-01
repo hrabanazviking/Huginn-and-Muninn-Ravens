@@ -338,6 +338,8 @@ def _cases(tmp_path):
         "nonfile_store": lambda: LocalBackend(
             HuginnConfig(backend="local", local_db_path=str(fifo_path))
         ),
+        "content_surrogate": lambda: h.upsert_memory("bad \ud800 end"),
+        "query_surrogate": lambda: h.search("bad \ud800"),
     }
     return cases, _holder
 

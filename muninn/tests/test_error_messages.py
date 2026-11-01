@@ -196,6 +196,8 @@ def _cases(tmp_path):
         "nonfile_store": lambda: HebbianMemory(
             MuninnConfig(db_path=str(fifo_path))
         ),
+        "content_surrogate": lambda: m.remember("bad \ud800 end"),
+        "path_surrogate": lambda: m.remember("clean", path="a/\ud800"),
     }
     return cases, m, _holder
 

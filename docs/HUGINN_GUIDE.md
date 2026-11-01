@@ -795,6 +795,20 @@ named. A text file is a corrupt store and takes the
 corruption road above (RM-033, see
 `docs/NON_DATABASE_FILES.md`).
 
+Text in any script is welcome and is stored verbatim — RTL
+scripts, emoji ZWJ sequences, combining marks, astral-plane
+characters — with no normalisation: the decomposed and
+precomposed spellings of a word are different documents. The
+one refused shape is a **lone surrogate** (an unpaired
+U+D800–U+DFFF code point, which UTF-8, JSON and SQLite
+cannot hold honestly): `upsert_memory`'s content, category
+and tags, every query-shaped argument, and
+`semantic_search`'s documents are checked in the facade,
+before any backend is touched, and refused with `… must
+not contain lone surrogates` (RM-034, see
+`docs/UNICODE_GAUNTLET.md`). Inside `fly`, the refusal
+comes home as an error flight naming it, as flights do.
+
 ### Threading
 
 All backends serialize internally with a lock, and `HuginnMemory`

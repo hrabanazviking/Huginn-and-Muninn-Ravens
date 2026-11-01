@@ -62,6 +62,8 @@ CASE locked_remember | MuninnStorageError | muninn write failed during remember:
 CASE missing_main_wal | MuninnStorageError | muninn store <tmp_path>/walonly.db has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 CASE directory_store | MuninnStorageError | muninn store <tmp_path>/dir.db is a directory, not a database file; refusing to open
 CASE nonfile_store | MuninnStorageError | muninn store <tmp_path>/fifo.db is not a regular file; refusing to open
+CASE content_surrogate | MuninnValidationError | content must not contain lone surrogates
+CASE path_surrogate | MuninnValidationError | path must not contain lone surrogates
 # TEMPLATE lines (55 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
@@ -128,6 +130,7 @@ TEMPLATE | MuninnValidationError | memory_ids must be a list of ints
 TEMPLATE | MuninnValidationError | seed_ids must be a list of ints
 TEMPLATE | MuninnValidationError | tags must be a list of strings
 TEMPLATE | MuninnValidationError | {} must be an int, got {}
+TEMPLATE | MuninnValidationError | {} must not contain lone surrogates
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata must be JSON-serializable
 TEMPLATE | MuninnValidationError | metadata size {} bytes exceeds max_metadata_bytes ({} bytes)
