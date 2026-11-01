@@ -37,7 +37,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
 - Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
-  RM-016, RM-017, RM-018, RM-019, RM-020, RM-021.
+  RM-016, RM-017, RM-018, RM-019, RM-020, RM-021, RM-022.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -48,7 +48,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-022 in roadmap order (Part II — Stability).
+- Next: RM-023 in roadmap order (Part II — Stability).
 - **RM-020 BANKED 2026-11-01 (keeper tick from ~07:56 EST):**
   the wait-and-run log (`~/workspace/.verify-tmp/
   rm020_verify.log`) shows the write gate OPEN at probe 57
@@ -742,3 +742,35 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   (extends the RM-008/RM-011/RM-012/RM-016/RM-017 sync
   note). Huginn has no decay of its own — this slice is
   Muninn-only by design.
+- **RM-022 — Store-format stability promise. BANKED
+  2026-11-01. Class: UNIT.** Record:
+  `docs/FORMAT_STABILITY.md` — every file, table and key
+  of both stores named with its contract class + the
+  migration promise attached, reviewed against the code.
+  Highlights: `.bak-N` generations are complete store
+  files in the live format (restorable with no
+  conversion); Muninn's `activation_log` +
+  `hebbian_connections` are shared-schema law (Part X
+  slices + migration proof + Bifröst re-verification
+  only); the `meta` registry (`schema_version` both
+  stores, `decay_last_run_at` Muninn-only) is additive-
+  only, never redefined in place, unknown keys ignored;
+  integer ids + UTC ISO-8601 timestamps are value-level
+  promises; the Qdrant section promises construction
+  only (collection `huginn_memories`, COSINE, integer
+  point ids) — live Qdrant still NOT PROVEN. Stated
+  honestly in the doc: `schema_version` ("1", both
+  stores) is recorded on every open but **not yet gated
+  on** — no migration registry exists yet; RM-132 builds
+  it and RM-082 defines foreign-schema behaviour, and
+  the doc defers governing authority to them. Acceptance
+  pinned by new `tests/test_format_stability.py` in both
+  packages (2 tests each): every golden table + index
+  must be named in the doc, so a schema element shipped
+  without a promise update fails. Full suites green in
+  the RM-021 venv: muninn **126 passed** (124+2), huginn
+  **95 passed** (93+2); ruff floor clean. No package
+  code, API, or schema change, so no Bifröst
+  re-verification required. Founding tree needs no sync
+  (docs + tests only); the package-source sync note
+  stands.

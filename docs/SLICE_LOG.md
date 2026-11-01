@@ -554,3 +554,52 @@ has an entry here with its Class and Commit fields present.
   Founding tree (`~/workspace/ravens`) NEEDS A SYNC for the
   new `decay_wall_clock()` method (extends the
   RM-008/RM-011/RM-012/RM-016/RM-017 sync note).
+
+## RM-022 — Store-format stability promise
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** New `docs/FORMAT_STABILITY.md`: every file,
+  table and key of both stores named with its contract class
+  and the migration promise attached to it, reviewed
+  line-by-line against the code (`_db.py` + schema SQL in
+  both packages, `qdrant_backend.py`, the RM-004 goldens).
+  Contents: the file family (main store, SQLite-owned
+  `-wal`/`-shm` sidecars, `.bak-N` rolling generations —
+  complete store files restorable with no conversion — and
+  the transient `.bak-tmp`); the WAL + `synchronous=FULL`
+  durability contract and the restore-or-refuse open
+  behaviour; Muninn's tables with `activation_log` +
+  `hebbian_connections` marked **shared schema — law**
+  (Part X schema-version slices + migration proof +
+  Bifröst re-verification only), the rest contractual;
+  Huginn's local tables likewise; the `meta` registry
+  (`schema_version` in both stores, `decay_last_run_at`
+  Muninn-only since RM-021) with the additive-only /
+  never-redefine / unknown-keys-ignored rules; the
+  integer-id and UTC-ISO-8601 value promises; the Qdrant
+  construction (collection `huginn_memories`, COSINE,
+  embedder-sized vectors, integer point ids) stated as
+  construction, **not** live proof — a live Qdrant
+  round-trip is still NOT PROVEN. Honest centre of the
+  document: `schema_version` ("1" in both stores) is today
+  *recorded* on every open, **not yet gated on** — there
+  is no migration registry yet; a format change today
+  ships only under the golden-snapshot + re-verification
+  discipline the slices have used, and the document defers
+  governing authority to RM-132's registry (and RM-082's
+  foreign-schema behaviour) when they land. Acceptance
+  ("doc reviewed against code") is pinned by new
+  `tests/test_format_stability.py` in both packages
+  (2 tests each, RM-007 skip-outside-checkout pattern):
+  every table + index in each package's RM-004 golden must
+  be named in the document, along with the meta keys, the
+  `.bak-` shape and the collection name — a schema element
+  added without a promise update fails the suites. Full
+  suites green in the RM-021 venv: muninn **126 passed**
+  (124+2), huginn **95 passed** (93+2); ruff floor clean.
+  No package code, public API, or schema change (RM-003 /
+  RM-004 pins green), so no Bifröst re-verification
+  required. Founding tree needs no sync for this slice
+  (docs + tests only); the package-source sync note
+  stands.
