@@ -90,7 +90,8 @@ def test_golden_result_keys(tmp_path):
         }
         assert set(m.health()) == {
             "activations", "connections", "db_path", "integrity",
-            "nodes", "recovered_from_backup", "schema_version", "status",
+            "nodes", "recovered_from_backup", "schema_version",
+            "sqlite_version", "status",
         }
         assoc = m.get_associations(1)
         assert assoc, "batch wiring must produce an association"

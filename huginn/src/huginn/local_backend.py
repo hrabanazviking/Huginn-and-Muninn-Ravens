@@ -488,4 +488,5 @@ class LocalBackend:
             "recovered_from_backup": self.recovered_from_backup,
             "documents": documents,
             "vocabulary": terms,
+            "sqlite_version": sqlite3.sqlite_version,
         }

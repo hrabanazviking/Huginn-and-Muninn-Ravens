@@ -264,3 +264,45 @@ has an entry here with its Class and Commit fields present.
   package code, API, or schema change (RM-003 freeze + RM-004
   snapshot green), so no Bifröst re-verification required.
   Suites: muninn **99 passed**, huginn **75 passed**.
+
+## RM-016 — Version-pinning of the sqlite runtime
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `health()` now carries `sqlite_version`
+  (`sqlite3.sqlite_version`, read from the runtime, never
+  hard-coded) in muninn's `HebbianMemory.health()` and
+  huginn's local backend `health()` (facade passes it
+  through). Record + the minimum WAL-safe version are
+  documented in `docs/SQLITE_RUNTIME.md`: minimum **3.7.0**
+  (the release that introduced the WAL journal mode both
+  stores use); runtime measured at banking 3.45.1 (this VM,
+  Python 3.12.3), unchanged since RM-001. The Qdrant
+  backend's health carries no `sqlite_version` (it runs no
+  SQLite) and the facade's failing-backend early return
+  claims none — both stated in the doc. Proven by new
+  `tests/test_sqlite_version.py` in both packages (3 tests
+  each): value equals the runtime's own, parses at or above
+  the 3.7.0 floor, and the read is pure (stats/health
+  unchanged across repeats). RM-003 health goldens updated
+  deliberately in this same commit (+`sqlite_version` in
+  both key sets). Because this slice changes a public API
+  result, the **Bifröst contract re-verification was run
+  before banking** (fresh venv `ravens-rm016-bifrost-venv`;
+  hrabanazviking/bifrost at b66e98cc): Bifröst's own suites
+  **25 passed** (matching the founding record), and a
+  BifrostBridge smoke passed end-to-end — store returns
+  mimir_id + huginn_id, search merges 2 results, recall
+  grows the Muninn activation log by exactly 1, decay +
+  consolidate return their reports, stats aggregates all
+  three backends, double close safe — with both raven
+  health dicts carrying `sqlite_version` 3.45.1 through the
+  bridge (huginn degraded via auto-fallback to local, the
+  founding venv condition: qdrant-client not installed).
+  Full suites green in a fresh venv (`ravens-rm016-venv`,
+  non-editable installs): muninn **102 passed** (99+3),
+  huginn **78 passed** (75+3); ruff + mypy floors clean
+  (mypy muninn 5 files, huginn 8 files, no issues). Founding
+  tree (`~/workspace/ravens`) NEEDS A SYNC for the two
+  health() additions (extends the RM-008/RM-011/RM-012 sync
+  note).

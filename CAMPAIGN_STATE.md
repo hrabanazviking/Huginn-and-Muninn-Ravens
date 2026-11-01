@@ -36,7 +36,8 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
 - Banked: RM-001, RM-002, RM-003, RM-004, RM-005, RM-006, RM-007,
   RM-008, RM-009, RM-010. **Part I (Foundations & Gates) is
   complete** — all ten slices banked and pushed.
-- Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015.
+- Banked (Part II): RM-011, RM-012, RM-013, RM-014, RM-015,
+  RM-016.
 - RM-015 (24-hour soak) BANKED 2026-11-01: record span
   2026-10-31T10:47:56Z → 2026-11-01T10:54:18Z (24 h 06 m),
   39 segments, 174,523 cycles, 70 errors (all
@@ -47,7 +48,7 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   watch log was condensed at banking — each check was
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
-- Next: RM-016 in roadmap order (Part II — Stability).
+- Next: RM-017 in roadmap order (Part II — Stability).
 
 ## Standing invariants (from ~/workspace/ravens/BUILD_NOTES.md)
 
@@ -492,3 +493,38 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   catch-all is outside the packages' floor select — the
   catch is the harness's error-counting design, stated in
   its comment).
+- **RM-016 — Version-pinning of the sqlite runtime. BANKED
+  2026-11-01. Class: UNIT.** Record: `docs/SQLITE_RUNTIME.md`.
+  `health()` in both packages now carries `sqlite_version`
+  (`sqlite3.sqlite_version`, read from the runtime): muninn
+  `HebbianMemory.health()`; huginn local backend `health()`,
+  passed through by the facade. Minimum WAL-safe version
+  documented: **3.7.0** (WAL's introduction release; both
+  stores open in WAL mode). Runtime at banking: 3.45.1
+  (Python 3.12.3, this VM), unchanged since RM-001. Absent
+  honestly where there is no SQLite: the Qdrant backend's
+  health and the facade's failing-backend early return.
+  Acceptance proven by new `tests/test_sqlite_version.py`
+  in both packages (3 each): value equals the runtime's,
+  parses ≥ (3,7,0), read is pure. RM-003 health goldens
+  updated deliberately in the banking commit. Public API
+  result changed (additive key), so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm016-bifrost-venv`), bifrost at b66e98cc — its
+  own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id+huginn_id; search 2 merged results;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; stats over all three backends;
+  double close safe) with both raven health dicts carrying
+  `sqlite_version` 3.45.1 through the bridge (huginn
+  degraded via auto-fallback to local — qdrant-client not
+  installed in the venv, the founding condition; live
+  Qdrant still NOT PROVEN). One smoke-script correction
+  during the run (mine, not a package defect): recall takes
+  the bridge's mimir id — there is no `muninn_id` key in
+  the store result. Full suites green in a fresh venv
+  (non-editable installs): muninn **102 passed** (99+3),
+  huginn **78 passed** (75+3); ruff + mypy floors clean
+  (mypy muninn 5 files, huginn 8 files). Founding tree
+  NEEDS A SYNC for the health() additions (extends the
+  RM-008/RM-011/RM-012 sync note).

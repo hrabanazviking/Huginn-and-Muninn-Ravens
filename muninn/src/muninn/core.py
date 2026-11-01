@@ -1130,6 +1130,7 @@ class HebbianMemory:
             "connections": int(conns),
             "activations": int(acts),
             "schema_version": "1",
+            "sqlite_version": sqlite3.sqlite_version,
         }
 
     def stats(self) -> dict[str, Any]:
