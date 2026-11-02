@@ -2778,3 +2778,85 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   slice** — 18 of 18 slices banked. The road continues
   at Part V — Speed (RM-057–RM-072).
   Banking verification: see `CAMPAIGN_STATE.md`.
+
+## RM-057 — Baseline atlas
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Part V — Speed opens with a map, not a
+  change. New `scripts/atlas.py` in both packages extends
+  the RM-005/006 harness to **1k / 10k / 100k** nodes
+  (Muninn) and documents (Huginn) for every headline
+  operation, reusing the RM-020 corpus generators and the
+  RM-006 environment block unchanged. The seed is the write
+  operation (total ms for the whole scale); every other
+  operation uses fixed sample batches identical at every
+  scale (Muninn: 2,000 activate, 500 activate_batch(5),
+  1,000 get_associations, 200 spread_activation(depth=2),
+  200 stats, read/maintenance medians of 3; Huginn: median
+  per search over 50 search / 25 filtered), so the tables
+  show cost growth with store size only. Records committed
+  as `muninn/scripts/atlas.json` and
+  `huginn/scripts/atlas.json`; human record with both
+  tables and readings in `docs/ATLAS.md`; pointer section
+  added to `docs/BENCHMARKS.md`. The atlas is a record,
+  not a gate (RM-071 wires the gate). Findings, all from
+  the records: Muninn reads are flat to 100k
+  (get_associations ×1000: 185.7 / 86.5 / 87.2 ms;
+  spread ×200: 218.0 / 88.2 / 108.7 ms) while **stats() is
+  the outlier** (×200: 322.5 / 1,794.2 / 31,790.6 ms —
+  ~1.6 / ~9.0 / ~159 ms per call); decay and consolidate
+  at 100k are ~0.5–0.6 s medians; Huginn upsert is a
+  steady ~1.0–1.4 ms/doc at every scale (100k docs in
+  101,382.0 ms) — and the search rows carry a proven
+  corpus caveat: the RM-020 Huginn corpus holds only
+  **23 distinct documents**, so RM-053's filed accounting
+  shows a 230-candidate pool at every scale, cap never
+  biting; search cost over 100k *distinct* documents is
+  therefore NOT measured here and is named as the gap
+  RM-061/RM-062 must close (Muninn's corpus is fully
+  distinct, 100,000 of 100,000). Two design facts faced
+  squarely: Muninn's atlas raises the backpressure
+  ceiling (`max_nodes`, default 20,000) to an exact fit
+  per scale, recorded as `config_overrides` in every
+  entry — a default-config seed provably stalls at
+  20,001 nodes, so without the override the 100k row
+  would be false; and the stores lived on **tmpfs**, the
+  RM-005 storage class, with the fsync warning measured
+  in a controlled A/B in this slice (2,000 activate:
+  172.6 ms tmpfs vs 58,843.2 ms overlay disk, ~340×).
+  Environment blocks in both records (Muninn recorded
+  2026-11-02T13:33:00Z at load [1.26, 5.46, 5.24]; Huginn
+  2026-11-02T13:40:22Z at load [2.39, 5.94, 5.71]; both
+  x86_64, 4 CPUs, Python 3.12.3, SQLite 3.45.1) — loaded
+  machine, numbers indicative: the 100k Muninn seed
+  (577,093.1 ms) is labelled a load artefact in the
+  record's reading. Pinned by new
+  `tests/test_benchmark_atlas.py` in both packages
+  (5 tests each: scales are exactly 1k/10k/100k, headline
+  ops match the gate contract, sample batches are fixed,
+  a tiny-scale real run covers every op with honest
+  corpus hashes and — Muninn — exact node counts and the
+  named override, and the committed record covers all
+  scales and ops); both `test_slice_log.py` EXPECTED
+  pins extended to RM-057 in this commit. Negation
+  against the RM-056 tree (new tests + extended pins on
+  the archived tree): **7 failed / 0 passed per package**
+  (5 atlas + 2 slice-log), failures exactly on the
+  missing atlas files and the missing RM-057 entry.
+  Slice-internal repairs, recorded not hidden: the first
+  Muninn run used the default ceiling and its 100k row
+  was discarded unrecorded once the prune was proven;
+  the first Huginn run crashed on a property called as a
+  method (`last_search_stats` is RM-053's facade
+  property) — fixed in the script and re-run; the
+  Huginn record was then re-run once more so the
+  unfiltered search's cost accounting is filed beside
+  the filtered one's. No package source, public API, or
+  schema change (scripts + records + tests + docs
+  only), so no Bifröst re-verification required.
+  Founding tree needs no sync for this slice (no package
+  source change); the standing Part II–IV sync note
+  stands. Live Qdrant + sentence-transformers stay
+  NOT PROVEN.
+  Banking verification: see `CAMPAIGN_STATE.md`.

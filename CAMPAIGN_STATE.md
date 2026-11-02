@@ -63,8 +63,96 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   slices banked and pushed; evidence bundle in
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
-- Next: RM-057 in roadmap order (Part V — Speed opens:
-  baseline atlas, BENCH).
+- Banked (Part V, in progress): RM-057.
+- Next: RM-058 in roadmap order (Muninn read path:
+  get_associations and spread_activation profiled at
+  100k edges; index/query changes only where the atlas
+  shows pain — the atlas shows reads flat, so evidence
+  first).
+- **RM-057 BANKED 2026-11-02 (keeper tick ~08:06 EST):**
+  baseline atlas — Part V (Speed) opens. New
+  `scripts/atlas.py` in both packages extends the
+  RM-005/006 harness to 1k / 10k / 100k nodes and
+  documents for every headline operation, reusing the
+  RM-020 corpus generators and RM-006 environment block;
+  the seed is the write operation and all other ops use
+  fixed sample batches identical at every scale, so the
+  tables show cost growth with store size only. Records
+  committed at `muninn/scripts/atlas.json` (recorded
+  2026-11-02T13:33:00Z, load [1.26, 5.46, 5.24]) and
+  `huginn/scripts/atlas.json` (recorded
+  2026-11-02T13:40:22Z, load [2.39, 5.94, 5.71]); human
+  record in `docs/ATLAS.md`, pointer in
+  `docs/BENCHMARKS.md`. Headline findings from the
+  records: Muninn reads flat to 100k (get_associations
+  ×1000 185.7/86.5/87.2 ms; spread ×200 218.0/88.2/
+  108.7 ms) while **stats() is the outlier** (×200
+  322.5/1,794.2/31,790.6 ms ≈ 1.6/9.0/159 ms per call);
+  decay/consolidate at 100k ~0.5–0.6 s; Huginn upsert a
+  steady ~1.0–1.4 ms/doc (100k in 101,382.0 ms).
+  Honesty items carried in the record, not buried: (1)
+  Muninn's atlas raises `max_nodes` (default 20,000) to
+  an exact fit per scale, filed as `config_overrides`
+  — a default-config seed provably stalls at 20,001
+  nodes (its leftover store counted on disk), so the
+  100k row would otherwise be false; the record's
+  `store_after_seed.total_nodes` equals the scale at
+  all three scales. (2) Stores on **tmpfs**, the RM-005
+  storage class; controlled A/B in this tick: 2,000
+  activate 172.6 ms tmpfs vs 58,843.2 ms overlay disk
+  (~340×) — write numbers are tmpfs numbers. (3) The
+  Huginn corpus holds only **23 distinct documents**;
+  RM-053 accounting filed per scale shows a
+  230-candidate pool at every scale, cap never biting,
+  so search cost over 100k *distinct* documents is NOT
+  measured — named as the gap RM-061/RM-062 must close
+  (Muninn's corpus is 100,000 of 100,000 distinct).
+  (4) The 100k Muninn seed (577,093.1 ms) is a load
+  artefact of a shared VM and is labelled as such.
+  Slice-internal repairs: the first Muninn run's 100k
+  row was discarded unrecorded once the prune was
+  proven; the first Huginn run crashed on
+  `last_search_stats` called as a method (it is
+  RM-053's facade property) — fixed and re-run, then
+  re-run once more to file the unfiltered search's
+  accounting beside the filtered one's. New
+  `tests/test_benchmark_atlas.py` (5 per package);
+  `test_slice_log.py` EXPECTED extended to RM-057 in
+  both. Negation against the RM-056 tree: **7 failed /
+  0 passed per package** (5 atlas + 2 slice-log),
+  failures exactly on the missing atlas files and
+  entry. Full suites green in the RM-057 fresh venv on
+  the final banking tree (non-editable installs,
+  encryption + qdrant extras, cryptography 50.0.2,
+  qdrant-client 1.20.0, pytest 9.2.0): muninn **358
+  passed** (353+5), huginn **306 passed** (301+5).
+  Suite history, honestly: a first muninn pass showed
+  1 failed / 357 passed — the huge-batch child died on
+  `database or disk is full` because this slice's own
+  atlas leftovers had filled the 512 MB /tmp tmpfs;
+  after clearing them the identical tree passed in
+  full, an environment casualty in the RM-039 pattern.
+  Ruff check clean (both packages, whole tree); mypy
+  clean in a deps-free tool venv per package (muninn
+  7 files, huginn 9 files — the deps venv's mypy trips
+  on numpy stubs in the qdrant chain, the known reason
+  the floor runs deps-free). Environment incidents:
+  the home-quota EDQUOT closure bit three times this
+  tick (negation scratch, atlas.json writes, the first
+  huginn install — which silently half-installed and
+  was redone); each time writes reopened after
+  clearing only regenerable scratch (shared pip cache,
+  the spent ravens-rm056-venv, rm055 negation dirs).
+  Runtime output previews also proved unreliable
+  twice this tick (a phantom completion notice and
+  progress lines ahead of the disk); every number in
+  this entry was read from the committed JSON records
+  and suite logs on disk. No package source, public
+  API, or schema change (scripts + records + tests +
+  docs only), so no Bifröst re-verification required.
+  Live Qdrant + sentence-transformers stay NOT PROVEN.
+  Founding tree needs no sync for this slice; the
+  standing Part II–IV package-source sync note stands.
 - **RM-056 BANKED 2026-11-02 (keeper tick ~07:26 EST):**
   Part IV gate — TH-16 closed. Security evidence bundle
   filed at `docs/PART_IV_EVIDENCE.md` (every Part IV

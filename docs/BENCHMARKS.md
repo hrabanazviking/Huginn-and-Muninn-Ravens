@@ -89,6 +89,19 @@ failures, baseline/environment shape) is pinned by deterministic
 unit tests — `tests/test_benchmark_gate.py` in both packages —
 so the unit suites never depend on wall-clock timing.
 
+## Baseline atlas (RM-057)
+
+Part V opens with `scripts/atlas.py` in both packages: the
+headline operations above measured at 1k / 10k / 100k nodes
+and documents, the seed itself as the write operation and
+fixed sample batches for the rest, environment block attached,
+records committed as `scripts/atlas.json` beside each script.
+The human record — tables, the tmpfs storage-class warning,
+Muninn's exact-fit `max_nodes` override, and what the map
+shows (`stats()` is the outlier) — lives in `docs/ATLAS.md`.
+The atlas is a record, not a gate; RM-071 wires its
+operations into this gate.
+
 ## Reproducible corpus (RM-020)
 
 The corpora are synthetic and formula-generated — muninn's

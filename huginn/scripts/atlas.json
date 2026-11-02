@@ -1,0 +1,136 @@
+{
+  "package": "huginn",
+  "schema": 1,
+  "kind": "atlas",
+  "environment": {
+    "recorded_at": "2026-11-02T13:40:22.951710+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      2.39404296875,
+      5.93896484375,
+      5.7119140625
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "scales": [
+    {
+      "scale": 1000,
+      "results_ms": {
+        "upsert": 1388.71885799972,
+        "search": 33.274667499881616,
+        "search_filtered": 1.8879320000451116
+      },
+      "details": {
+        "workload": {
+          "n_docs": 1000,
+          "n_search": 50,
+          "n_search_filtered": 25
+        },
+        "unit": "upsert: total ms for the seed batch; search ops: median ms per search",
+        "search_p95_ms": {
+          "search": 101.54456600002959,
+          "search_filtered": 4.989824000404042
+        },
+        "last_search_stats_after_search": {
+          "candidates_total": 230,
+          "candidates_scored": 230,
+          "cap": 10000,
+          "capped": false
+        },
+        "last_search_stats_after_filtered": {
+          "candidates_total": 230,
+          "candidates_scored": 23,
+          "cap": 10000,
+          "capped": false
+        },
+        "backend": "local",
+        "corpus": {
+          "version": 1,
+          "count": 1000,
+          "sha256": "8ea756b48d8af2c8263053bdeb7bb7de6c1383c24a3c98b270580467b7ed9485"
+        }
+      }
+    },
+    {
+      "scale": 10000,
+      "results_ms": {
+        "upsert": 11612.937236000107,
+        "search": 16.459719499835046,
+        "search_filtered": 6.151467000108823
+      },
+      "details": {
+        "workload": {
+          "n_docs": 10000,
+          "n_search": 50,
+          "n_search_filtered": 25
+        },
+        "unit": "upsert: total ms for the seed batch; search ops: median ms per search",
+        "search_p95_ms": {
+          "search": 96.98280399970827,
+          "search_filtered": 73.48767099983888
+        },
+        "last_search_stats_after_search": {
+          "candidates_total": 230,
+          "candidates_scored": 230,
+          "cap": 10000,
+          "capped": false
+        },
+        "last_search_stats_after_filtered": {
+          "candidates_total": 230,
+          "candidates_scored": 23,
+          "cap": 10000,
+          "capped": false
+        },
+        "backend": "local",
+        "corpus": {
+          "version": 1,
+          "count": 10000,
+          "sha256": "7b9d028b5b1638536c2f20b772fab92e1c7a6316b522468c2ef2e27cc27b7c03"
+        }
+      }
+    },
+    {
+      "scale": 100000,
+      "results_ms": {
+        "upsert": 101382.03827799998,
+        "search": 12.001021500054776,
+        "search_filtered": 1.6195590001188975
+      },
+      "details": {
+        "workload": {
+          "n_docs": 100000,
+          "n_search": 50,
+          "n_search_filtered": 25
+        },
+        "unit": "upsert: total ms for the seed batch; search ops: median ms per search",
+        "search_p95_ms": {
+          "search": 71.50287399963418,
+          "search_filtered": 1.9723179998436535
+        },
+        "last_search_stats_after_search": {
+          "candidates_total": 230,
+          "candidates_scored": 230,
+          "cap": 10000,
+          "capped": false
+        },
+        "last_search_stats_after_filtered": {
+          "candidates_total": 230,
+          "candidates_scored": 23,
+          "cap": 10000,
+          "capped": false
+        },
+        "backend": "local",
+        "corpus": {
+          "version": 1,
+          "count": 100000,
+          "sha256": "fe996043787af8cb61e7643522e23013478de8c08ff2b7f0a1ff3fb4c5173613"
+        }
+      }
+    }
+  ]
+}

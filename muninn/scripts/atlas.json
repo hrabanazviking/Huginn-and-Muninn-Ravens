@@ -1,0 +1,136 @@
+{
+  "package": "muninn",
+  "schema": 1,
+  "kind": "atlas",
+  "environment": {
+    "recorded_at": "2026-11-02T13:33:00.661212+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      1.255859375,
+      5.4619140625,
+      5.24169921875
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "scales": [
+    {
+      "scale": 1000,
+      "results_ms": {
+        "remember": 404.56924099999014,
+        "activate": 998.640013000113,
+        "activate_batch": 607.0415780000076,
+        "get_associations": 185.73145599998497,
+        "spread_activation": 218.0354609999995,
+        "decay": 73.56670000012855,
+        "consolidate": 44.440240000085396,
+        "stats": 322.48668699980954
+      },
+      "details": {
+        "workload": {
+          "n_nodes": 1000,
+          "n_activate": 2000,
+          "n_batch": 500,
+          "n_get_associations": 1000,
+          "n_spread": 200,
+          "n_stats": 200,
+          "read_repeat": 3
+        },
+        "unit": "remember: total ms for the seed batch; other ops: median total ms for the labelled fixed sample batch",
+        "config_overrides": {
+          "max_nodes": 1000
+        },
+        "store_after_seed": {
+          "total_nodes": 1000,
+          "total_connections": 4000,
+          "total_activations": 4500
+        },
+        "corpus": {
+          "version": 1,
+          "count": 1000,
+          "sha256": "6a8542a75dc44e4abf38741f40fa4c755beaac1fefefc0df3993f6c059669993"
+        }
+      }
+    },
+    {
+      "scale": 10000,
+      "results_ms": {
+        "remember": 1493.9946109998345,
+        "activate": 283.34706800001186,
+        "activate_batch": 504.4293399998878,
+        "get_associations": 86.50476599996182,
+        "spread_activation": 88.22048000001814,
+        "decay": 28.929044000051363,
+        "consolidate": 121.33658400011882,
+        "stats": 1794.1518739999083
+      },
+      "details": {
+        "workload": {
+          "n_nodes": 10000,
+          "n_activate": 2000,
+          "n_batch": 500,
+          "n_get_associations": 1000,
+          "n_spread": 200,
+          "n_stats": 200,
+          "read_repeat": 3
+        },
+        "unit": "remember: total ms for the seed batch; other ops: median total ms for the labelled fixed sample batch",
+        "config_overrides": {
+          "max_nodes": 10000
+        },
+        "store_after_seed": {
+          "total_nodes": 10000,
+          "total_connections": 4000,
+          "total_activations": 4500
+        },
+        "corpus": {
+          "version": 1,
+          "count": 10000,
+          "sha256": "563d8c05b7649082453cb79d7e636f7b9cbc14d35b1aa31c0798605575effb77"
+        }
+      }
+    },
+    {
+      "scale": 100000,
+      "results_ms": {
+        "remember": 577093.136316,
+        "activate": 413.611223000089,
+        "activate_batch": 787.7639599998929,
+        "get_associations": 87.15261799989094,
+        "spread_activation": 108.74650899995686,
+        "decay": 505.3554890000669,
+        "consolidate": 599.7256140001355,
+        "stats": 31790.594446999876
+      },
+      "details": {
+        "workload": {
+          "n_nodes": 100000,
+          "n_activate": 2000,
+          "n_batch": 500,
+          "n_get_associations": 1000,
+          "n_spread": 200,
+          "n_stats": 200,
+          "read_repeat": 3
+        },
+        "unit": "remember: total ms for the seed batch; other ops: median total ms for the labelled fixed sample batch",
+        "config_overrides": {
+          "max_nodes": 100000
+        },
+        "store_after_seed": {
+          "total_nodes": 100000,
+          "total_connections": 4000,
+          "total_activations": 4500
+        },
+        "corpus": {
+          "version": 1,
+          "count": 100000,
+          "sha256": "b21be20425a427166fcadd7e29a383df178afdd2a7fc280cfd46cecdd6c92d09"
+        }
+      }
+    }
+  ]
+}
