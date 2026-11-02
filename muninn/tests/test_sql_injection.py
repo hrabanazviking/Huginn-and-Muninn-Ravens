@@ -160,6 +160,25 @@ EXPECTED_FSTR_TEMPLATES = {
     "SELECT memory_a_id, memory_b_id, strength FROM hebbian_connections"
     " WHERE memory_a_id IN ({placeholders}) AND strength >= ?"
     " ORDER BY memory_a_id ASC, memory_b_id ASC",
+    # RM-064: chunked maintenance -- the decay/consolidate
+    # chunk statements. The only interpolated value is the
+    # generated placeholder list (question marks only);
+    # every rowid and value still travels as a bound
+    # parameter.
+    "UPDATE hebbian_connections SET strength = strength * ?"
+    " WHERE rowid IN ({placeholders})",
+    "UPDATE hebbian_connections SET consolidated = 0"
+    " WHERE rowid IN ({placeholders}) AND strength < ?",
+    "DELETE FROM hebbian_connections"
+    " WHERE rowid IN ({placeholders}) AND strength < ?",
+    "UPDATE node_activation SET confidence = confidence * ?"
+    " WHERE memory_id IN ({placeholders})",
+    "UPDATE hebbian_connections SET consolidated = 1"
+    " WHERE rowid IN ({placeholders})"
+    " AND strength >= ? AND consolidated = 0",
+    "UPDATE hebbian_connections SET consolidated = 0"
+    " WHERE rowid IN ({placeholders})"
+    " AND strength < ? AND consolidated = 1",
 }
 # Every SQL-shaped f-string anywhere in the source is one of
 # the execute-site templates above (no SQL is built into a
@@ -185,7 +204,14 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
 # RM-060: no new sites — remember_many reuses remember's two
 # pinned statements (the INSERT OR IGNORE and the identity
 # SELECT) through the shared _insert_prepared_locked helper.
-EXPECTED_SITE_TOTAL = 98
+# RM-064: +5 net sites -- eleven new chunked-maintenance
+# executes (five constant: the shared edge-chunk rowid
+# SELECT, three COUNT(*) totals, the confidence-chunk id
+# SELECT; six f-string chunk statements whose only
+# interpolation is the placeholder list) minus the six
+# full-store statements they replace (decay's four,
+# consolidate's mark/unmark pair).
+EXPECTED_SITE_TOTAL = 103
 
 
 def _source_dir():

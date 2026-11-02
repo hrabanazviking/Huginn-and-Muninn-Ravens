@@ -143,6 +143,17 @@ After fading, `decay` also:
 Decay is deterministic and safe to re-run. `decay(days=0)` fades
 nothing (factor 1.0) but still applies the prune/unmark steps.
 
+Since RM-064, `decay` and `consolidate` run in committed
+chunks of `maintenance_chunk_size` rows (default 1000):
+the atomicity is per chunk — an interrupted run leaves
+the store at a chunk boundary, stated in the reports as
+`atomicity` / `chunks` / `chunk_size` — and an optional
+`progress` callable is called after each committed chunk
+with an event dict (`operation`, `phase`, `chunk`,
+`processed`, `total`). The final state is exactly the
+old full-store result at any chunk size; see
+`docs/MAINTENANCE_SCALE.md`.
+
 ### Consolidation
 
 `consolidate()` is the "sleep" pass:
@@ -735,6 +746,7 @@ config = MuninnConfig(db_path="~/.hermes/memory/muninn_hebbian.db")
 | `integrity_passphrase` | `str \| None` | `None` | The passphrase the attestation chain key is derived from (RM-050). Required when `integrity_attestation` is `True`; excluded from `repr`; never stored, logged, or placed in an error string | Must be a string or `None` |
 | `max_spread_candidates` | `int` | `100000` | Query cost ceiling (RM-053, threat TH-13): the maximum candidate edges (neighbour rows) one `spread_activation` call may examine. When the ceiling bites the expansion stops deterministically (id order) and the call returns what it has; the bite is recorded in `last_spread_activation_stats` (see `docs/QUERY_COST_CAPS.md`) | Must be >= 1 |
 | `cache_size` | `int` | `0` | Warm cache (RM-063): the maximum nodes this object's `get_node` cache holds in memory (LRU eviction). `0` disables it — every `get_node` reads the store. Own writes always invalidate; the cache is per-object only, so another object's writes are not seen until eviction or an own write to that id (see `docs/WARM_CACHES.md`). Accounting in `cache_stats` | Must be >= 0 |
+| `maintenance_chunk_size` | `int` | `1000` | Chunked maintenance (RM-064): `decay` / `consolidate` commit in chunks of at most this many rows (per-chunk atomicity, stated in their reports; optional `progress` callback per committed chunk — see `docs/MAINTENANCE_SCALE.md`). | Must be >= 1 |
 
 **Secure defaults (RM-055, threat TH-15).** Every default
 in this table was re-judged for safety in one recorded

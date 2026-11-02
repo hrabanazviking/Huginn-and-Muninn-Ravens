@@ -64,13 +64,96 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060, RM-061, RM-062, RM-063.
-- Next: RM-064 in roadmap order (Decay/consolidate at
-  scale: both are full-store UPDATEs; add chunked
-  maintenance with progress reporting that preserves
-  all-or-nothing semantics per chunk boundary stated
-  in the report; acceptance: 100k-edge run within the
-  gate. Class: BENCH).
+  RM-060, RM-061, RM-062, RM-063, RM-064.
+- Next: RM-065 in roadmap order (Backup cost:
+  backup-on-open and pre-maintenance snapshots measured
+  at 100k scale; add incremental or copy-on-write
+  strategies only if the numbers demand it. Class:
+  BENCH).
+- **RM-064 BANKED 2026-11-02 (keeper tick ~17:36 EST):**
+  Decay/consolidate at scale -- BENCH. Muninn's two
+  maintenance passes are no longer full-store
+  transactions: one new Muninn config field
+  `maintenance_chunk_size: int = 1000` (validated
+  `>= 1`; RM-018 goldens 66 -> 67 CASE / 92 -> 93
+  TEMPLATE, muninn only). `decay(days, progress=None)`
+  walks edges in rowid order in committed chunks (fade
+  + unmark + prune per chunk), then confidences the
+  same way; `consolidate(threshold, progress=None)`
+  chunks mark/unmark, heal following as before.
+  Atomicity is **per chunk**, stated in every report
+  (`atomicity` / `chunks` / `chunk_size`); the optional
+  progress callback fires after each committed chunk
+  and a callback exception stops the run at the last
+  committed boundary. Final state is bit-for-bit the
+  full-store result at any chunk size (parity vs a
+  raw-table reference at chunk sizes 1 / 2 / 7 / 1000
+  in tests, and inside the gate at 100k edges). Gate
+  `muninn/scripts/maintenance_scale.py` (RM-058 uniform
+  store: 5,000 nodes, 100,000 directed edges, 50
+  confidences; record
+  `muninn/scripts/maintenance_scale.json`, after tree
+  2026-11-02T23:19:40Z, load 1.29): decay 10d median of
+  3 -- before (RM-063 full-store) **351.0 ms**, after
+  chunked **441.1 ms** (101 chunks), single-chunk
+  576.8 ms one run; consolidate median of 3 -- before
+  **379.9 ms**, after **462.3 ms** (100 chunks),
+  single-chunk 551.6 ms. **No speed win claimed:**
+  chunking costs ~25% at this scale (~100 commits
+  instead of one); it buys bounded transactions,
+  progress, and a crash boundary at most one chunk
+  behind, for ~90 ms absolute at 100k edges. Human
+  record `docs/MAINTENANCE_SCALE.md`; BENCHMARKS
+  pointer; MUNINN_GUIDE / API_REFERENCE / INTERFACE /
+  SECURE_DEFAULTS notes. RM-019 + contract-freeze
+  goldens gained the progress parameters and report
+  keys; RM-040 audit pin 98 -> 103 sites (+5 net) with
+  the six placeholder-list templates pinned. New
+  `tests/test_maintenance_chunks.py` (15 items, muninn
+  only: parity, exact progress sequences, callback
+  boundary, RAISE(ABORT) chunk rollback, wall-clock
+  report fields, empty store, record + gate pins).
+  Negation vs RM-063 tree: maintenance-chunks
+  **15 failed / 0 passed**, secure-defaults **4 / 3**,
+  error-messages **2 / 1**, api-surface **1 / 2**,
+  contract-freeze **2 / 1**, sql-injection **2 / 7**
+  (battery passes on both trees, as designed).
+  **Bifrost re-verified** (public API grew additively):
+  fresh venv on `/var/tmp`, bifrost git-clean at
+  pinned b66e98cc -- its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id,
+  search 2 merged results, recall +1 activation,
+  decay/consolidate through the bridge,
+  `decay_wall_clock()` armed at 0 days, stats over all
+  three backends, `sqlite_version` 3.45.1 in both
+  health dicts, huginn local via auto-fallback, double
+  close safe; evidence `/var/tmp/rm064/evidence/`).
+  Suites on the final banking tree (non-editable
+  installs from a full-repo copy on `/var/tmp`,
+  encryption + qdrant extras, cryptography 50.0.2,
+  qdrant-client 1.20.0, pytest 9.2.0): muninn
+  **426 passed** (411+15), huginn **335 passed**
+  (slice-log pin only). Ruff clean (whole tree);
+  mypy 1.20.2 clean (muninn 7 files, huginn 9 files).
+  Banking provenance, honestly: the home tree's quota
+  (EDQUOT) was shut for the whole tick, so -- exactly
+  as RM-063 did -- this slice was built, verified,
+  committed and pushed from a full-repo copy on
+  `/var/tmp` (`/var/tmp/rm064/repo`, struck from the
+  clean RM-063 banking copy). The home tree still
+  holds RM-063's uncommitted-but-identical changes on
+  RM-062 (verified this tick: five of six RM-063 files
+  byte-identical to the banked commit, the sixth --
+  muninn `tests/test_warm_caches.py` -- differing only
+  in that the banked copy carries the stronger
+  health()/stats() key assertions); reconciling the
+  home tree to RM-064 (fast-forward to this commit and
+  drop the duplicated uncommitted changes) is still
+  owed and is blocked only by the quota closure.
+  Live Qdrant + sentence-transformers stay NOT
+  PROVEN. Founding tree NEEDS A SYNC for the RM-064
+  build (extends the standing package-source sync
+  note).
 - **RM-063 BANKED 2026-11-02 (keeper tick ~16:46 EST):**
   Warm caches — UNIT. Both packages gain an optional
   bounded in-memory cache for their single-item read

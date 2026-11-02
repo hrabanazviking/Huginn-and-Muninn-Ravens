@@ -2466,14 +2466,85 @@ class HebbianMemory:
             self.last_heal_report = self._heal_locked()
             return dict(self.last_heal_report)
 
+    # ─── chunked maintenance (RM-064) ─────────────────────────────
+    #
+    # decay / consolidate walk their tables in chunks of
+    # ``maintenance_chunk_size`` rows, committing each chunk on
+    # its own: a crash or failure mid-run leaves the store at a
+    # chunk boundary -- every chunk fully applied or fully
+    # rolled back, never half a chunk (the pre-RM-064 road was
+    # one full-store transaction). The per-row maths is the old
+    # road's, applied chunk by chunk in row order, so the final
+    # store state is bit-for-bit the full-store result at any
+    # chunk size; the reports carry ``chunks`` / ``chunk_size``
+    # / ``atomicity`` and an optional progress callback fires
+    # after each committed chunk. Record:
+    # docs/MAINTENANCE_SCALE.md.
+
+    def _edge_chunk_rowids_locked(self, after: int) -> list[int]:
+        """RM-064: the next chunk of edge rowids above ``after``."""
+        rows = self._conn.execute(
+            "SELECT rowid FROM hebbian_connections WHERE rowid > ?"
+            " ORDER BY rowid LIMIT ?",
+            (after, int(self.config.maintenance_chunk_size)),
+        ).fetchall()
+        return [int(r[0]) for r in rows]
+
+    @staticmethod
+    def _maintenance_progress(
+        progress: Callable[[dict[str, Any]], None] | None,
+        operation: str,
+        phase: str,
+        chunk: int,
+        processed: int,
+        total: int,
+    ) -> None:
+        """RM-064: fire one progress event for a committed chunk.
+
+        The event is a fresh dict: ``operation``, ``phase``,
+        ``chunk`` (1-based within the phase), ``processed``
+        (rows of this phase committed so far) and ``total``
+        (rows in the phase when the run started). A callback
+        exception propagates: chunks already committed stay
+        committed -- the per-chunk boundary is exactly what a
+        stopped run leaves behind.
+        """
+        if progress is not None:
+            progress(
+                {
+                    "operation": operation,
+                    "phase": phase,
+                    "chunk": chunk,
+                    "processed": processed,
+                    "total": total,
+                }
+            )
+
     @_storage_write("decay")
-    def decay(self, days: float = 1.0) -> dict[str, Any]:
+    def decay(
+        self,
+        days: float = 1.0,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         """Fade strengths and confidences by elapsed ``days`` (WRITE).
 
         Edge strengths multiply by ``0.5 ** (days / edge_half_life)``;
         edges falling below the prune threshold are deleted. Node
         confidences multiply by their own half-life factor. Returns
         exact counts. Deterministic and safe to re-run.
+
+        RM-064: the work runs in committed chunks of
+        ``maintenance_chunk_size`` rows (edges first, then
+        confidences), so the atomicity is **per chunk**, stated
+        in the report (``atomicity`` / ``chunks`` /
+        ``chunk_size``): an interrupted run leaves every
+        committed chunk fully applied and the rest untouched.
+        ``progress`` (optional) is called after each committed
+        chunk with the event dict described in
+        :meth:`_maintenance_progress`. The final state is
+        exactly the pre-RM-064 full-store result. Decay touches
+        edges and ``node_activation`` only -- never node rows --
+        so the RM-063 warm cache owes it no invalidation.
         """
         if (
             isinstance(days, bool)
@@ -2485,29 +2556,89 @@ class HebbianMemory:
         days = float(days)
         edge_factor = 0.5 ** (days / self.config.decay_half_life_days)
         conf_factor = 0.5 ** (days / self.config.confidence_half_life_days)
+        chunk_size = int(self.config.maintenance_chunk_size)
         with self._lock:
             self._get_conn()
             if self.config.auto_backup:
                 self._conn.commit()
                 take_backup(self._db_path, self.config.backup_keep)
-            cur = self._conn.execute(
-                "UPDATE hebbian_connections SET strength = strength * ?", (edge_factor,)
+            total_edges = int(
+                self._conn.execute(
+                    "SELECT COUNT(*) FROM hebbian_connections"
+                ).fetchone()[0]
             )
-            decayed = cur.rowcount
-            cur = self._conn.execute(
-                "UPDATE hebbian_connections SET consolidated = 0 WHERE strength < ?",
-                (self.config.consolidation_threshold,),
+            total_confidences = int(
+                self._conn.execute("SELECT COUNT(*) FROM node_activation").fetchone()[0]
             )
-            cur = self._conn.execute(
-                "DELETE FROM hebbian_connections WHERE strength < ?",
-                (self.config.prune_threshold,),
-            )
-            pruned = cur.rowcount
-            cur = self._conn.execute(
-                "UPDATE node_activation SET confidence = confidence * ?", (conf_factor,)
-            )
-            confidences = cur.rowcount
-            self._conn.commit()
+            decayed = 0
+            pruned = 0
+            chunks = 0
+            processed = 0
+            chunk_no = 0
+            after = 0
+            while True:
+                rowids = self._edge_chunk_rowids_locked(after)
+                if not rowids:
+                    break
+                placeholders = ",".join("?" * len(rowids))
+                cur = self._conn.execute(
+                    "UPDATE hebbian_connections SET strength = strength * ?"
+                    f" WHERE rowid IN ({placeholders})",
+                    (edge_factor, *rowids),
+                )
+                decayed += cur.rowcount
+                self._conn.execute(
+                    "UPDATE hebbian_connections SET consolidated = 0"
+                    f" WHERE rowid IN ({placeholders}) AND strength < ?",
+                    (*rowids, self.config.consolidation_threshold),
+                )
+                cur = self._conn.execute(
+                    "DELETE FROM hebbian_connections"
+                    f" WHERE rowid IN ({placeholders}) AND strength < ?",
+                    (*rowids, self.config.prune_threshold),
+                )
+                pruned += cur.rowcount
+                self._conn.commit()
+                chunks += 1
+                chunk_no += 1
+                processed += len(rowids)
+                after = rowids[-1]
+                self._maintenance_progress(
+                    progress, "decay", "edges", chunk_no, processed, total_edges
+                )
+            confidences = 0
+            processed = 0
+            chunk_no = 0
+            after = 0
+            while True:
+                rows = self._conn.execute(
+                    "SELECT memory_id FROM node_activation WHERE memory_id > ?"
+                    " ORDER BY memory_id LIMIT ?",
+                    (after, chunk_size),
+                ).fetchall()
+                if not rows:
+                    break
+                ids = [int(r[0]) for r in rows]
+                placeholders = ",".join("?" * len(ids))
+                cur = self._conn.execute(
+                    "UPDATE node_activation SET confidence = confidence * ?"
+                    f" WHERE memory_id IN ({placeholders})",
+                    (conf_factor, *ids),
+                )
+                confidences += cur.rowcount
+                self._conn.commit()
+                chunks += 1
+                chunk_no += 1
+                processed += len(ids)
+                after = ids[-1]
+                self._maintenance_progress(
+                    progress,
+                    "decay",
+                    "confidences",
+                    chunk_no,
+                    processed,
+                    total_confidences,
+                )
             return {
                 "days": days,
                 "edge_factor": edge_factor,
@@ -2515,6 +2646,9 @@ class HebbianMemory:
                 "edges_decayed": decayed,
                 "edges_pruned": pruned,
                 "confidences_decayed": confidences,
+                "chunks": chunks,
+                "chunk_size": chunk_size,
+                "atomicity": "per_chunk",
             }
 
     @_storage_write("decay_wall_clock")
@@ -2593,7 +2727,11 @@ class HebbianMemory:
         return report
 
     @_storage_write("consolidate")
-    def consolidate(self, threshold: float | None = None) -> dict[str, Any]:
+    def consolidate(
+        self,
+        threshold: float | None = None,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         """Mark strong edges consolidated; repair structure (WRITE).
 
         Edges at or above ``threshold`` (default: the config's
@@ -2601,28 +2739,62 @@ class HebbianMemory:
         edges below it are unmarked. The heal pass runs as part of
         consolidation (sleep also tidies). Node content is never
         rewritten by consolidation.
+
+        RM-064: the mark/unmark pass runs in committed chunks
+        of ``maintenance_chunk_size`` edge rows, so its
+        atomicity is **per chunk**, stated in the report
+        (``atomicity`` / ``chunks`` / ``chunk_size``); the heal
+        pass that follows commits as it always did.
+        ``progress`` (optional) is called after each committed
+        chunk with the event dict described in
+        :meth:`_maintenance_progress`. The final state is
+        exactly the pre-RM-064 full-store result.
         """
         if threshold is None:
             threshold = self.config.consolidation_threshold
         threshold = _check_threshold(threshold)
+        chunk_size = int(self.config.maintenance_chunk_size)
         with self._lock:
             self._get_conn()
             if self.config.auto_backup:
                 self._conn.commit()
                 take_backup(self._db_path, self.config.backup_keep)
-            cur = self._conn.execute(
-                "UPDATE hebbian_connections SET consolidated = 1"
-                " WHERE strength >= ? AND consolidated = 0",
-                (float(threshold),),
+            total_edges = int(
+                self._conn.execute(
+                    "SELECT COUNT(*) FROM hebbian_connections"
+                ).fetchone()[0]
             )
-            marked = cur.rowcount
-            cur = self._conn.execute(
-                "UPDATE hebbian_connections SET consolidated = 0"
-                " WHERE strength < ? AND consolidated = 1",
-                (float(threshold),),
-            )
-            unmarked = cur.rowcount
-            self._conn.commit()
+            marked = 0
+            unmarked = 0
+            chunks = 0
+            processed = 0
+            after = 0
+            while True:
+                rowids = self._edge_chunk_rowids_locked(after)
+                if not rowids:
+                    break
+                placeholders = ",".join("?" * len(rowids))
+                cur = self._conn.execute(
+                    "UPDATE hebbian_connections SET consolidated = 1"
+                    f" WHERE rowid IN ({placeholders})"
+                    " AND strength >= ? AND consolidated = 0",
+                    (*rowids, float(threshold)),
+                )
+                marked += cur.rowcount
+                cur = self._conn.execute(
+                    "UPDATE hebbian_connections SET consolidated = 0"
+                    f" WHERE rowid IN ({placeholders})"
+                    " AND strength < ? AND consolidated = 1",
+                    (*rowids, float(threshold)),
+                )
+                unmarked += cur.rowcount
+                self._conn.commit()
+                chunks += 1
+                processed += len(rowids)
+                after = rowids[-1]
+                self._maintenance_progress(
+                    progress, "consolidate", "edges", chunks, processed, total_edges
+                )
             heal = self._heal_locked()
             total = self._conn.execute(
                 "SELECT COUNT(*) FROM hebbian_connections WHERE consolidated = 1"
@@ -2633,6 +2805,9 @@ class HebbianMemory:
                 "unmarked": unmarked,
                 "total_consolidated": int(total),
                 "heal": heal,
+                "chunks": chunks,
+                "chunk_size": chunk_size,
+                "atomicity": "per_chunk",
             }
 
     # ─── health & stats (PURE READS) ──────────────────────────────────

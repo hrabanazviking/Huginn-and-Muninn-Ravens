@@ -129,6 +129,23 @@ statement anatomy, changes, median-of-three before/after
 table with its load-confounding disclosure, and honest
 limits — lives in `docs/WRITE_PATH.md`.
 
+## Muninn maintenance at scale (RM-064)
+
+`muninn/scripts/maintenance_scale.py` builds the RM-058
+uniform store (5,000 nodes, **100,000 directed edges**) and
+runs `decay` and `consolidate` in the RM-064 chunked road
+(committed chunks of `maintenance_chunk_size` rows,
+per-chunk atomicity stated in the reports, optional
+progress callback) and in a single-chunk road, verifying
+every run's final tables row-for-row against an
+independent old-road reference before quoting timings.
+Record committed as `muninn/scripts/maintenance_scale.json`;
+the human record — chunk design, the per-chunk boundary,
+before/after medians with the honest reading (chunking
+costs ~25% wall-clock at this scale; what it buys is
+bounded transactions and progress, not speed) — lives in
+`docs/MAINTENANCE_SCALE.md`.
+
 ## Muninn bulk remember (RM-060)
 
 `muninn/scripts/bulk_remember.py` ingests 10,000 distinct

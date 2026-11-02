@@ -243,6 +243,7 @@ def _cases(tmp_path):
         "config_max_metadata_bytes": cfg(max_metadata_bytes=0),
         "config_max_spread_candidates": cfg(max_spread_candidates=0),
         "config_cache_size": cfg(cache_size=-1),
+        "config_maintenance_chunk_size": cfg(maintenance_chunk_size=0),
         "path_type": lambda: m.remember("x", path=123),
         "path_depth": lambda: m.remember("x", path="/".join(["a"] * 65)),
         "path_size": lambda: m.remember("x", path="x" * 2049),

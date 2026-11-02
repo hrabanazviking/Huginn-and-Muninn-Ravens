@@ -58,6 +58,13 @@ call reads the store). Own writes invalidate; another object's
 writes are not seen until eviction or an own write — see
 `docs/WARM_CACHES.md`. Hit accounting: `mem.cache_stats`.
 
+Chunked maintenance (RM-064): `decay` / `consolidate` commit in
+chunks of `MuninnConfig(maintenance_chunk_size=N)` rows (default
+1000, `>= 1`); atomicity is per chunk and stated in their reports
+(`atomicity` / `chunks` / `chunk_size`), and an optional
+`progress` callable is called after each committed chunk — see
+`docs/MAINTENANCE_SCALE.md`.
+
 ## Semantics
 
 - **Activation**: appends one `activation_log` row, increments the

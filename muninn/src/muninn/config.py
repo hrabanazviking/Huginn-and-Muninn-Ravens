@@ -206,6 +206,23 @@ class MuninnConfig:
             default. Cached nodes are copies: mutating a
             returned node never changes the cache or the
             store.
+        maintenance_chunk_size: Chunked maintenance (RM-064):
+            the maximum number of rows one committed chunk of
+            ``decay`` / ``consolidate`` touches (record
+            ``docs/MAINTENANCE_SCALE.md``). Maintenance no
+            longer runs as one full-store transaction: each
+            chunk of at most this many rows is committed on
+            its own, so a crash or failure mid-run leaves the
+            store at a chunk boundary -- every chunk fully
+            applied or fully rolled back, never half a chunk.
+            The reports state this per-chunk atomicity
+            plainly (``atomicity`` / ``chunks`` /
+            ``chunk_size``) and an optional ``progress``
+            callback is called after each committed chunk.
+            The default (1000) bounds the transaction size
+            and the progress granularity; the final store
+            state is exactly the pre-RM-064 full-store
+            result at any chunk size.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -230,6 +247,7 @@ class MuninnConfig:
     integrity_passphrase: str | None = field(default=None, repr=False)
     max_spread_candidates: int = 100000
     cache_size: int = 0
+    maintenance_chunk_size: int = 1000
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
@@ -286,6 +304,9 @@ class MuninnConfig:
         cache_size = _coerce_int(self.cache_size)
         if cache_size is None or cache_size < 0:
             raise MuninnConfigurationError("cache_size must be >= 0")
+        maintenance_chunk_size = _coerce_int(self.maintenance_chunk_size)
+        if maintenance_chunk_size is None or maintenance_chunk_size < 1:
+            raise MuninnConfigurationError("maintenance_chunk_size must be >= 1")
 
     def resolved_path(self) -> Path:
         """The store path with ``~`` expanded (not symlink-resolved)."""

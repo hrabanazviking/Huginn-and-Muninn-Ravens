@@ -92,6 +92,7 @@ reader most needs to know:
 | `integrity_passphrase` | `None` | Safe-none | Same judgement as `encryption_passphrase`. Keep. |
 | `max_spread_candidates` | `100000` | Bounded | The RM-053 query-cost ceiling (TH-13); a bite returns the partial result and is visible in `last_spread_activation_stats`. Keep. |
 | `cache_size` | `0` | Safe-off | The RM-063 warm `get_node` cache, off by default: a cache trades freshness for speed and is per-object only (another object's writes are not seen until eviction or an own write), so the safe default is no cache — every read reads the store. When explicitly enabled it is bounded (validated `>= 0`, LRU eviction at the bound) and own writes always invalidate. Judged at RM-063, the slice that added it. Keep. |
+| `maintenance_chunk_size` | `1000` | Bounded | Chunked maintenance (RM-064): `decay` / `consolidate` commit in chunks of at most this many rows, so a maintenance transaction is bounded in size however large the store grows, and an interrupted run stops at a chunk boundary (stated in the reports). Validated `>= 1`. No secrecy, freshness or execution surface. Judged at RM-064, the slice that added it. Keep. |
 
 ## Huginn — field by field
 

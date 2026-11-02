@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (66): every raise site except the one that cannot
+# CASE lines (67): every raise site except the one that cannot
 # be triggered deterministically — "node insert reported
 # success but returned no row id" (unreachable by
 # construction; the RM-008 guard), pinned below as a TEMPLATE
@@ -31,6 +31,7 @@ CASE config_max_content_bytes | MuninnConfigurationError | max_content_bytes mus
 CASE config_max_metadata_bytes | MuninnConfigurationError | max_metadata_bytes must be >= 1
 CASE config_max_spread_candidates | MuninnConfigurationError | max_spread_candidates must be >= 1
 CASE config_cache_size | MuninnConfigurationError | cache_size must be >= 0
+CASE config_maintenance_chunk_size | MuninnConfigurationError | maintenance_chunk_size must be >= 1
 CASE path_type | MuninnValidationError | path must be a string, got int
 CASE path_depth | MuninnValidationError | path depth 65 exceeds maximum of 64 segments
 CASE path_size | MuninnValidationError | path size 2049 bytes exceeds maximum of 2048 bytes
@@ -84,7 +85,7 @@ CASE attestation_passphrase_required | MuninnConfigurationError | integrity_pass
 CASE attestation_plain_open | MuninnStorageError | muninn store <tmp_path>/att.db carries integrity attestation; refusing to open it without integrity_attestation enabled
 CASE write_guard_generic | MuninnStorageError | muninn write failed during remember: IntegrityError
 CASE prepare_generic | MuninnStorageError | muninn store <tmp_path>/trigprep.db could not be prepared: IntegrityError
-# TEMPLATE lines (92 raise sites; RM-025 added the
+# TEMPLATE lines (93 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
 # RM-028 added the three path guards; RM-029 added the
@@ -111,9 +112,11 @@ CASE prepare_generic | MuninnStorageError | muninn store <tmp_path>/trigprep.db 
 # dict guard, the unknown-key guard, and the missing-content
 # guard, listed at the end of the TEMPLATE block);
 # RM-063 added the cache_size configuration raise site in
-# config.py).
+# config.py; RM-064 added the maintenance_chunk_size
+# configuration raise site in config.py).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | cache_size must be >= 0
+TEMPLATE | MuninnConfigurationError | maintenance_chunk_size must be >= 1
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
 TEMPLATE | MuninnConfigurationError | consolidation_threshold must be in (0, 1]

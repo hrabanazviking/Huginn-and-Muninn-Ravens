@@ -50,8 +50,14 @@ GOLDEN_SIGNATURES = {
         ("min_strength", "POSITIONAL_OR_KEYWORD", "0.0"),
         ("limit", "POSITIONAL_OR_KEYWORD", "100"),
     ],
-    "decay": [("days", "POSITIONAL_OR_KEYWORD", "1.0")],
-    "consolidate": [("threshold", "POSITIONAL_OR_KEYWORD", "None")],
+    "decay": [
+        ("days", "POSITIONAL_OR_KEYWORD", "1.0"),
+        ("progress", "POSITIONAL_OR_KEYWORD", "None"),
+    ],
+    "consolidate": [
+        ("threshold", "POSITIONAL_OR_KEYWORD", "None"),
+        ("progress", "POSITIONAL_OR_KEYWORD", "None"),
+    ],
     "health": [],
     "stats": [],
     "close": [],
@@ -102,10 +108,12 @@ def test_golden_result_keys(tmp_path):
             "consolidated", "last_coactivated_at",
         }
         assert set(m.decay(days=1)) == {
+            "atomicity", "chunk_size", "chunks",
             "confidence_factor", "confidences_decayed", "days",
             "edge_factor", "edges_decayed", "edges_pruned",
         }
         assert set(m.consolidate()) == {
+            "atomicity", "chunk_size", "chunks",
             "heal", "newly_consolidated", "threshold",
             "total_consolidated", "unmarked",
         }

@@ -1,0 +1,60 @@
+{
+  "slice": "RM-064",
+  "generated_at": "2026-11-02T23:19:40.087590+00:00",
+  "environment": {
+    "recorded_at": "2026-11-02T23:19:40.087671+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      1.28857421875,
+      1.474609375,
+      1.90380859375
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "store": {
+    "nodes": 5000,
+    "directed_edges": 100000,
+    "confidences": 50
+  },
+  "chunked": true,
+  "decay": {
+    "days": 10.0,
+    "chunk_size": 1000,
+    "chunks": 101,
+    "edges_decayed": 100000,
+    "edges_pruned": 0,
+    "confidences_decayed": 50,
+    "parity": true,
+    "times_ms": [
+      449.5,
+      441.1,
+      429.7
+    ],
+    "median_ms": 441.1
+  },
+  "decay_single_chunk": {
+    "chunk_size": 10000000,
+    "chunks": 2,
+    "parity": true,
+    "matches_chunked_final": true,
+    "time_ms": 576.8
+  },
+  "consolidate": {
+    "chunk_size": 1000,
+    "chunks": 100,
+    "parity": true,
+    "matches_single_chunk_final": true,
+    "times_ms": [
+      471.4,
+      462.3,
+      442.7
+    ],
+    "median_ms": 462.3,
+    "single_chunk_time_ms": 551.6
+  }
+}

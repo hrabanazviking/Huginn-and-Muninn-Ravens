@@ -3354,3 +3354,93 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   the RM-063 build (extends the standing package-source
   sync note). Live Qdrant + sentence-transformers stay
   NOT PROVEN.
+
+## RM-064 — Decay/consolidate at scale
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Muninn's two maintenance passes are no
+  longer full-store transactions (record
+  `docs/MAINTENANCE_SCALE.md`). One new Muninn config
+  field, `maintenance_chunk_size: int = 1000` (validated
+  `>= 1`, typed message; RM-018 goldens gained the
+  `config_maintenance_chunk_size` case + template —
+  muninn 67 CASE / 93 TEMPLATE). `decay` walks edges in
+  rowid order in committed chunks (fade + unmark + prune
+  per chunk), then `node_activation` confidences the
+  same way; `consolidate` chunks its mark/unmark pass
+  (the heal pass still follows, committing as before).
+  **Atomicity is per chunk** — every chunk fully applied
+  or fully rolled back, never half a chunk — stated in
+  every report (`atomicity` / `chunks` / `chunk_size`),
+  with an optional `progress` callback fired after each
+  committed chunk (event dict: operation / phase / chunk
+  / processed / total; a callback exception stops the
+  run at the last committed boundary). The per-row maths
+  is the old road's, so the final state is bit-for-bit
+  the full-store result at any chunk size. Huginn has
+  no decay/consolidate pass and gains only this
+  slice-log pin. Gate script
+  `muninn/scripts/maintenance_scale.py` builds the
+  RM-058 uniform store (5,000 nodes, **100,000 directed
+  edges**, 50 confidences) and verifies every run's
+  final tables against an independent old-road
+  reference from the raw snapshot before quoting
+  timings (record `muninn/scripts/maintenance_scale.json`,
+  after tree 2026-11-02T23:19:40Z, load 1.29): decay 10d
+  median of 3 — before (RM-063 tree, full-store)
+  **351.0 ms**, after chunked **441.1 ms** (101 chunks:
+  100 edge + 1 confidence), single-chunk road 576.8 ms
+  (one run); consolidate median of 3 — before
+  **379.9 ms**, after **462.3 ms** (100 chunks),
+  single-chunk 551.6 ms. **Honest reading:** chunking
+  costs ~25% wall-clock at this scale (about a hundred
+  commits instead of one) and no speed win is claimed;
+  what it buys is transactions bounded at
+  `maintenance_chunk_size` rows however large the store
+  grows, a live progress signal, and a crash boundary at
+  most one chunk behind. New
+  `tests/test_maintenance_chunks.py` (15 items, muninn
+  only): default + typed validation, report chunking
+  fields, decay parity vs the raw-table reference at
+  chunk sizes 1 / 2 / 7 / 1000, exact progress
+  sequences, callback failure leaving a re-runnable
+  chunk boundary, a RAISE(ABORT) trigger rolling its
+  chunk back whole while earlier chunks stay committed,
+  consolidate parity / progress / heal composition,
+  consolidate's callback boundary, `decay_wall_clock`
+  carrying the chunk fields, empty-store zero-chunk
+  runs, the record doc, the gate script + committed
+  record shape. RM-019 / contract-freeze goldens gained
+  the `progress` parameters and the new report keys
+  (deliberate additive change); RM-040 audit pin —
+  muninn site total **98 → 103** (+5 net: eleven new
+  chunk executes — five constant, six placeholder-list
+  f-strings — minus the six full-store statements they
+  replace) and the six new templates pinned; secure-
+  defaults record + guide + API reference + INTERFACE
+  gained the field. Negation vs the RM-063 tree:
+  maintenance-chunks **15 failed / 0 passed**,
+  secure-defaults **4 failed / 3 passed**,
+  error-messages **2 failed / 1 passed**, api-surface
+  **1 failed / 2 passed**, contract-freeze **2 failed /
+  1 passed**, sql-injection **2 failed / 7 passed**
+  (the hostile battery passes on both trees, as
+  designed). **Bifröst re-verification PASS** (public
+  API grew additively — a config field, two optional
+  parameters, three report keys; fresh venv on
+  `/var/tmp`, bifrost git-clean at pinned b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke
+  PASS — store mimir_id+huginn_id, search 2 merged
+  results, recall grew the Muninn activation log
+  exactly +1, decay/consolidate through the bridge,
+  `decay_wall_clock()` armed at 0 days, stats over all
+  three backends, both raven health dicts carry
+  `sqlite_version` 3.45.1, huginn local via
+  auto-fallback, double close safe; evidence
+  `/var/tmp/rm064/evidence/`). Full suites, ruff and
+  mypy on the final banking tree are recorded in
+  `CAMPAIGN_STATE.md`. Founding tree NEEDS A SYNC for
+  the RM-064 build (extends the standing package-source
+  sync note). Live Qdrant + sentence-transformers stay
+  NOT PROVEN.

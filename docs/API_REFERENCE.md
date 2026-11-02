@@ -61,6 +61,7 @@ class MuninnConfig:
     integrity_passphrase: str | None = None  # repr excluded
     max_spread_candidates: int = 100000
     cache_size: int = 0
+    maintenance_chunk_size: int = 1000
 ```
 
 | Field | Meaning |
@@ -85,6 +86,7 @@ class MuninnConfig:
 | `integrity_passphrase` | The passphrase the attestation chain key is derived from (RM-050); required when `integrity_attestation` is `True`, excluded from `repr(config)`, never stored or logged. A wrong passphrase is reported as `tamper_detected` — the chain cannot tell the two apart, by design. |
 | `max_spread_candidates` | Query cost ceiling (`>= 1`, RM-053, threat TH-13): the maximum candidate edges (neighbour rows) one `spread_activation` call may examine. When the ceiling bites the expansion stops deterministically (id order) and the call returns what it has; the bite is recorded in `HebbianMemory.last_spread_activation_stats`. See `docs/QUERY_COST_CAPS.md`. |
 | `cache_size` | Warm cache (`>= 0`, RM-063): the maximum nodes this object's `get_node` cache holds in memory (LRU eviction). `0` (default) disables it — every `get_node` reads the store. Own writes always invalidate; per-object only, so another object's writes are not seen until eviction or an own write to that id. Accounting in the `cache_stats` property. See `docs/WARM_CACHES.md`. |
+| `maintenance_chunk_size` | Chunked maintenance (`>= 1`, RM-064): `decay()` / `consolidate()` commit in chunks of at most this many rows; per-chunk atomicity is stated in their reports (`atomicity` / `chunks` / `chunk_size`) and an optional `progress` callback fires after each committed chunk. See `docs/MAINTENANCE_SCALE.md`. |
 
 All values are validated in `__post_init__`; an illegal value raises
 `MuninnConfigurationError` at construction, never mid-write.
@@ -495,7 +497,7 @@ wrong total is corrected. Edges to ids that were never registered as
 nodes and never forgotten are **legal by design** (cross-store ids)
 and are not pruned.
 
-#### `decay(days: float = 1.0) -> Dict[str, Any]`
+#### `decay(days: float = 1.0, progress: Callable[[Dict[str, Any]], None] | None = None) -> Dict[str, Any]`
 
 **WRITE.** Fade state by elapsed `days` (must be a number `>= 0`).
 
@@ -517,10 +519,13 @@ Returns:
     "edges_decayed": int,        # connection rows updated (both directions)
     "edges_pruned": int,         # connection rows deleted
     "confidences_decayed": int,  # node_activation rows updated
+    "chunks": int,               # RM-064: chunks committed by this call
+    "chunk_size": int,           # RM-064: the configured chunk ceiling
+    "atomicity": "per_chunk",    # RM-064: per-chunk atomicity, stated
 }
 ```
 
-#### `consolidate(threshold: float | None = None) -> Dict[str, Any]`
+#### `consolidate(threshold: float | None = None, progress: Callable[[Dict[str, Any]], None] | None = None) -> Dict[str, Any]`
 
 **WRITE.** Mark strong edges consolidated (sleep).
 
@@ -542,6 +547,9 @@ Returns:
     "unmarked": int,             # directed rows newly unmarked
     "total_consolidated": int,   # directed rows marked after the pass
     "heal": <heal report dict>,
+    "chunks": int,               # RM-064: chunks committed by this call
+    "chunk_size": int,           # RM-064: the configured chunk ceiling
+    "atomicity": "per_chunk",    # RM-064: per-chunk atomicity, stated
 }
 ```
 
