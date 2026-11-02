@@ -56,10 +56,54 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-037, RM-038. **Part III (Robustness) is complete** — all
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
-- Banked (Part IV): RM-039, RM-040, RM-041. Part IV
-  (Security) is under way — three of eighteen slices banked.
-- Next: RM-042 in roadmap order (Part IV — File
-  permissions; cites TH-03).
+- Banked (Part IV): RM-039, RM-040, RM-041, RM-042. Part IV
+  (Security) is under way — four of eighteen slices banked.
+- Next: RM-043 in roadmap order (Part IV — Backup
+  confidentiality; cites TH-04).
+- **RM-042 BANKED 2026-11-01 (keeper tick ~23:06 EST):**
+  file permissions — TH-03's creation side, record in
+  `docs/FILE_PERMISSIONS.md`. A store file an open creates
+  (fresh, or restored onto a path that did not exist) is
+  set owner-only `0o600` in both packages' `_db.py`
+  (`_secure_new_store_files`, best-effort — a refused chmod
+  is logged, never raised), with its `-wal`/`-shm`
+  sidecars; `created_by_this_open` is captured before the
+  restore logic, so existing files are never
+  re-permissioned. An existing looser file is reported by
+  `health()` in the new additive field
+  `file_permissions_warning` (`store_permissions_warning`
+  helper: `None` when the file has no `0o077` bits, else a
+  string naming the actual mode, e.g. `0644`). Huginn's
+  field is on the local backend, carried through the
+  facade; Qdrant has no local file and no field. Backups
+  are RM-043, untouched here. New
+  `tests/test_file_permissions.py` in both packages (7
+  tests each, POSIX-only); negation against the RM-041
+  packages **7 failed / 0 passed** per package. RM-019
+  contract-freeze health key sets gained the field.
+  **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm042-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence
+  `~/workspace/.verify-tmp/rm042/`). Full suites green in
+  the RM-042 fresh venv on the final banking tree
+  (TMPDIR on `/var/tmp`): muninn **268 passed**
+  (261+7), huginn **196 passed** (189+7); ruff + mypy
+  floors clean (fresh tool venv on `/var/tmp`, caches
+  redirected; mypy muninn 5 files, huginn 8 files).
+  Founding tree NEEDS A SYNC for the `_db.py` helpers +
+  the `health()` field (extends the standing
+  package-source sync note). Environment, honestly: the
+  home quota (EDQUOT) closed repeatedly during this tick;
+  this keeper deleted this campaign's own spent scratch
+  (~146 MB: RM-041 suite venv after its negation evidence
+  was captured, RM-014 tool venv) and built all RM-042
+  venvs on `/var/tmp`, redirecting TMPDIR, the mypy
+  cache, and the Bifrost smoke's HOME there (the smoke's
+  first run omitted `huginn_id` because Huginn's default
+  `~/.hermes` store hit the quota — environment class,
+  diagnosed, not a package defect; full PASS with HOME
+  redirected).
 - **RM-041 BANKED 2026-11-01 (keeper tick ~22:16 EST):**
   path safety — TH-02's opt-in strict mode, record in
   `docs/PATH_SAFETY.md`. Both configs gain

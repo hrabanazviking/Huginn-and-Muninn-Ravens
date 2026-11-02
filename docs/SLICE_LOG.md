@@ -1708,3 +1708,84 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   package-source sync note). TH-02's register state is
   re-checked at the RM-056 part gate, per the threat
   model's rule.
+
+## RM-042 — File permissions
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/FILE_PERMISSIONS.md` —
+  TH-03's creation side. In each package's `_db.py`, an
+  open that creates the store file (fresh store, or a
+  store restored onto a path that did not exist — the
+  RM-032 orphaned-WAL road) now sets it owner-only
+  (`0o600`, new `_secure_new_store_files` /
+  `_chmod_owner_only`, best-effort: a refused chmod is
+  logged, never raised — "where the OS allows") once the
+  schema is applied, together with its `-wal` / `-shm`
+  sidecars. `created_by_this_open` is captured before
+  the restore logic runs, so the restore-onto-missing
+  case is covered and an existing file is never
+  re-permissioned. An existing looser file is instead
+  reported by `health()`: new additive field
+  `file_permissions_warning` (new
+  `store_permissions_warning` helper in `_db.py`, one
+  `stat`, pure read — `health()` stays pure) is `None`
+  when the store file has no `0o077` bits, else the
+  string `store file permissions {mode:04o} are looser
+  than owner-only 0600; group or other local accounts
+  can access the store file` naming the actual mode.
+  Huginn's field lives on the local backend's `health()`
+  and is carried through the facade; the Qdrant backend
+  has no local file and carries no field. Rolling
+  backups are explicitly out of scope — they are
+  RM-043. Pinned by new `tests/test_file_permissions.py`
+  in both packages (7 tests each, POSIX-only: new file
+  exactly `0o600` after store + close and under umask
+  `0`; open sidecars `0o600`; new-store warning `None`;
+  an existing `0o644` file reopens working, stays
+  `0o644`, and warns naming `0644`/`0600`; `0o640`
+  warns naming `0640`; an existing `0o600` file reopens
+  without warning). Negation against the RM-041
+  installed packages: **7 failed / 0 passed** per
+  package (both the behaviour and the health field are
+  absent there). RM-019 contract-freeze health key sets
+  in both packages gained `file_permissions_warning`
+  deliberately. Public `health()` surface changed
+  additively, so the **Bifröst contract re-verification
+  was run before banking**: fresh venv
+  (`ravens-rm042-bifrost-venv`, on `/var/tmp` — see the
+  environment note below), bifrost at b66e98cc — its
+  own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id+huginn_id; search 1 merged result;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` armed
+  at 0 days; stats over all three backends; both raven
+  health dicts carry `sqlite_version` 3.45.1 through
+  the bridge; huginn on the local backend; live Qdrant
+  still NOT PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm042/`). Full suites green
+  in a fresh venv (`ravens-rm042-venv`, on `/var/tmp`,
+  non-editable installs, TMPDIR on `/var/tmp`):
+  muninn **268 passed** (261+7), huginn **196 passed**
+  (189+7); ruff + mypy floors clean (fresh
+  tool venv on `/var/tmp`, ruff `--no-cache` and mypy
+  cache redirected — see below; mypy muninn 5 files,
+  huginn 8 files). Founding tree
+  (`~/workspace/ravens`) NEEDS A SYNC for the `_db.py`
+  helpers + the `health()` field (extends the standing
+  package-source sync note). TH-03's backup side is
+  RM-043; the register state is re-checked at the
+  RM-056 part gate, per the threat model's rule.
+  Environment, honestly: the home quota (EDQUOT) closed
+  repeatedly during this tick and was still closed at
+  banking time; this keeper deleted this campaign's own
+  spent scratch (~146 MB: the RM-041 suite venv, spent
+  after the negation evidence was captured, and the
+  RM-014 tool venv), built every RM-042 venv on
+  `/var/tmp`, redirected TMPDIR, the mypy cache and the
+  Bifrost smoke's HOME there (the smoke's one in-home
+  failure — Huginn's default store under `~/.hermes`
+  refused by the quota, so the bridge omitted
+  `huginn_id` — was diagnosed as that environment
+  class, not a package defect; with HOME on `/var/tmp`
+  the smoke passes in full).

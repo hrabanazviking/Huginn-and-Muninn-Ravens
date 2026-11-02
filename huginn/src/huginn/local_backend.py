@@ -25,7 +25,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
-from ._db import _is_locked_error, open_store, store_coordination_lock
+from ._db import (
+    _is_locked_error,
+    open_store,
+    store_coordination_lock,
+    store_permissions_warning,
+)
 from .config import HuginnConfig
 from .errors import HuginnStorageError, HuginnValidationError
 from .text import Embedder, cosine, dense_cosine, sparse_tfidf, term_counts, tokenize
@@ -549,4 +554,8 @@ class LocalBackend:
             "documents": documents,
             "vocabulary": terms,
             "sqlite_version": sqlite3.sqlite_version,
+            # RM-042: None for an owner-only store file; a
+            # warning string when an existing file is looser
+            # than 0600 (opening never re-permissions it).
+            "file_permissions_warning": store_permissions_warning(self._db_path),
         }

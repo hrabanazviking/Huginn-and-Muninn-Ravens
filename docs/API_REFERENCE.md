@@ -508,6 +508,9 @@ Returns:
     "connections": int,                 # directed rows
     "activations": int,                 # activation_log rows
     "schema_version": "1",
+    "file_permissions_warning": str | None,  # RM-042: warning when an existing
+                                             # store file is looser than 0600;
+                                             # see docs/FILE_PERMISSIONS.md
 }
 ```
 
@@ -951,7 +954,7 @@ Methods:
 | `get(memory_id: int) -> Optional[Dict[str, Any]]` | READ (pure) | Document dict (no `score`), or `None`. |
 | `count() -> int` | READ (pure) | Number of documents. |
 | `search(query_text: str, *, limit: int, category: Optional[str], min_importance: int) -> List[Dict[str, Any]]` | READ (pure) | Scored document dicts, best first, positive scores only, at most `limit`. `category` filters exactly; `min_importance` filters only when `> 1`. |
-| `health() -> Dict[str, Any]` | READ (pure) | `{"status": "healthy" \| "degraded", "backend": "local", "db_path": str, "integrity": str, "recovered_from_backup": bool, "documents": int, "vocabulary": int}` where `vocabulary` is the number of terms in `corpus_stats` and status is `"healthy"` iff `quick_check` is `"ok"`. |
+| `health() -> Dict[str, Any]` | READ (pure) | `{"status": "healthy" \| "degraded", "backend": "local", "db_path": str, "integrity": str, "recovered_from_backup": bool, "documents": int, "vocabulary": int, "sqlite_version": str, "file_permissions_warning": str \| None}` where `vocabulary` is the number of terms in `corpus_stats`, status is `"healthy"` iff `quick_check` is `"ok"`, and `file_permissions_warning` (RM-042) is a warning string when an existing store file is looser than owner-only `0600`, else `None` (see `docs/FILE_PERMISSIONS.md`). |
 
 `huginn._db.OpenReport` has the same four fields as Muninn's
 (`recovered_from_backup`, `restored_backup`, `backup_taken`,

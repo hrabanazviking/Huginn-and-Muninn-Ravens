@@ -81,7 +81,8 @@ def test_golden_result_keys(tmp_path):
         }
         assert set(h.health()) == {
             "backend", "backend_configured", "db_path", "documents",
-            "embedder", "integrity", "recovered_from_backup",
+            "embedder", "file_permissions_warning", "integrity",
+            "recovered_from_backup",
             "sqlite_version", "status", "vocabulary",
         }
     finally:

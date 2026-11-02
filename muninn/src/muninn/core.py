@@ -48,7 +48,13 @@ from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any, TypeVar
 
-from ._db import _is_locked_error, open_store, store_coordination_lock, take_backup
+from ._db import (
+    _is_locked_error,
+    open_store,
+    store_coordination_lock,
+    store_permissions_warning,
+    take_backup,
+)
 from .config import MuninnConfig
 from .errors import MuninnStorageError, MuninnValidationError
 
@@ -1753,6 +1759,10 @@ class HebbianMemory:
             "activations": int(acts),
             "schema_version": "1",
             "sqlite_version": sqlite3.sqlite_version,
+            # RM-042: None for an owner-only store file; a
+            # warning string when an existing file is looser
+            # than 0600 (opening never re-permissions it).
+            "file_permissions_warning": store_permissions_warning(self._db_path),
         }
 
     def stats(self) -> dict[str, Any]:

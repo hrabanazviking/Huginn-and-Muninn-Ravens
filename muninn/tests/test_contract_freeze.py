@@ -89,7 +89,8 @@ def test_golden_result_keys(tmp_path):
             "total_connections", "total_nodes",
         }
         assert set(m.health()) == {
-            "activations", "connections", "db_path", "integrity",
+            "activations", "connections", "db_path",
+            "file_permissions_warning", "integrity",
             "nodes", "recovered_from_backup", "schema_version",
             "sqlite_version", "status",
         }

@@ -62,6 +62,17 @@ and a store whose parent directory is world-writable,
 with a typed :class:`HuginnStorageError` — threat TH-02's
 locked-down mode, closing the redirection road for the
 store and its restore alike.
+File permissions (RM-042; see ``docs/FILE_PERMISSIONS.md``):
+a store file created by this open (a fresh store, or one
+restored onto a path that did not exist) is set owner-only
+(``0o600``) where the OS allows, together with its WAL/SHM
+sidecars — before RM-042, SQLite created it under the
+process umask (``0o644`` on a typical ``022`` umask,
+readable by every local account; threat TH-03). An
+existing store's permissions are never changed by opening
+it: a looser existing file is instead reported by
+``health()`` in its ``file_permissions_warning`` field.
+Rolling backups are RM-043's slice, not this one.
 """
 
 from __future__ import annotations
@@ -328,6 +339,63 @@ def _check_path_safety(db_path: Path, strict_path_safety: bool) -> None:
         )
 
 
+# ─── RM-042: owner-only permissions for new store files ────────
+
+STORE_FILE_MODE = 0o600
+
+
+def _chmod_owner_only(path: Path) -> None:
+    """Best-effort ``0o600`` on one file (RM-042).
+
+    Twin of muninn's helper. "Where the OS allows": a
+    platform or filesystem that refuses the chmod is
+    logged, never raised — permissions harden the store,
+    they are not a reason to refuse an otherwise healthy
+    open.
+    """
+    try:
+        os.chmod(path, STORE_FILE_MODE)
+    except OSError as exc:
+        logger.warning("huginn: could not set owner-only permissions on %s: %s", path, exc)
+
+
+def _secure_new_store_files(db_path: Path) -> None:
+    """Set owner-only permissions on a just-created store.
+
+    Covers the main file and its WAL/SHM sidecars (the WAL
+    holds uncheckpointed memory while the store is open).
+    Called only for a store this open created — an existing
+    file's permissions are the owner's stated choice and
+    are reported by ``health()``, never silently rewritten.
+    """
+    for candidate in (db_path, *_sidecars(db_path)):
+        if candidate.is_file():
+            _chmod_owner_only(candidate)
+
+
+def store_permissions_warning(db_path: Path) -> str | None:
+    """RM-042: the ``health()`` warning for a looser store file.
+
+    Pure read (one ``stat``). Returns None when the store
+    file grants nothing to group or other accounts (mode
+    has no ``0o077`` bits), and a warning naming the actual
+    mode otherwise — the shape an existing, pre-RM-042 (or
+    deliberately shared) store is reported in, since
+    opening never re-permissions an existing file.
+    """
+    try:
+        mode = db_path.stat().st_mode
+    except OSError:
+        return None
+    if mode & 0o077 == 0:
+        return None
+    return (
+        f"store file permissions {mode & 0o777:04o} are looser than "
+        f"owner-only 0600; group or other local accounts can access "
+        f"the store file"
+    )
+
+
 def _is_locked_error(exc: BaseException) -> bool:
     """Does this failure mean another connection holds the lock?
 
@@ -512,6 +580,10 @@ def _open_store_unlocked(
         raise
     _discard_stale_backup_tmp(db_path)
     existed = db_path.exists()
+    # RM-042: a store file this open creates (fresh, or restored
+    # onto a path that did not exist) is set owner-only once it
+    # exists; an existing file's permissions are never changed.
+    created_by_this_open = not existed
     mtime_before = db_path.stat().st_mtime if existed else 0.0
 
     if not existed:
@@ -634,6 +706,9 @@ def _open_store_unlocked(
                 f"(busy timeout {busy_timeout_ms} ms expired)"
             ) from exc
         raise HuginnStorageError(f"huginn store {db_path} could not be prepared: {exc}") from exc
+
+    if created_by_this_open:
+        _secure_new_store_files(db_path)
 
     if auto_backup and existed and backup_keep > 0:
         newest = _backup_path(db_path, 1)

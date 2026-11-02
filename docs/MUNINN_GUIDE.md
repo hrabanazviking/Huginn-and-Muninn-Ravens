@@ -566,7 +566,10 @@ health = mem.health()
 #  "integrity": "ok",              # from PRAGMA quick_check
 #  "recovered_from_backup": False,
 #  "nodes": ..., "connections": ..., "activations": ...,
-#  "schema_version": "1"}
+#  "schema_version": "1",
+#  "file_permissions_warning": None}  # RM-042: a warning string when an
+#                                     # existing store file is looser than
+#                                     # owner-only 0600 (see FILE_PERMISSIONS.md)
 
 stats = mem.stats()
 # {"total_nodes": ..., "total_connections": ...,

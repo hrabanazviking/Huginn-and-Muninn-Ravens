@@ -353,6 +353,9 @@ info = h.health()
 #  "documents": 3,                   # raven, wolf, and the aligned memory;
 #                                    # the oak was deleted above
 #  "vocabulary": <distinct indexed terms>,
+#  "file_permissions_warning": None,  # RM-042: a warning string when an
+#                                     # existing local store file is looser
+#                                     # than 0600 (see FILE_PERMISSIONS.md)
 #  "embedder": "tfidf",
 #  "backend_configured": "local"}
 ```
