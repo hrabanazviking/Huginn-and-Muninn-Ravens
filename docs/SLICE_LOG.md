@@ -2712,3 +2712,69 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   for this slice; the standing package-source sync note
   stands. TH-15's register update remains RM-056's.
   Banking verification: see `CAMPAIGN_STATE.md`.
+
+## RM-056 — Part gate
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Part IV (Security) gate — TH-16 closed.
+  Security evidence bundle filed at
+  `docs/PART_IV_EVIDENCE.md`: every Part IV slice
+  (RM-039–RM-056) checked off with its banking suites,
+  every FAULT result filed (RM-049 store encryption
+  build, RM-050 integrity attestation, RM-051
+  secure forget — each with its record document,
+  forensic/tamper acceptance and negation counts), the
+  rest of the part's evidence grouped (injection and
+  path safety, file and backup confidentiality,
+  diagnostics hygiene, the Qdrant boundary, identity
+  and at-rest, supply chain and cost, defaults), the
+  Bifröst re-verifications inside the part (RM-041,
+  RM-049, RM-050, RM-051, RM-053, RM-054 — six for six
+  green; RM-046 also ran it as a precaution), the floors
+  (ruff + mypy clean at every banking, coverage
+  `fail_under = 88`, and **no schema changed in Part
+  IV** — RM-049's envelopes live in the same TEXT
+  columns, RM-050's chain header in `meta` rows, the
+  contracted tables exactly as frozen), the honesty
+  ledger carried forward unchanged (live Qdrant
+  round-trip, sentence-transformers path and
+  GitHub-hosted CI all **NOT PROVEN**; the `cryptography`
+  extra proven from RM-049), and the debts named
+  (founding-tree sync owed for every Part IV
+  package-source change on top of the Part II/III debt;
+  `schema_version` recorded-not-gated until RM-082 /
+  RM-132; Part IV's opt-in posture itself recorded, not
+  hidden). **Threat model updated with what the part
+  actually built**, per the RM-039 citation rule:
+  `docs/THREAT_MODEL.md` carries an RM-056 banner, every
+  register State cell updated to its post-Part-IV
+  position (Controlled: TH-01, TH-03, TH-04, TH-05,
+  TH-08, TH-11, TH-12, TH-13, TH-14, TH-15, TH-16 at
+  this gate; Partial by stated design: TH-02, TH-06,
+  TH-07, TH-09, TH-10, TH-19; Accepted unchanged:
+  TH-20, TH-21; Controlled unchanged: TH-17, TH-18),
+  and a full RM-056 re-review section recording, threat
+  by threat, the slice evidence each verdict stands on
+  and the updated boundary notes for TB-2/TB-5/TB-6; no
+  threat was found that RM-039 did not name and no
+  register entry was deleted; the RM-039 text is
+  otherwise preserved as the record the part was built
+  against. Pinned by new `tests/test_part_iv_gate.py`
+  in both packages (3 tests each: the bundle names every
+  Part IV slice, files every FAULT result and carries
+  the honesty ledger, and the threat model carries the
+  gate re-review and updated register); both
+  `test_slice_log.py` EXPECTED pins extended to RM-056
+  in this commit. Negation: the gate tests run against
+  a scratch tree whose bundle omits a slice name and a
+  FAULT marker fail on exactly those pins (recorded in
+  `CAMPAIGN_STATE.md`). No package code, public API, or
+  schema change (docs + tests only), so no Bifröst
+  re-verification required for the gate itself.
+  Founding tree needs no NEW sync for this slice (docs +
+  tests only); the Part IV package-source sync note
+  stands. **Part IV (Security) is complete with this
+  slice** — 18 of 18 slices banked. The road continues
+  at Part V — Speed (RM-057–RM-072).
+  Banking verification: see `CAMPAIGN_STATE.md`.

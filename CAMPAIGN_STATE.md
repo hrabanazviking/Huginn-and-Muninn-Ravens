@@ -58,12 +58,73 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
   RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050,
-  RM-051, RM-052, RM-053, RM-054, RM-055. Part IV
-  (Security) is under way — seventeen of eighteen slices
-  banked.
-- Next: RM-056 in roadmap order (Part IV — part gate:
-  security evidence bundle filed; threat model updated
-  with what the part actually built; closes Part IV).
+  RM-051, RM-052, RM-053, RM-054, RM-055, RM-056.
+  **Part IV (Security) is complete** — all eighteen
+  slices banked and pushed; evidence bundle in
+  `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
+  and updated at the gate.
+- Next: RM-057 in roadmap order (Part V — Speed opens:
+  baseline atlas, BENCH).
+- **RM-056 BANKED 2026-11-02 (keeper tick ~07:26 EST):**
+  Part IV gate — TH-16 closed. Security evidence bundle
+  filed at `docs/PART_IV_EVIDENCE.md` (every Part IV
+  slice checked off with its banking suites; every
+  FAULT result filed — RM-049 encryption build, RM-050
+  attestation, RM-051 secure forget, each with record,
+  acceptance and negation counts; Bifröst
+  re-verifications inside the part RM-041/049/050/051/
+  053/054 six for six green, RM-046 also ran it as a
+  precaution; floors; honesty ledger unchanged — live
+  Qdrant, sentence-transformers, GitHub-hosted CI all
+  NOT PROVEN, `cryptography` extra proven from RM-049;
+  debts named, incl. the founding-tree sync owed for
+  every Part IV package-source change). **Threat model
+  updated with what the part actually built**:
+  `docs/THREAT_MODEL.md` carries an RM-056 banner, every
+  register State cell updated (Controlled: TH-01, 03,
+  04, 05, 08, 11, 12, 13, 14, 15, TH-16 at this gate;
+  Partial by stated design: TH-02, 06, 07, 09, 10, 19;
+  Accepted unchanged: TH-20, 21; Controlled unchanged:
+  TH-17, 18), and a full RM-056 re-review section
+  (threat-by-threat evidence + TB-2/TB-5/TB-6 boundary
+  notes); no threat found that RM-039 did not name, no
+  entry deleted, RM-039 text otherwise preserved. New
+  `tests/test_part_iv_gate.py` (3 tests each package:
+  bundle names every Part IV slice, files every FAULT
+  result + honesty ledger, threat model carries the
+  re-review + updated register); `test_slice_log.py`
+  EXPECTED pins extended to RM-056 in both. Negation:
+  gate tests against a scratch tree whose bundle omits
+  a slice name + a FAULT marker and whose model omits
+  the re-review markers: **3 failed / 0 passed per
+  package**, failures exactly on the doctored pins.
+  Full suites green in the RM-056 fresh venv on the
+  final banking tree (non-editable installs,
+  encryption + qdrant extras, cryptography 50.0.2,
+  qdrant-client 1.20.0, pytest 9.2.0): muninn **353
+  passed** (350+3; TMPDIR on `~/workspace/.verify-tmp`,
+  369.6 s under load), huginn **301 passed** (298+3;
+  26.0 s). Huginn verification note, honestly: two
+  earlier huginn attempts in this tick died under the
+  home-quota EDQUOT closure (exit 120, truncated logs,
+  one F shown mid-run while writes were blocked — the
+  RM-039 environment pattern), and the green run was
+  taken after the host reboot with TMPDIR on `/tmp`;
+  the identical final tree passed in full, so the F is
+  recorded as a quota casualty, not a code failure.
+  The pip install road also hit EDQUOT twice; writes
+  reopened after this keeper cleared the shared pip
+  cache and this campaign's spent RM-055 venv
+  (regenerable scratch only). Ruff check clean (both
+  packages, whole tree); mypy clean in a deps-free tool
+  venv run per package (muninn 7 files, huginn 9
+  files). No package source, public API, or schema
+  change (docs + tests only), so no Bifröst
+  re-verification required for the gate itself. Live
+  Qdrant + sentence-transformers stay NOT PROVEN.
+  Founding tree needs no NEW sync for this slice; the
+  Part IV package-source sync note stands (named in
+  the bundle's debts). **Part IV is complete.**
 - **RM-055 BANKED 2026-11-02 (keeper tick ~07:05 EST):**
   secure defaults review — TH-15, record in
   `docs/SECURE_DEFAULTS.md`. All 38 config fields
