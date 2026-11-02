@@ -2943,3 +2943,69 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   note). Live Qdrant + sentence-transformers stay
   NOT PROVEN.
   Banking verification: see `CAMPAIGN_STATE.md`.
+
+## RM-059 — Activation write path
+
+- **Class:** BENCH + UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `activate`'s one helper,
+  `_log_activation_locked` (behind `activate`, the
+  small-batch road of `activate_batch`, and
+  `retrieve(..., touch=True)`), ran **five data statements
+  per activation** — log INSERT, counter upsert, node
+  UPDATE, tombstone DELETE, and a SELECT re-reading the
+  counter total the upsert had just written. New gate
+  script `muninn/scripts/write_path.py` profiles activate
+  (same id / distinct ids), `activate_batch(5)` and
+  `retrieve(touch=True)` on a 2,000-node store and counts
+  the executed statements per `activate()` by trace
+  callback; run unchanged on both trees, three full runs
+  per tree, medians reported. Two changes, nothing else:
+  (1) the counter upsert now carries `RETURNING
+  total_activations` on SQLite 3.35+, folding the re-read
+  into the write — **four statements per activation**
+  [INSERT, INSERT, UPDATE, DELETE], which is the floor
+  without a schema or trigger change (four distinct
+  tables change). Older runtimes (the documented WAL
+  floor is 3.7.0) keep the upsert + re-read road behind
+  the `muninn.core._RETURNING_OK` version check —
+  semantics identical, fallback test-pinned with the
+  flag forced off. (2) The RM-050 attestation head write
+  (two meta rows, head + count) is one combined
+  `INSERT OR REPLACE … VALUES (?, ?), (?, ?)` instead of
+  an executemany of two — same rows, same transaction.
+  Gate (medians of 3, tmpfs): statements **5 → 4**;
+  activate same id ×2000 215.8 → 205.9 ms; distinct
+  ×2000 256.7 → 213.3 ms; batch(5) ×400 394.4 → 211.9 ms;
+  retrieve(touch) ×200 11,791.6 → 8,300.9 ms — timings
+  recorded as indicative only, honestly load-confounded
+  (before runs at 1-minute load 8.6–9.5, after runs at
+  0.9–5.9 on the shared VM); the statement count is the
+  hard gate. Record at `muninn/scripts/write_path.json`
+  (after tree's third run, recorded
+  2026-11-02T15:19:39Z, load [5.93, 4.73, 4.78]); human
+  record `docs/WRITE_PATH.md`; BENCHMARKS.md pointer.
+  New `tests/test_write_path.py` (10, muninn only):
+  statement counts + shapes on both roads, the attested
+  head as one meta statement with the chain verifying on
+  reopen, count-exact semantics against raw-SQL ground
+  truth (sequential totals; log/counter/access equality
+  across live, forgotten and never-remembered ids;
+  tombstone clearing; the confidence formula after a
+  decay; small-batch pair reports; touch counts), the
+  gate script's small-run shape and the committed
+  record. RM-040 audit site total 97 → 98 (the fallback
+  upsert is a second constant form); `test_slice_log.py`
+  EXPECTED to RM-059 in both. Negation vs RM-058 tree:
+  muninn **8 failed / 13 passed** (failures exactly on
+  the new pins; the count-exact semantics pass on both
+  trees, as they must), huginn **2 failed / 0 passed**.
+  No public API, signature, return shape, table, column
+  or index changed, so no Bifröst re-verification is
+  required by the standing rule; one was run anyway as a
+  precaution — see `CAMPAIGN_STATE.md`. Full suites and
+  floors: see `CAMPAIGN_STATE.md`. Founding tree NEEDS
+  A SYNC for the RETURNING upsert + combined head write
+  (extends the standing package-source sync note). Live
+  Qdrant + sentence-transformers stay NOT PROVEN.
+  Banking verification: see `CAMPAIGN_STATE.md`.

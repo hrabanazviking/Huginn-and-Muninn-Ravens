@@ -115,6 +115,20 @@ batched frontier queries. Record committed as
 changes, median-of-three before/after table, and honest
 limits — lives in `docs/READ_PATH.md`.
 
+## Muninn activation write path (RM-059)
+
+`muninn/scripts/write_path.py` profiles `activate` (same
+id and distinct ids), small-batch `activate_batch` and
+`retrieve(..., touch=True)`, and counts the SQL statements
+one `activate()` executes — the slice's hard gate: **5 → 4
+statements** (the counter upsert now returns its total via
+`RETURNING` on SQLite 3.35+; the attestation head write is
+one combined statement). Record committed as
+`muninn/scripts/write_path.json`; the human record —
+statement anatomy, changes, median-of-three before/after
+table with its load-confounding disclosure, and honest
+limits — lives in `docs/WRITE_PATH.md`.
+
 ## Reproducible corpus (RM-020)
 
 The corpora are synthetic and formula-generated — muninn's

@@ -63,13 +63,84 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   slices banked and pushed; evidence bundle in
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
-- Banked (Part V, in progress): RM-057, RM-058.
-- Next: RM-059 in roadmap order (activation write path:
-  activate currently does several statements per call;
-  batch the counter/log/node updates into the fewest
-  statements that keep the semantics, proven by the
-  count-exact tests — with RM-058's new index in place
-  on the write side, per the READ_PATH record).
+- Banked (Part V, in progress): RM-057, RM-058, RM-059.
+- Next: RM-060 in roadmap order (bulk remember: a
+  `remember_many` batch API — one transaction, one
+  content-hash pass, backpressure applied once;
+  acceptance: 10k-node ingest benchmark vs the loop it
+  replaces).
+- **RM-059 BANKED 2026-11-02 (keeper tick ~10:06 EST):**
+  Muninn activation write path — BENCH + UNIT. New gate
+  script `muninn/scripts/write_path.py` profiles
+  `activate` (same id / distinct ids on a 2,000-node
+  store), `activate_batch(5)` and
+  `retrieve(..., touch=True)`, and counts the SQL
+  statements one `activate()` executes by trace callback
+  — run unchanged on both trees, three full runs per
+  tree, medians reported. Before: **5 statements** per
+  activation [INSERT log, INSERT counter upsert, UPDATE
+  nodes, DELETE tombstone, SELECT re-read of the total
+  the upsert had just written]. Two changes: (1) the
+  counter upsert carries `RETURNING total_activations`
+  on SQLite 3.35+, folding the re-read into the write —
+  **4 statements** [INSERT, INSERT, UPDATE, DELETE],
+  the floor without a schema/trigger change (four
+  distinct tables change); older runtimes (WAL floor
+  3.7.0) keep the upsert + re-read road behind
+  `muninn.core._RETURNING_OK`, semantics identical,
+  fallback test-pinned with the flag forced off.
+  (2) The RM-050 attestation head write (head + count
+  meta rows) is one combined
+  `INSERT OR REPLACE … VALUES (?, ?), (?, ?)` instead of
+  an executemany of two. Gate timings (medians of 3,
+  tmpfs) recorded as indicative only and honestly
+  load-confounded (before runs at load 8.6–9.5, after
+  runs at 0.9–5.9): same id ×2000 215.8 → 205.9 ms;
+  distinct ×2000 256.7 → 213.3 ms; batch(5) ×400
+  394.4 → 211.9 ms; retrieve(touch) ×200 11,791.6 →
+  8,300.9 ms — the statement count is the hard gate.
+  Record at `muninn/scripts/write_path.json` (after
+  tree's third run, recorded 2026-11-02T15:19:39Z,
+  load [5.93, 4.73, 4.78]); human record
+  `docs/WRITE_PATH.md`; BENCHMARKS.md pointer. New
+  `tests/test_write_path.py` (10, muninn only):
+  statement counts + shapes on both roads, attested
+  head as one meta statement + chain verifies on
+  reopen, count-exact semantics vs raw-SQL ground truth
+  (sequential totals; log/counter/access equality
+  across live, forgotten and never-remembered ids;
+  tombstone clearing; confidence formula after decay;
+  small-batch pair reports; touch counts), gate-script
+  shape + committed record. RM-040 audit site total
+  97 → 98 (fallback upsert = second constant form);
+  `test_slice_log.py` EXPECTED to RM-059 in both.
+  Negation vs RM-058 tree: muninn **8 failed / 13
+  passed** (failures exactly on the new pins; the
+  count-exact semantics pass on both trees), huginn
+  **2 failed / 0 passed**. No public API, signature,
+  return shape, table, column or index changed, so no
+  Bifröst re-verification was required by the standing
+  rule; run anyway as a precaution: **PASS** (fresh
+  venv, bifrost at b66e98cc — its own suites **25
+  passed**; BifrostBridge smoke PASS, evidence
+  `/var/tmp/rm059/evidence/`). Full suites green in
+  the RM-059 fresh venv on the final banking tree
+  (non-editable installs from a full-repo copy,
+  encryption + qdrant extras, cryptography 50.0.2,
+  qdrant-client 1.20.0, pytest 9.2.0): muninn **378
+  passed** (368+10), huginn **306 passed** (slice-log
+  pin only); ruff clean (both packages, whole tree);
+  mypy clean in a deps-free tool venv (muninn 7 files,
+  huginn 9 files). Slice-internal repairs: the first
+  gate-script run crashed on `retrieve(limit=)` (the
+  parameter is `top_k`) — fixed before any before-run
+  was recorded; two new-test bugs fixed in-slice (Row
+  objects vs tuples in the raw-SQL helper; the fallback
+  road's SELECT sits between upsert and node update,
+  not last). Live Qdrant + sentence-transformers stay
+  NOT PROVEN. Founding tree NEEDS A SYNC for the
+  RETURNING upsert + combined head write (extends the
+  standing package-source sync note).
 - **RM-058 BANKED 2026-11-02 (keeper tick ~09:06 EST):**
   Muninn read path — BENCH. New gate script
   `muninn/scripts/read_path.py` profiles

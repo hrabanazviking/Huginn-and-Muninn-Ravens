@@ -564,6 +564,14 @@ class MemoryNode:
 # original per-pair loop is both faster and already proven.
 _HUGE_BATCH_MIN_IDS = 64
 
+# RM-059: SQLite 3.35+ supports RETURNING on an upsert, which
+# lets the activation counter write hand back the new total in
+# the same statement — the pre-RM-059 road re-read it with a
+# separate SELECT. Older runtimes (the documented WAL floor is
+# 3.7.0) keep the upsert + SELECT road; the semantics are
+# identical either way, only the statement count differs.
+_RETURNING_OK = sqlite3.sqlite_version_info >= (3, 35, 0)
+
 _R = TypeVar("_R")
 
 
@@ -925,9 +933,13 @@ class HebbianMemory:
         if meta is not None:
             sync_chain_head(chain, meta, self._db_path)
         chain.advance(memory_id, at, emotional_valence, source)
-        self._conn.executemany(
-            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
-            tuple(chain_head_meta(chain).items()),
+        # RM-059: the head write is one statement carrying both
+        # meta rows (head, count) instead of an executemany of
+        # two — same rows, same transaction, one execution.
+        (k1, v1), (k2, v2) = chain_head_meta(chain).items()
+        self._conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?), (?, ?)",
+            (k1, v1, k2, v2),
         )
 
     # ─── store encryption transforms (RM-049) ─────────────────────────
@@ -1034,6 +1046,20 @@ class HebbianMemory:
     def _log_activation_locked(
         self, memory_id: int, emotional_valence: float, source: str, at: str
     ) -> int:
+        """One activation, in the fewest statements that keep
+        the semantics (RM-059).
+
+        Four tables change — the log row, the counter row, the
+        node's access count, the tombstone — and without a
+        schema or trigger change each is its own statement, so
+        four statements is the floor. Before RM-059 a fifth
+        statement re-read the counter total the upsert had just
+        written; on SQLite 3.35+ the upsert now returns it
+        (``RETURNING``), and older runtimes keep the re-read
+        road. With attestation on, the chain advance adds its
+        own meta read + one combined head write (see
+        ``_advance_attestation_locked``).
+        """
         self._conn.execute(
             "INSERT INTO activation_log (memory_id, activated_at, emotional_valence, source)"
             " VALUES (?, ?, ?, ?)",
@@ -1041,26 +1067,41 @@ class HebbianMemory:
         )
         self._advance_attestation_locked(memory_id, at, emotional_valence, source)
         lr = self.config.learning_rate
-        self._conn.execute(
-            "INSERT INTO node_activation (memory_id, total_activations, confidence,"
-            " last_activated_at)"
-            " VALUES (?, 1, 1.0, ?)"
-            " ON CONFLICT(memory_id) DO UPDATE SET"
-            "   total_activations = total_activations + 1,"
-            "   confidence = MIN(1.0, confidence + ? * (1.0 - confidence)),"
-            "   last_activated_at = excluded.last_activated_at",
-            (memory_id, at, lr),
-        )
+        if _RETURNING_OK:
+            row = self._conn.execute(
+                "INSERT INTO node_activation (memory_id, total_activations, confidence,"
+                " last_activated_at)"
+                " VALUES (?, 1, 1.0, ?)"
+                " ON CONFLICT(memory_id) DO UPDATE SET"
+                "   total_activations = total_activations + 1,"
+                "   confidence = MIN(1.0, confidence + ? * (1.0 - confidence)),"
+                "   last_activated_at = excluded.last_activated_at"
+                " RETURNING total_activations",
+                (memory_id, at, lr),
+            ).fetchone()
+            total = int(row[0]) if row else 0
+        else:
+            self._conn.execute(
+                "INSERT INTO node_activation (memory_id, total_activations, confidence,"
+                " last_activated_at)"
+                " VALUES (?, 1, 1.0, ?)"
+                " ON CONFLICT(memory_id) DO UPDATE SET"
+                "   total_activations = total_activations + 1,"
+                "   confidence = MIN(1.0, confidence + ? * (1.0 - confidence)),"
+                "   last_activated_at = excluded.last_activated_at",
+                (memory_id, at, lr),
+            )
+            row = self._conn.execute(
+                "SELECT total_activations FROM node_activation WHERE memory_id = ?",
+                (memory_id,),
+            ).fetchone()
+            total = int(row[0]) if row else 0
         self._conn.execute(
             "UPDATE nodes SET access_count = access_count + 1, updated_at = ? WHERE id = ?",
             (at, memory_id),
         )
         self._conn.execute("DELETE FROM deleted_nodes WHERE memory_id = ?", (memory_id,))
-        row = self._conn.execute(
-            "SELECT total_activations FROM node_activation WHERE memory_id = ?",
-            (memory_id,),
-        ).fetchone()
-        return int(row[0]) if row else 0
+        return total
 
     def _wire_pair_locked(self, a: int, b: int, at: str) -> bool:
         """Strengthen the a↔b wiring (both directed rows). True if new."""

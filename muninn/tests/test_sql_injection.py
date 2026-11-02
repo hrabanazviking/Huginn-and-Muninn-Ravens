@@ -172,12 +172,17 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
 # from the caller, never built from values).
 # RM-050: +5 sites — the _attest recompute select + meta
 # select, and core's bootstrap select + header insert + the
-# per-activation head executemany (all constant SQL).
+# per-activation head write (all constant SQL).
 # RM-051: +8 sites — the secure-forget purge machinery in
 # _db.py: the secure_delete pragma read + set + three-way
 # restore, and the two wal_checkpoint(TRUNCATE) + VACUUM
 # purge stages (all constant SQL, no values at all).
-EXPECTED_SITE_TOTAL = 97
+# RM-059: +1 site — the activation counter upsert now exists
+# in two constant forms (the RETURNING road and the pre-3.35
+# fallback road, whose SELECT re-read was already counted);
+# the attestation head executemany became one combined
+# execute (site total unchanged for that change).
+EXPECTED_SITE_TOTAL = 98
 
 
 def _source_dir():

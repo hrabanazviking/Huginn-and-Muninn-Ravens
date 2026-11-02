@@ -1,0 +1,43 @@
+{
+  "package": "muninn",
+  "schema": 1,
+  "kind": "write_path",
+  "environment": {
+    "recorded_at": "2026-11-02T15:19:39.227360+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      5.9306640625,
+      4.72509765625,
+      4.7783203125
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "activate_same_id": 171.71279000012873,
+    "activate_distinct_ids": 201.3862409999092,
+    "activate_batch5": 206.03123699993375,
+    "retrieve_touch": 8300.869088000127
+  },
+  "details": {
+    "statements_per_activate": 4,
+    "statement_kinds_per_activate": [
+      "INSERT",
+      "INSERT",
+      "UPDATE",
+      "DELETE"
+    ],
+    "samples": {
+      "activate_same_id": 2000,
+      "activate_distinct_ids": 2000,
+      "activate_batch5": 400,
+      "retrieve_touch": 200
+    },
+    "unit": "median total ms for the labelled fixed sample batch (median of 3 runs)",
+    "storage_class": "tmpfs (tempfile default on this machine)"
+  }
+}
