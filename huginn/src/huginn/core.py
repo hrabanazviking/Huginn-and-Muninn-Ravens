@@ -544,9 +544,39 @@ class HuginnMemory:
         return self._ensure_backend().get(memory_id)
 
     def delete(self, memory_id: int) -> bool:
-        """Remove one memory (WRITE). True when something was removed."""
+        """Remove one memory (WRITE). True when something was removed.
+
+        Honest limit (RM-051, threat TH-11): on the local
+        backend this removes the live rows only — the content
+        can persist in WAL frames, in freed pages of the store
+        file, and in every rolling backup generation until
+        rotation. When the content itself must leave the disk,
+        use :meth:`secure_forget`.
+        """
         memory_id = _check_memory_id(memory_id)
         return self._ensure_backend().delete(memory_id)
+
+    def secure_forget(self, memory_id: int) -> bool:
+        """Remove one memory **and purge its content** (WRITE).
+
+        Everything :meth:`delete` does, with the same return
+        value, plus the RM-051 purge (threat TH-11; record in
+        ``docs/SECURE_FORGET.md``). On the local backend: the
+        delete runs under ``PRAGMA secure_delete=ON``, the
+        WAL is checkpoint-truncated, the store file is
+        rewritten with ``VACUUM``, and every pre-existing
+        backup generation is discarded and replaced by one
+        fresh snapshot of the purged store — at the cost of a
+        full store rewrite and the loss of all older backup
+        generations. The purge runs even when nothing live
+        was removed, remediating an earlier plain delete's
+        residue. On the Qdrant backend there are no local
+        files: this is the server-side delete, and what the
+        server's own snapshots retain is the operator's
+        domain.
+        """
+        memory_id = _check_memory_id(memory_id)
+        return self._ensure_backend().secure_forget(memory_id)
 
     def health(self) -> dict[str, Any]:
         """Backend health; never raises for backend trouble.

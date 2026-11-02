@@ -57,17 +57,72 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050.
-  Part IV (Security) is under way — twelve of eighteen
-  slices banked.
-- Next: RM-051 in roadmap order (Part IV — forget is
-  forgetting; cites TH-11). Audit `forget`/`delete` for
-  residual copies: WAL frames and backups can still hold
-  "deleted" content; document the truth and add a
-  `secure_forget` that rewrites + checkpoints + rotates
-  backups, with its cost stated; acceptance is the
-  forensic test searching the files for a forgotten string
-  before/after.
+  RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050,
+  RM-051. Part IV (Security) is under way — thirteen of
+  eighteen slices banked.
+- Next: RM-052 in roadmap order (Part IV — dependency
+  hygiene; cites TH-12). Both packages' extras pinned
+  with upper bounds (already); add a lockfile example
+  and a vulnerability-scan step to the manual CI.
+- **RM-051 BANKED 2026-11-02 (keeper tick ~05:06 EST):**
+  forget is forgetting — TH-11, record in
+  `docs/SECURE_FORGET.md`. The audit, proven by forensic
+  byte-search in the new suites: plain `forget`/`delete`
+  remove the live rows only — the content persists in
+  WAL frames, in freed pages of the main file (a
+  checkpoint zeroing them is a build's `secure_delete`
+  default, not a promise), and in every `.bak-N`
+  generation until rotation; Muninn's `activation_log`
+  is kept by design (ids/timestamps, never content).
+  Both guides now state that truth. New public method
+  `secure_forget(memory_id) -> bool` in both packages:
+  `forget`/`delete`'s validation, row work (shared via
+  `_forget_rows_locked` / `_delete_rows_locked`) and
+  return value, then the purge — delete under
+  `PRAGMA secure_delete=ON` with the connection's prior
+  setting restored (`_db.secure_delete_enabled`),
+  `wal_checkpoint(TRUNCATE)`, `VACUUM`,
+  `wal_checkpoint(TRUNCATE)` again, and under the
+  RM-037 coordination lock every `.bak-*` discarded and
+  replaced by one fresh snapshot of the purged store
+  when `backup_keep` allows (`_db.purge_forgotten_content`,
+  twin helpers in both `_db.py` files). The purge runs
+  even when nothing live was removed (remediates a past
+  plain forget). Cost stated in the record + guides: a
+  full store rewrite and the loss of all older backup
+  generations; not atomic across stages; another opener
+  holding an old snapshot can keep WAL frames alive or
+  fail the rewrite typed — close other openers first.
+  Huginn's Qdrant `secure_forget` is the server-side
+  delete (stub-pinned); server snapshot residue is the
+  operator's domain. New `tests/test_secure_forget.py`
+  (muninn 10, huginn 8): before/after forensic pair in
+  the WAL-resident and already-checkpointed cases, three
+  generations → one fresh, `backup_keep=0`, missing-id
+  purge, tombstone parity, typed validation, RM-049
+  encryption composition. Negation against the RM-050
+  packages: muninn **8 failed / 2 passed**, huginn **6
+  failed / 2 passed** (passes = the preserved plain-
+  forget truth + the record doc). One in-slice test bug
+  fixed: a Huginn search assertion shared a hyphen-split
+  token with the keeper doc; it now searches the
+  secret's distinctive token. RM-019 goldens gained the
+  method; RM-040 audit pins +8 constant sites per
+  package, all in `_db.py` (muninn 89 → 97, huginn
+  45 → 53); RM-018 goldens and RM-004 schema goldens
+  unmoved; no new dependency. **Bifröst re-verification
+  PASS** (fresh venv `ravens-rm051-bifrost-venv` on
+  `/var/tmp`, bifrost at b66e98cc — its own suites **25
+  passed**; BifrostBridge smoke PASS, evidence
+  `/var/tmp/rm051-evidence/`). Full suites green in the
+  RM-051 fresh venv on the final banking tree (TMPDIR +
+  installs on `/var/tmp`, encryption extra installed):
+  muninn **322 passed** (312+10), huginn **267 passed**
+  (259+8); ruff + mypy floors clean (rm050 tool venv;
+  mypy muninn 7 files, huginn 9 files). TH-11's
+  register update remains RM-056's. Founding tree
+  NEEDS A SYNC for the `secure_forget` build (extends
+  the standing package-source sync note).
 - **RM-050 BANKED 2026-11-02 (keeper tick ~04:26 EST):**
   integrity attestation — TH-10, record in
   `docs/INTEGRITY_ATTESTATION.md`. Muninn-only slice

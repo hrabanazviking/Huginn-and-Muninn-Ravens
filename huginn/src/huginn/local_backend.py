@@ -36,6 +36,8 @@ from ._crypto import (
 from ._db import (
     _is_locked_error,
     open_store,
+    purge_forgotten_content,
+    secure_delete_enabled,
     store_coordination_lock,
     store_permissions_warning,
 )
@@ -566,15 +568,53 @@ class LocalBackend:
             conn.commit()
             return doc_id
 
+    def _delete_rows_locked(self, memory_id: int) -> bool:
+        """Delete one document's rows (lock held, uncommitted).
+
+        The shared row work of :meth:`delete` and
+        :meth:`secure_forget` (RM-051): the term-index rows,
+        the vector, and the document itself. The caller
+        commits.
+        """
+        conn = self._ensure_open()
+        self._deindex_terms_locked(memory_id)
+        conn.execute("DELETE FROM doc_vectors WHERE doc_id = ?", (memory_id,))
+        cur = conn.execute("DELETE FROM documents WHERE id = ?", (memory_id,))
+        return cur.rowcount > 0
+
     @_storage_write("delete")
     def delete(self, memory_id: int) -> bool:
         with self._lock:
+            removed = self._delete_rows_locked(memory_id)
+            self._ensure_open().commit()
+            return removed
+
+    @_storage_write("secure_forget")
+    def secure_forget(self, memory_id: int) -> bool:
+        """Delete one document **and purge its content from the disk**.
+
+        Everything :meth:`delete` does, plus the RM-051 purge
+        (threat TH-11; record in ``docs/SECURE_FORGET.md``):
+        the delete runs under ``PRAGMA secure_delete=ON``
+        (restored afterwards), the WAL is checkpoint-truncated,
+        the store is rewritten with ``VACUUM``, the WAL is
+        truncated again, and every pre-existing backup
+        generation is discarded and replaced by one fresh
+        snapshot of the purged store (when ``backup_keep``
+        allows one). The purge runs even when nothing live
+        was removed, remediating an earlier plain delete's
+        residue. Cost: a full store rewrite and the loss of
+        all older backup generations — see the record doc.
+        """
+        with self._lock:
             conn = self._ensure_open()
-            self._deindex_terms_locked(memory_id)
-            conn.execute("DELETE FROM doc_vectors WHERE doc_id = ?", (memory_id,))
-            cur = conn.execute("DELETE FROM documents WHERE id = ?", (memory_id,))
-            conn.commit()
-            return cur.rowcount > 0
+            with secure_delete_enabled(conn):
+                removed = self._delete_rows_locked(memory_id)
+                conn.commit()
+                purge_forgotten_content(
+                    self._db_path, conn, self.config.backup_keep
+                )
+            return removed
 
     # ─── reads (pure) ─────────────────────────────────────────────────
 

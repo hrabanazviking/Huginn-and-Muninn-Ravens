@@ -27,9 +27,9 @@ Read/write honesty (Slice 86, ground 2): every read method here is a
 ``activation_count``, ``health``, ``stats``, ``dump`` never mutate the
 store, and tests prove it. The write APIs are named as writes:
 ``activate``, ``activate_batch``, ``associate``, ``store``/``remember``,
-``update``, ``delete``/``forget``, ``move``, ``decay``, ``consolidate``,
-``heal_structure``. The single reinforcing-read variant is explicit and
-opt-in: ``retrieve(..., touch=True)``.
+``update``, ``delete``/``forget``, ``secure_forget``, ``move``, ``decay``,
+``consolidate``, ``heal_structure``. The single reinforcing-read variant
+is explicit and opt-in: ``retrieve(..., touch=True)``.
 """
 
 from __future__ import annotations
@@ -69,6 +69,8 @@ from ._crypto import (
 from ._db import (
     _is_locked_error,
     open_store,
+    purge_forgotten_content,
+    secure_delete_enabled,
     store_coordination_lock,
     store_permissions_warning,
     take_backup,
@@ -1830,6 +1832,30 @@ class HebbianMemory:
             self._conn.commit()
             return True
 
+    def _forget_rows_locked(self, memory_id: int) -> bool:
+        """Delete one node's rows + tombstone (lock held, uncommitted).
+
+        The shared row work of :meth:`forget` and
+        :meth:`secure_forget` (RM-051): the node, all its wiring,
+        and the standing tombstone — written even when nothing
+        existed, as the record that this id was deliberately
+        forgotten, so heal prunes any later stray edge to it.
+        The caller commits.
+        """
+        removed = False
+        cur = self._conn.execute("DELETE FROM nodes WHERE id = ?", (memory_id,))
+        removed = removed or cur.rowcount > 0
+        cur = self._conn.execute(
+            "DELETE FROM hebbian_connections WHERE memory_a_id = ? OR memory_b_id = ?",
+            (memory_id, memory_id),
+        )
+        removed = removed or cur.rowcount > 0
+        self._conn.execute(
+            "INSERT OR REPLACE INTO deleted_nodes (memory_id, deleted_at) VALUES (?, ?)",
+            (memory_id, self._tick()),
+        )
+        return removed
+
     @_storage_write("forget")
     def forget(self, memory_id: int) -> bool:
         """Remove a memory's node and all its wiring (WRITE).
@@ -1839,26 +1865,64 @@ class HebbianMemory:
         it is a log. Returns True when anything was removed. A later
         activation of the same id clears the tombstone (the caller's
         world says the id lives again).
+
+        Honest limit (RM-051, threat TH-11): this removes the live
+        rows only. The content can persist in WAL frames, in freed
+        pages of the store file, and in every rolling backup
+        generation until rotation. When the content itself must
+        leave the disk, use :meth:`secure_forget`.
         """
         memory_id = _check_memory_id(memory_id)
         with self._lock:
             self._get_conn()
-            removed = False
-            cur = self._conn.execute("DELETE FROM nodes WHERE id = ?", (memory_id,))
-            removed = removed or cur.rowcount > 0
-            cur = self._conn.execute(
-                "DELETE FROM hebbian_connections WHERE memory_a_id = ? OR memory_b_id = ?",
-                (memory_id, memory_id),
-            )
-            removed = removed or cur.rowcount > 0
-            # The tombstone is written even when nothing existed: it is
-            # the standing record that this id was deliberately
-            # forgotten, so heal prunes any later stray edge to it.
-            self._conn.execute(
-                "INSERT OR REPLACE INTO deleted_nodes (memory_id, deleted_at) VALUES (?, ?)",
-                (memory_id, self._tick()),
-            )
+            removed = self._forget_rows_locked(memory_id)
             self._conn.commit()
+            return removed
+
+    @_storage_write("secure_forget")
+    def secure_forget(self, memory_id: int) -> bool:
+        """Remove a memory **and purge its content from the disk** (WRITE).
+
+        Everything :meth:`forget` does — node, wiring, tombstone,
+        the same return value — plus the purge plain forget cannot
+        promise (RM-051, threat TH-11; record in
+        ``docs/SECURE_FORGET.md``): the delete runs under
+        ``PRAGMA secure_delete=ON`` (the connection's previous
+        setting is restored afterwards), the WAL is
+        checkpoint-truncated, the store file is rewritten with
+        ``VACUUM`` so freed pages are rebuilt away, the WAL is
+        truncated again, and every pre-existing backup generation
+        is discarded and replaced by one fresh snapshot of the
+        purged store (when ``backup_keep`` allows one). After a
+        successful call, no file of the store's family — main
+        file, ``-wal``, ``-shm``, backups — holds the forgotten
+        content. The purge runs even when nothing live was
+        removed, so calling it for an id an earlier plain
+        ``forget`` already deleted remediates that forget's
+        residue.
+
+        The cost, stated plainly: a full rewrite of the store
+        file (time and temporary disk space on the order of the
+        store's size, under an exclusive lock) and the loss of
+        all older backup generations — the recovery history is
+        replaced by the single fresh snapshot. The activation
+        *log* is kept, exactly as in :meth:`forget`: it carries
+        ids and timestamps, never content. Close other openers
+        of the store first: a reader holding an old snapshot
+        can keep WAL frames alive and make the rewrite fail
+        with a locked-store error (the row deletion has already
+        committed by then; re-run ``secure_forget`` to re-run
+        the purge).
+        """
+        memory_id = _check_memory_id(memory_id)
+        with self._lock:
+            self._get_conn()
+            with secure_delete_enabled(self._conn):
+                removed = self._forget_rows_locked(memory_id)
+                self._conn.commit()
+                purge_forgotten_content(
+                    self._db_path, self._conn, self.config.backup_keep
+                )
             return removed
 
     def delete(self, node_id: int) -> bool:

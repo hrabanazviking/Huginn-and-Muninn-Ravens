@@ -277,6 +277,19 @@ class QdrantBackend:
                 ) from exc
             return point_id
 
+    def secure_forget(self, memory_id: int) -> bool:
+        """RM-051: the server-side twin of the local purge.
+
+        There are no local files to purge — the point *is*
+        the memory, and deleting it is the whole operation
+        this backend can perform. What the server's own
+        snapshots, WAL and backups retain afterwards is the
+        Qdrant operator's domain, stated honestly in
+        ``docs/SECURE_FORGET.md``; nothing here claims a
+        disk-level purge of the server.
+        """
+        return self.delete(memory_id)
+
     def delete(self, memory_id: int) -> bool:
         with self._lock:
             self.ping()

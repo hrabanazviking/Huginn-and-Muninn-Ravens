@@ -345,6 +345,23 @@ Both validate the id (`int`, >= 0, bools rejected) and raise
 `HuginnValidationError` otherwise. `get` is a pure read; `delete` is
 a write.
 
+`delete` removes the live rows only: on the local backend the
+content can persist in WAL frames, in freed pages of the store
+file, and in every rolling backup generation until rotation
+(threat TH-11). `secure_forget(memory_id)` — same validation, same
+return value — additionally purges the content from every file
+the local store keeps (RM-051; the full record is
+`docs/SECURE_FORGET.md`): the delete runs under
+`PRAGMA secure_delete=ON`, the WAL is checkpoint-truncated, the
+store file is rewritten with `VACUUM`, and every backup
+generation is discarded and replaced by one fresh snapshot of
+the purged store, at the cost of a full store rewrite and the
+loss of all older backup generations. The purge runs even when
+nothing live was removed, so it also remediates a past plain
+`delete`. On the Qdrant backend `secure_forget` is the
+server-side delete; what the server's own snapshots retain is
+the operator's domain.
+
 ### Health: `health` and `stats`
 
 ```python
@@ -867,6 +884,7 @@ clients of one server (live round-trip still NOT PROVEN).
 | `search(query_text, limit=10, category=None, min_importance=1)` | pure read | `list[dict]` with `score` |
 | `get(memory_id)` | pure read | `dict \| None` (no `score`) |
 | `delete(memory_id)` | write | `bool` |
+| `secure_forget(memory_id)` | write | `bool` |
 | `health()` | pure read, never raises for backend trouble | `dict` |
 | `stats()` | pure read | same dict as `health()` |
 | `analyze_query(query)` (method and module function) | pure | analysis `dict` |

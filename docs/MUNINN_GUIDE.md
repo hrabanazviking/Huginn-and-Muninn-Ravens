@@ -193,6 +193,10 @@ The report from the open-time heal is kept on the object as
 - The activation **log is kept** — it is a log.
 - A later `activate(...)` or `associate(...)` involving that id clears
   its tombstone: the caller's world says the id lives again.
+- This removes the live rows only: the content can persist in WAL
+  frames, in freed pages of the store file, and in every rolling
+  backup generation until rotation (threat TH-11). When the content
+  itself must leave the disk, use `secure_forget(...)` below.
 
 ### Backpressure: `max_nodes`
 
@@ -413,6 +417,30 @@ print(mem.forget(relocated))   # False — nothing left to remove
 ```
 
 `delete(node_id)` is the ancestor-shaped alias of `forget`.
+
+### Secure forget: `secure_forget`
+
+```python
+print(mem.secure_forget(relocated))  # True — removed AND purged from disk
+```
+
+`secure_forget(memory_id)` does everything `forget` does — same
+validation, same tombstone, same return value — and then purges the
+forgotten content from every file the store keeps (RM-051, threat
+TH-11; the full record is `docs/SECURE_FORGET.md`): the delete runs
+under `PRAGMA secure_delete=ON`, the WAL is checkpoint-truncated,
+the store file is rewritten with `VACUUM`, and every rolling backup
+generation is discarded and replaced by one fresh snapshot of the
+purged store. The purge runs even when nothing live was removed, so
+it also remediates a past plain `forget`.
+
+The cost is stated, not hidden: a full rewrite of the store file
+(time and temporary space on the order of the store's size) and the
+loss of all older backup generations. Close other openers of the
+store first — a reader holding an old snapshot can keep WAL frames
+alive and make the rewrite fail with a typed locked-store error
+(the row deletion has already committed; re-run `secure_forget` to
+re-run the purge).
 
 ### Activate: `activate`, `activate_batch`, `activation_count`
 
@@ -876,6 +904,7 @@ objects may repeat or invert by microseconds.
 | `update(node_id, content=None, **fields)` | write | `bool` |
 | `move(node_id, new_path)` | write | `bool` |
 | `forget(memory_id)` / `delete(node_id)` | write | `bool` |
+| `secure_forget(memory_id)` | write | `bool` |
 | `activate(memory_id, *, emotional_valence, source)` | write | `int` new total |
 | `activate_batch(memory_ids, *, emotional_valence, source)` | write | report `dict` |
 | `associate(a, b, *, strength=None, delta=None)` | write | `float` new strength |

@@ -80,6 +80,18 @@ file's own permissions at the moment it is taken (threat
 TH-04) — an owner-only store's backups are owner-only, and
 a deliberately loosened store's backups inherit exactly
 that looseness (inheritance, not a forced mode).
+Secure forget (RM-051; see ``docs/SECURE_FORGET.md``):
+plain ``delete`` removes the live rows only — the content
+can persist in WAL frames, in freed pages of the main
+file, and in every backup generation (threat TH-11).
+``secure_forget`` runs its delete under
+:func:`secure_delete_enabled`, then
+:func:`purge_forgotten_content` checkpoint-truncates the
+WAL, rewrites the store with ``VACUUM``, truncates the
+WAL again, discards every pre-existing backup generation
+and takes one fresh snapshot of the purged store. The
+cost is a full store rewrite plus the loss of all older
+backup generations, stated in the record doc.
 """
 
 from __future__ import annotations
@@ -529,6 +541,92 @@ def _take_backup_unlocked(db_path: Path, keep: int) -> Path | None:
         logger.error("huginn: backup failed: %s", exc)
         tmp.unlink(missing_ok=True)
         return None
+
+
+# ─── RM-051: secure-forget purge machinery ─────────────────────
+#
+# Twin of muninn's helpers. Plain row deletion leaves the
+# deleted bytes behind in three places (threat TH-11):
+# frames in the write-ahead log that no checkpoint has folded
+# away yet, freed pages in the main file (SQLite reuses them
+# eventually; until then the content is still on disk), and
+# every rolling backup generation, each of which is a full
+# copy of the store as it was. The two helpers below are the
+# purge half of ``secure_forget``; the delete itself stays in
+# the caller, in its own transaction.
+
+
+@contextlib.contextmanager
+def secure_delete_enabled(conn: sqlite3.Connection) -> Iterator[None]:
+    """Run a delete with ``PRAGMA secure_delete=ON``, restored after.
+
+    With secure delete on, SQLite overwrites deleted content
+    with zeros in the page image it writes, instead of merely
+    unlinking the page. It is a per-connection setting: the
+    value found on entry (``OFF`` / ``ON`` / ``FAST``) is
+    restored on exit, so a ``secure_forget`` never silently
+    changes the connection's posture for later writes. Not
+    every SQLite build defaults this on, so the slice sets it
+    explicitly rather than inheriting the build's choice.
+    """
+    row = conn.execute("PRAGMA secure_delete").fetchone()
+    previous = int(row[0]) if row else 0
+    conn.execute("PRAGMA secure_delete=ON")
+    try:
+        yield
+    finally:
+        if previous == 2:
+            conn.execute("PRAGMA secure_delete=FAST")
+        elif previous == 1:
+            conn.execute("PRAGMA secure_delete=ON")
+        else:
+            conn.execute("PRAGMA secure_delete=OFF")
+
+
+def purge_forgotten_content(db_path: Path, conn: sqlite3.Connection, keep: int) -> None:
+    """Purge a committed deletion from every file of the store.
+
+    The caller has deleted the rows and committed. The stages,
+    in order (each one covers a copy the others cannot reach):
+
+    1. ``wal_checkpoint(TRUNCATE)`` — folds the WAL's frames
+       into the main file and empties the WAL, so no frame
+       still carries the pre-delete page images.
+    2. ``VACUUM`` — rebuilds the main file from the live rows
+       only: freed pages (and any byte of the forgotten
+       content sitting in one, on builds without secure
+       delete) are not copied to the new file.
+    3. ``wal_checkpoint(TRUNCATE)`` again — the VACUUM itself
+       wrote through the WAL; truncate it too.
+    4. Backup replacement, under the per-store coordination
+       lock (the generations are shared with every other
+       opener, RM-037): every ``.bak-*`` file — all
+       generations and a stale ``.bak-tmp`` — is discarded,
+       and, when ``keep`` allows, one fresh snapshot of the
+       purged store is taken as the new ``.bak-1``. Rotation
+       alone could never do this: a rotated-out generation
+       leaves only after ``keep`` further backups.
+
+    Honest limit: another opener actively reading an old
+    snapshot can keep WAL frames alive (a checkpoint that
+    reports busy truncates nothing) and can make the
+    ``VACUUM`` fail with a locked-store error; close other
+    openers of the store first. The row deletion itself has
+    already committed by then — the memory is gone from the
+    API either way, and a later ``secure_forget`` re-runs
+    the purge.
+    """
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.execute("VACUUM")
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    with store_coordination_lock(db_path):
+        prefix = f"{db_path.name}.bak-"
+        if db_path.parent.is_dir():
+            for candidate in sorted(db_path.parent.iterdir()):
+                if candidate.name.startswith(prefix) and candidate.is_file():
+                    candidate.unlink(missing_ok=True)
+        if keep > 0:
+            _take_backup_unlocked(db_path, keep)
 
 
 def _restore_from_backup(db_path: Path, keep: int) -> Path | None:

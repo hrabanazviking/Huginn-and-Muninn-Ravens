@@ -140,7 +140,11 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 1, "count_sql": 1}
 # named count_sql it runs, and the encryption-header insert in
 # the local backend (all constant SQL; the count arrives as a
 # named constant from the caller, never built from values).
-EXPECTED_SITE_TOTAL = 45
+# RM-051: +8 sites — the secure-forget purge machinery in
+# _db.py: the secure_delete pragma read + set + three-way
+# restore, and the two wal_checkpoint(TRUNCATE) + VACUUM
+# purge stages (all constant SQL, no values at all).
+EXPECTED_SITE_TOTAL = 53
 
 
 def _source_dir():

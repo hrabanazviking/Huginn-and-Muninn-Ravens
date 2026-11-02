@@ -165,7 +165,11 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
 # RM-050: +5 sites — the _attest recompute select + meta
 # select, and core's bootstrap select + header insert + the
 # per-activation head executemany (all constant SQL).
-EXPECTED_SITE_TOTAL = 89
+# RM-051: +8 sites — the secure-forget purge machinery in
+# _db.py: the secure_delete pragma read + set + three-way
+# restore, and the two wal_checkpoint(TRUNCATE) + VACUUM
+# purge stages (all constant SQL, no values at all).
+EXPECTED_SITE_TOTAL = 97
 
 
 def _source_dir():

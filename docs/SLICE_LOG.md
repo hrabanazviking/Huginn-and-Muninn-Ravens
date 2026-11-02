@@ -2360,3 +2360,96 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   Qdrant and sentence-transformers stay NOT PROVEN.
   Founding tree NEEDS A SYNC for the attestation build
   (extends the standing package-source sync note).
+
+## RM-051 — Forget is forgetting
+
+- **Class:** FAULT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Forget-is-forgetting (TH-11), record in
+  `docs/SECURE_FORGET.md`. The audit, proven by forensic
+  byte-search of the store's files: plain `forget` /
+  `delete` remove the live rows only — the forgotten
+  content persists in WAL frames not yet checkpointed, in
+  freed pages of the main file (whether a checkpoint
+  zeroes them is a build's `secure_delete` default, not a
+  promise), and in every rolling `.bak-N` generation until
+  rotation; Muninn's `activation_log` is kept by design
+  (ids and timestamps, never content). Both guides now
+  state that truth beside `forget` / `delete`. New public
+  method **`secure_forget(memory_id) -> bool`** in both
+  packages (Muninn `HebbianMemory` + the `Muninn` facade;
+  Huginn facade + both backends): the same validation,
+  row work and return value as `forget` / `delete`, then
+  the purge — the delete runs under
+  `PRAGMA secure_delete=ON` (the per-connection value
+  found is restored on exit: `_db.secure_delete_enabled`),
+  `wal_checkpoint(TRUNCATE)`, `VACUUM` (the store is
+  rebuilt from live rows only), `wal_checkpoint(TRUNCATE)`
+  again, and — under the RM-037 coordination lock — every
+  `.bak-*` file is discarded and replaced by one fresh
+  snapshot of the purged store when `backup_keep` allows
+  (`_db.purge_forgotten_content`, twin helpers in both
+  packages; the row work is shared with `forget` /
+  `delete` via `_forget_rows_locked` /
+  `_delete_rows_locked`, so the semantics cannot drift).
+  The purge runs even when nothing live was removed, so
+  it remediates an earlier plain forget's residue. Cost
+  stated in the record doc and both guides: a full store
+  rewrite (time + temporary space on the store's order,
+  exclusive lock) and the loss of all older backup
+  generations; the purge is not atomic across its stages
+  (the row deletion commits first) and another opener
+  holding an old snapshot can keep WAL frames alive or
+  fail the rewrite typed — close other openers first.
+  Huginn's Qdrant backend has no local files: its
+  `secure_forget` is the server-side delete (pinned
+  against a stub client), and what the server's own
+  snapshots retain is the operator's domain. New
+  `tests/test_secure_forget.py` (muninn 10, huginn 8):
+  the before/after forensic pair (string findable in
+  `.bak-1` after plain forget/delete; findable in **no**
+  file — main, `-wal`, `-shm`, every generation — after
+  secure_forget, open, closed and reopened, in both the
+  WAL-resident and the already-checkpointed cases),
+  three generations replaced by exactly one fresh one,
+  `backup_keep=0` leaves none, missing-id purge,
+  tombstone/wiring parity with `forget`, typed id
+  validation, and RM-049 encryption composition.
+  Negation against the RM-050 packages: muninn **8
+  failed / 2 passed**, huginn **6 failed / 2 passed** —
+  the passes are exactly the preserved behaviours (the
+  plain-forget residue truth and the record doc's
+  existence). One test bug found and fixed in-slice: the
+  first Huginn draft asserted `search(SECRET) == []`,
+  but hyphen tokenisation shares the `rm051` token with
+  the keeper document — the assertion now searches the
+  secret's distinctive token. RM-019 surface goldens
+  gained the method in both packages; RM-040 audit pins
+  updated for the purge machinery's eight new constant
+  sites per package, all in `_db.py`, no values at all
+  (Muninn 89 → 97, Huginn 45 → 53); RM-018 goldens
+  unmoved (no new raise site — the `_storage_write`
+  wrapper's); no schema change (RM-004 goldens unmoved).
+  Public API changed additively, so the **Bifröst
+  contract re-verification was run before banking**:
+  fresh venv (`ravens-rm051-bifrost-venv` on `/var/tmp`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id=2
+  huginn_id=6; search 1 merged result; recall grew the
+  Muninn activation log exactly +1; decay/consolidate
+  reports; `decay_wall_clock()` through the bridge armed
+  at 0 days; stats over all three backends; both raven
+  health dicts carry `sqlite_version` 3.45.1; huginn
+  degraded via auto-fallback to local — live Qdrant
+  still NOT PROVEN; double close safe; evidence
+  `/var/tmp/rm051-evidence/`). Full suites green in the
+  RM-051 fresh venv on the final banking tree (TMPDIR +
+  installs on `/var/tmp`, encryption extra installed):
+  muninn **322 passed** (312+10), huginn **267 passed**
+  (259+8); ruff + mypy floors clean (rm050 tool venv;
+  mypy muninn 7 files, huginn 9 files). No new
+  dependency — stdlib + SQLite pragmas only. Live
+  Qdrant and sentence-transformers stay NOT PROVEN.
+  Founding tree NEEDS A SYNC for the `secure_forget`
+  build (extends the standing package-source sync
+  note). TH-11's register update remains RM-056's.
