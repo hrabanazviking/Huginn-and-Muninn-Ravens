@@ -2144,3 +2144,80 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   and the shared rattler download cache (~2.8 GB), and
   built every RM-047 venv and evidence dir on
   `/var/tmp`.
+
+## RM-048 — Store encryption, design
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Decision record: `docs/STORE_ENCRYPTION.md`
+  — TH-09. A design slice only: no package code, public
+  API, or schema changed. The three roadmap candidates
+  were judged against the campaign's two standing
+  constraints (stdlib-first; the shared-schema law /
+  TB-7). **SQLCipher rejected**: a compiled SQLite fork
+  plus a binding that compiles against a system
+  libsqlcipher a pip extra cannot express or bound —
+  verified absent on the decision machine (no binary, no
+  package, neither binding imports) — and whole-file
+  encryption would break the TB-7 contract as practised
+  (Bifröst-class readers open Muninn's file with stdlib
+  `sqlite3`; the schema would survive, its readability
+  would not), while replacing the stdlib store machinery
+  every durability proof stands on. **Filesystem
+  encryption adopted as standing deployment guidance,
+  not the build**: zero code, hides structure while
+  locked, but a library cannot provision or promise it
+  (NG-3) and it cannot discharge RM-049's in-library
+  mandate. **Decision: RM-049 builds application-level
+  envelope encryption** — per-store random data key
+  wrapped under a PBKDF2-HMAC-SHA256 KEK (stdlib), values
+  sealed with AES-256-GCM from the one bounded extra
+  (`cryptography>=42,<51`, lazy, flag-gated; the stdlib
+  has no cipher and no hand-rolled AEAD is permitted),
+  `enc:v1:` envelopes in the same `TEXT` columns (no
+  schema change; RM-004 goldens unmoved), wrap + salt +
+  key-check value as `meta` rows, open-time key proof
+  before any write (wrong passphrase or a plain/flag-off
+  open of a marked store refuses, typed, store
+  untouched). Transform list: Muninn `nodes.content` /
+  `metadata` / `tags`; Huginn `documents.content` /
+  `tags`, `doc_terms.term` + `corpus_stats.term` keyed-
+  HMAC (TF-IDF is equality-only, so scoring is
+  bit-for-bit the plaintext computation), `doc_vectors.
+  vector` (search already loads all vectors in-process);
+  `content_hash` becomes a keyed lookup tag in both, so
+  RM-047's double check compares decrypted content and
+  idempotency is preserved. The contracted tables
+  (`activation_log`, `hebbian_connections`) carry no
+  content and stay plaintext-readable by direct readers.
+  Honest limits recorded in the decision: structure,
+  counts, timestamps, wiring and approximate lengths
+  stay readable — the purchase is content
+  confidentiality against AC-3 (stolen disk, copied
+  backup; backups and WAL inherit ciphertext values
+  through the backup API), not structure-hiding; the
+  equality of two memories under one store's tag leaks;
+  a lost passphrase is a lost store. The record also
+  pins the honest reading of RM-049's "unreadable by
+  plain sqlite3": every content-bearing value an
+  envelope, no plaintext token in a raw dump. Pinned by
+  new `tests/test_store_encryption_design.py` in both
+  packages (2 tests each); negation: the decision line
+  doctored in a scratch edit → 1 failed / 1 passed per
+  package, record then restored byte-identical (sha256
+  verified). SLICE_LOG EXPECTED pins extended to RM-048
+  in both packages. No public API or schema change, so
+  no Bifröst re-verification required (RM-039/RM-040
+  precedent). Full suites green in the RM-048 fresh
+  venv on the final banking tree (TMPDIR on `/var/tmp`,
+  installs from `/var/tmp` copies): muninn **290
+  passed** (288+2), huginn **250 passed** (248+2);
+  ruff + mypy floors clean (rm042 tool venv; mypy muninn
+  5 files, huginn 8 files). Founding tree needs no sync
+  for this slice (docs + tests only; the standing
+  package-source sync note from earlier slices stands).
+  TH-09 stays Open until RM-049 lands the build; the
+  register re-check is RM-056's, per the threat model's
+  citation rule. The `cryptography` extra in the ravens'
+  own venv, like a live Qdrant round-trip, remains NOT
+  PROVEN until RM-049 installs and runs it.

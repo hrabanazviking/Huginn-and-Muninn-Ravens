@@ -57,14 +57,77 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044, RM-045, RM-046, RM-047. Part IV (Security) is
-  under way — nine of eighteen slices banked.
-- Next: RM-048 in roadmap order (Part IV — store
-  encryption, design; cites TH-09). A design slice only:
-  SQLCipher vs application-level envelope encryption vs
-  filesystem encryption, judged against stdlib-first and
-  the shared-schema law; output is a decision record, not
-  code. RM-049 then implements the decision.
+  RM-044, RM-045, RM-046, RM-047, RM-048. Part IV
+  (Security) is under way — ten of eighteen slices banked.
+- Next: RM-049 in roadmap order (Part IV — store
+  encryption, build; cites TH-09). Implements RM-048's
+  decision (application-level envelope encryption) behind
+  the `encryption` extra and the `store_encryption`
+  config flag, to the build specification in
+  `docs/STORE_ENCRYPTION.md`; a public-surface change, so
+  the Bifröst contract re-verification is required before
+  banking.
+- **RM-048 BANKED 2026-11-02 (keeper tick ~03:26 EST):**
+  store encryption, design — TH-09, decision record in
+  `docs/STORE_ENCRYPTION.md`. Design slice only: no
+  package code, public API, or schema changed. Judged
+  against stdlib-first and the shared-schema law (TB-7):
+  SQLCipher REJECTED (compiled fork + binding compiled
+  against a system libsqlcipher a pip extra cannot
+  express or bound — verified absent on this machine: no
+  binary, no package, neither `pysqlcipher3` nor
+  `sqlcipher3` imports; and whole-file encryption breaks
+  the TB-7 readability contract — Bifröst-class readers
+  open Muninn's file with stdlib `sqlite3` — while
+  replacing the store machinery every durability proof
+  stands on). Filesystem encryption ADOPTED as standing
+  deployment guidance only (a library cannot provision
+  or promise it, NG-3; it cannot discharge RM-049's
+  mandate). **Decision: RM-049 builds application-level
+  envelope encryption** — per-store random data key
+  wrapped under a PBKDF2-HMAC-SHA256 KEK (stdlib; the
+  stdlib has no cipher — verified — and no hand-rolled
+  AEAD is permitted), values sealed AES-256-GCM from the
+  one bounded extra `cryptography>=42,<51` (lazy,
+  flag-gated), `enc:v1:` envelopes in the same TEXT
+  columns (schema goldens unmoved), wrap/salt/key-check
+  as `meta` rows, open-time key proof before any write
+  (wrong passphrase, or a plain/flag-off open of a marked
+  store, refuses typed with the store untouched). Config
+  spec: `store_encryption: bool = False` +
+  `encryption_passphrase` (repr=False). Transforms:
+  Muninn `nodes.content`/`metadata`/`tags`; Huginn
+  `documents.content`/`tags`, `doc_terms.term` +
+  `corpus_stats.term` keyed-HMAC (TF-IDF is equality-only
+  — scoring bit-for-bit the plaintext computation),
+  `doc_vectors.vector`; `content_hash` becomes a keyed
+  lookup tag in both (RM-047's double check compares
+  decrypted content). The contracted tables
+  (`activation_log`, `hebbian_connections`) carry no
+  content and stay plaintext-readable. Honest limits in
+  the record: structure/counts/timestamps/wiring/
+  approximate lengths stay readable (content
+  confidentiality against AC-3 is the purchase; backups
+  and WAL inherit ciphertext values via the backup API);
+  per-store tag equality leaks; a lost passphrase is a
+  lost store; RM-049's "unreadable by plain sqlite3" is
+  pinned to its honest reading — no plaintext token of a
+  stored memory in a raw dump. Pinned by new
+  `tests/test_store_encryption_design.py` (2 tests each
+  package); negation: decision line doctored → **1
+  failed / 1 passed** per package, record restored
+  byte-identical (sha256 verified). No API/schema change,
+  so no Bifröst re-verification required (RM-039/RM-040
+  precedent). Full suites green in the RM-048 fresh venv
+  on the final banking tree (TMPDIR on `/var/tmp`,
+  installs from `/var/tmp` copies): muninn **290
+  passed** (288+2), huginn **250 passed** (248+2); ruff +
+  mypy floors clean (rm042 tool venv; mypy muninn 5
+  files, huginn 8 files). Evidence
+  `/var/tmp/rm048-evidence/`. Founding tree needs no
+  sync for this slice (docs + tests only). TH-09 stays
+  Open until RM-049 lands; the `cryptography` extra in
+  the ravens' own venv remains NOT PROVEN until then.
 - **RM-047 BANKED 2026-11-02 (keeper tick ~02:26 EST):**
   hash-collision honesty — TH-08, record in
   `docs/HASH_COLLISION.md`. Both packages. The collision
