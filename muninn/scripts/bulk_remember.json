@@ -1,0 +1,39 @@
+{
+  "package": "muninn",
+  "schema": 1,
+  "kind": "bulk_remember",
+  "environment": {
+    "recorded_at": "2026-11-02T15:52:31.127654+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      4.58251953125,
+      3.78857421875,
+      4.25244140625
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "remember_loop": 1028.606511000362,
+    "remember_many": 367.43732699960674
+  },
+  "details": {
+    "nodes": 10000,
+    "repeat": 3,
+    "speedup": 2.8,
+    "loop_ms_per_node": 0.1029,
+    "batch_ms_per_node": 0.0367,
+    "stores_verified_identical": true,
+    "corpus": {
+      "version": 1,
+      "count": 10000,
+      "sha256": "563d8c05b7649082453cb79d7e636f7b9cbc14d35b1aa31c0798605575effb77"
+    },
+    "unit": "median total ms to ingest 10000 distinct nodes into a fresh store (median of 3 runs per road)",
+    "storage_class": "tmpfs (tempfile default on this machine)"
+  }
+}

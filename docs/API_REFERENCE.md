@@ -335,6 +335,40 @@ partial, with the bite recorded in
 **WRITE.** Ancestor-shaped alias of `remember()`, with
 `category = memory_type`. Same idempotency and validation.
 
+#### `remember_many(items: List[Dict[str, Any]]) -> List[int]`
+
+**WRITE (RM-060).** Batch form of `remember()`: store many
+nodes in one transaction. Each item is a dict carrying
+`remember()`'s arguments by name — `content` (required) plus
+optional `category`, `path`, `importance`, `tags`,
+`emotional_valence`, `metadata`, with the same defaults and
+the same validation; any other key, a non-dict item, or a
+missing `content` key raises `MuninnValidationError` before
+any write. Returns the node ids in input order.
+
+- **One preparation pass:** every item is validated,
+  serialized and content-hashed exactly once, before the
+  transaction opens (the preparation is `remember()`'s own,
+  shared, so the roads cannot drift).
+- **One transaction:** all inserts land or none do. An
+  invalid item — or a hash collision (RM-047) against the
+  store or within the batch — rolls the whole batch back.
+  Deliberately stricter than a `remember()` loop, whose
+  earlier calls stay stored when a later one fails.
+- **One timestamp:** the batch is stamped with a single
+  `_tick()` reading (the `activate_batch` discipline).
+- **Backpressure applied once:** the `max_nodes` check runs
+  once, after the commit, over the batch's final count.
+- **Per-item idempotency is `remember()`'s:** an item whose
+  content already lives under its category+path returns that
+  node's id (first write wins); a duplicate inside the batch
+  returns the id its first occurrence created.
+
+Acceptance record (10k-node ingest vs the loop):
+`docs/BULK_REMEMBER.md`; gate script
+`muninn/scripts/bulk_remember.py`, record
+`muninn/scripts/bulk_remember.json`.
+
 #### `get_node(memory_id: int) -> Optional[MemoryNode]`
 
 **READ (pure).** One node by id, or `None`.
@@ -1194,6 +1228,7 @@ The three classes:
 | M-27 | `dump(limit)` | I | Pure read. |
 | M-28 | `MemoryNode.to_dict()` / `from_dict()` | I | Pure functions; the round trip is a fixed point (`from_dict(to_dict(n)) == n`, repeatably). |
 | M-29 | `decay_wall_clock()` | R | The RM-021 opt-in mode: the first call only arms the meta-table marker (0 days); a repeat at the same clock reading decays exactly 0 further days, and repeats compose exactly like M-23 across elapsed time. A blind retry is safe — it can never double-decay the same span, because the marker advances with each run and never moves backward. |
+| M-30 | `remember_many(items)` | I | Same items return the **same ids in the same order**, no duplicate nodes (per-item identity is M-10's; a duplicate inside the batch shares its first occurrence's id). A repeat that *fails* (an invalid item, a collision) stores nothing at all — the batch is one transaction, so a failed retry is always safe to re-issue whole. |
 
 ## 3.2 Huginn — `HuginnMemory` and module functions (local backend)
 

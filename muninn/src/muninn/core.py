@@ -27,9 +27,10 @@ Read/write honesty (Slice 86, ground 2): every read method here is a
 ``activation_count``, ``health``, ``stats``, ``dump`` never mutate the
 store, and tests prove it. The write APIs are named as writes:
 ``activate``, ``activate_batch``, ``associate``, ``store``/``remember``,
-``update``, ``delete``/``forget``, ``secure_forget``, ``move``, ``decay``,
-``consolidate``, ``heal_structure``. The single reinforcing-read variant
-is explicit and opt-in: ``retrieve(..., touch=True)``.
+``remember_many``, ``update``, ``delete``/``forget``, ``secure_forget``,
+``move``, ``decay``, ``consolidate``, ``heal_structure``. The single
+reinforcing-read variant is explicit and opt-in:
+``retrieve(..., touch=True)``.
 """
 
 from __future__ import annotations
@@ -559,10 +560,50 @@ class MemoryNode:
         )
 
 
+@dataclass(frozen=True)
+class _PreparedMemory:
+    """One memory validated + serialized for storage (RM-060).
+
+    The output of ``HebbianMemory._prepare_remember`` — every
+    check ``remember`` applies has already run, the content
+    hash has been computed exactly once, and the stored forms
+    (sealed, when encryption is on) are ready to bind.
+    ``text``/``is_json`` are the plaintext side, kept for the
+    RM-047 collision double check and the RM-044 debug log;
+    the ``stored_*`` fields are what the INSERT binds.
+    """
+
+    text: str
+    is_json: int
+    stored_hash: str
+    clean_path: str
+    clean_category: str
+    importance: int
+    emotional_valence: float
+    stored_content: str
+    stored_tags: str
+    stored_metadata: str
+
+
 # RM-035: at or above this many unique ids, activate_batch takes
 # the bulk road (_activate_batch_bulk_locked). Below it, the
 # original per-pair loop is both faster and already proven.
 _HUGE_BATCH_MIN_IDS = 64
+
+# RM-060: the item keys remember_many accepts — exactly
+# remember()'s keyword parameters, no more. An item carrying
+# any other key is a typed refusal, never a silent ignore.
+_REMEMBER_MANY_KEYS = frozenset(
+    {
+        "content",
+        "category",
+        "path",
+        "importance",
+        "tags",
+        "emotional_valence",
+        "metadata",
+    }
+)
 
 # RM-059: SQLite 3.35+ supports RETURNING on an upsert, which
 # lets the activation counter write hand back the new total in
@@ -1607,8 +1648,7 @@ class HebbianMemory:
 
     # ─── node API (ancestor semantics) ────────────────────────────────
 
-    @_storage_write("remember")
-    def remember(
+    def _prepare_remember(
         self,
         content: Any,
         *,
@@ -1618,15 +1658,19 @@ class HebbianMemory:
         tags: list[str] | None = None,
         emotional_valence: float = 0.0,
         metadata: dict[str, Any] | None = None,
-    ) -> int:
-        """Store a memory node; returns its integer id (WRITE).
+    ) -> _PreparedMemory:
+        """Validate + serialize one memory for storage (RM-060).
 
-        Idempotent: storing the same content under the same category
-        and path returns the existing node's id instead of duplicating
-        it (content-hash unique index) — safe under retries. The hit
-        is verified by a length+content double check (RM-047): a
-        different memory under the same hash raises a typed collision
-        error instead of being silently merged.
+        This is ``remember``'s whole preparation, shared with
+        ``remember_many`` so the two roads can never drift:
+        every validator ``remember`` applies (content kind +
+        size, importance, valence, path normalisation, tag
+        cleaning, metadata serialization + size), the one
+        content-hash computation, and — with encryption on —
+        the sealed stored forms and the keyed lookup tag.
+        Pure: no store access, no timestamp; a bad item raises
+        the same typed error ``remember`` would, before any
+        write anywhere.
         """
         if content is None:
             raise MuninnValidationError("content must not be None")
@@ -1653,63 +1697,132 @@ class HebbianMemory:
         except (TypeError, ValueError) as exc:
             raise MuninnValidationError("metadata must be JSON-serializable") from exc
         _check_metadata_size(meta_text, self.config.max_metadata_bytes)
+        return _PreparedMemory(
+            text=text,
+            is_json=is_json,
+            stored_hash=stored_hash,
+            clean_path=clean_path,
+            clean_category=clean_category,
+            importance=importance,
+            emotional_valence=emotional_valence,
+            stored_content=self._enc_value(text, "nodes.content"),
+            stored_tags=self._enc_value(json.dumps(clean_tags), "nodes.tags"),
+            stored_metadata=self._enc_value(meta_text, "nodes.metadata"),
+        )
+
+    def _insert_prepared_locked(
+        self, prepared: _PreparedMemory, at: str
+    ) -> tuple[int, bool]:
+        """Insert one prepared memory (lock held, uncommitted).
+
+        The idempotent store itself, shared by ``remember``
+        and ``remember_many``: ``INSERT OR IGNORE`` on the
+        ``(content_hash, category, path)`` identity; a hit is
+        accepted only after the RM-047 length+content double
+        check (with encryption on, over the *decrypted* stored
+        text). Returns ``(node_id, is_new)``. A hash collision
+        raises the typed error **without** rolling back — the
+        caller owns the transaction, so ``remember`` discards
+        its one statement while ``remember_many`` discards the
+        whole batch, which is exactly each road's contract.
+        """
+        cur = self._conn.execute(
+            "INSERT OR IGNORE INTO nodes"
+            " (content, content_is_json, content_hash, path, category, importance,"
+            "  emotional_valence, tags, metadata, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                prepared.stored_content,
+                prepared.is_json,
+                prepared.stored_hash,
+                prepared.clean_path,
+                prepared.clean_category,
+                prepared.importance,
+                prepared.emotional_valence,
+                prepared.stored_tags,
+                prepared.stored_metadata,
+                at,
+                at,
+            ),
+        )
+        if cur.rowcount == 1:
+            if cur.lastrowid is None:
+                raise MuninnStorageError(
+                    "node insert reported success but returned no row id"
+                )
+            return int(cur.lastrowid), True
+        row = self._conn.execute(
+            "SELECT id, content, content_is_json FROM nodes"
+            " WHERE content_hash = ? AND category = ? AND path = ?",
+            (prepared.stored_hash, prepared.clean_category, prepared.clean_path),
+        ).fetchone()
+        # RM-047 (TH-08): the hash alone does not prove
+        # identity. The idempotent hit is accepted only after
+        # the length+content double check — the stored text's
+        # length and then the stored text itself (and its
+        # kind) must equal what this call tried to store. A
+        # hash collision — real, crafted, or forced by an
+        # injected hash — lands here with different text under
+        # one hash, and is refused loudly instead of silently
+        # merging two memories into the existing node's id.
+        # RM-049: with encryption on, the double check compares
+        # the DECRYPTED stored content against the incoming
+        # plaintext (the store itself only ever saw the lookup
+        # tag above).
+        stored_text = self._dec_value(row["content"], "nodes.content")
+        if (
+            len(stored_text) != len(prepared.text)
+            or stored_text != prepared.text
+            or int(row["content_is_json"]) != prepared.is_json
+        ):
+            existing_id = int(row["id"])
+            raise MuninnValidationError(
+                "content hash collision: a different memory already "
+                f"holds this content hash (id {existing_id}); "
+                "refusing to merge"
+            )
+        return int(row["id"]), False
+
+    @_storage_write("remember")
+    def remember(
+        self,
+        content: Any,
+        *,
+        category: str = "general",
+        path: str = "",
+        importance: int = 5,
+        tags: list[str] | None = None,
+        emotional_valence: float = 0.0,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        """Store a memory node; returns its integer id (WRITE).
+
+        Idempotent: storing the same content under the same category
+        and path returns the existing node's id instead of duplicating
+        it (content-hash unique index) — safe under retries. The hit
+        is verified by a length+content double check (RM-047): a
+        different memory under the same hash raises a typed collision
+        error instead of being silently merged.
+        """
+        prepared = self._prepare_remember(
+            content,
+            category=category,
+            path=path,
+            importance=importance,
+            tags=tags,
+            emotional_valence=emotional_valence,
+            metadata=metadata,
+        )
         at = self._tick()
         with self._lock:
             self._get_conn()
-            cur = self._conn.execute(
-                "INSERT OR IGNORE INTO nodes"
-                " (content, content_is_json, content_hash, path, category, importance,"
-                "  emotional_valence, tags, metadata, created_at, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    self._enc_value(text, "nodes.content"), is_json, stored_hash,
-                    clean_path, clean_category, importance,
-                    emotional_valence, self._enc_value(json.dumps(clean_tags), "nodes.tags"),
-                    self._enc_value(meta_text, "nodes.metadata"), at, at,
-                ),
-            )
-            if cur.rowcount == 1:
-                if cur.lastrowid is None:
-                    raise MuninnStorageError(
-                        "node insert reported success but returned no row id"
-                    )
-                node_id = int(cur.lastrowid)
-                is_new = True
-            else:
-                row = self._conn.execute(
-                    "SELECT id, content, content_is_json FROM nodes"
-                    " WHERE content_hash = ? AND category = ? AND path = ?",
-                    (stored_hash, clean_category, clean_path),
-                ).fetchone()
-                # RM-047 (TH-08): the hash alone does not prove
-                # identity. The idempotent hit is accepted only
-                # after the length+content double check — the
-                # stored text's length and then the stored text
-                # itself (and its kind) must equal what this
-                # call tried to store. A hash collision — real,
-                # crafted, or forced by an injected hash — lands
-                # here with different text under one hash, and
-                # is refused loudly instead of silently merging
-                # two memories into the existing node's id.
-                # RM-049: with encryption on, the double check
-                # compares the DECRYPTED stored content against
-                # the incoming plaintext (the store itself only
-                # ever saw the lookup tag above).
-                stored_text = self._dec_value(row["content"], "nodes.content")
-                if (
-                    len(stored_text) != len(text)
-                    or stored_text != text
-                    or int(row["content_is_json"]) != is_json
-                ):
-                    existing_id = int(row["id"])
-                    self._conn.rollback()
-                    raise MuninnValidationError(
-                        "content hash collision: a different memory already "
-                        f"holds this content hash (id {existing_id}); "
-                        "refusing to merge"
-                    )
-                node_id = int(row["id"])
-                is_new = False
+            try:
+                node_id, is_new = self._insert_prepared_locked(prepared, at)
+            except MuninnValidationError:
+                # The helper leaves the transaction open on a
+                # collision; this road's contract discards it.
+                self._conn.rollback()
+                raise
             self._conn.commit()
             if is_new:
                 self._apply_backpressure_locked()
@@ -1717,9 +1830,107 @@ class HebbianMemory:
                 # RM-044: the ONLY road by which memory content
                 # reaches a log — this flag, at DEBUG level.
                 logger.debug(
-                    "muninn: stored memory id=%d content=%r", node_id, text
+                    "muninn: stored memory id=%d content=%r", node_id, prepared.text
                 )
             return node_id
+
+    @_storage_write("remember_many")
+    def remember_many(self, items: list[dict[str, Any]]) -> list[int]:
+        """Store many memory nodes in ONE transaction (WRITE, RM-060).
+
+        ``items`` is a list of dicts, one per memory, each
+        carrying ``remember``'s arguments by name: ``content``
+        (required) plus optional ``category``, ``path``,
+        ``importance``, ``tags``, ``emotional_valence`` and
+        ``metadata``, with the same defaults ``remember``
+        applies. Returns the node ids in input order.
+
+        The batch contract — what makes this more than a loop:
+
+        - **One preparation pass.** Every item is validated,
+          serialized and content-hashed exactly once, *before*
+          the transaction opens (the same preparation
+          ``remember`` performs, shared, so the roads cannot
+          drift). A bad item anywhere refuses the whole call
+          before any write.
+        - **One transaction.** All inserts land or none do: an
+          invalid item, or a hash collision (RM-047) against
+          the store or within the batch, rolls the entire
+          batch back — no prefix of the batch survives. This
+          is deliberately stricter than a ``remember`` loop,
+          whose earlier calls stay stored when a later one
+          fails.
+        - **One timestamp.** The whole batch is stamped with a
+          single ``_tick()`` reading (the ``activate_batch``
+          discipline): one ingest, one moment.
+        - **Backpressure applied once.** The ``max_nodes``
+          check runs once, after the commit, over the batch's
+          final count — never per item.
+        - **Idempotency is per item, exactly ``remember``'s.**
+          An item whose content already lives under its
+          category+path returns that node's id (first write
+          wins); a duplicate inside the batch returns the id
+          its first occurrence created, so the result list
+          always has one id per input item.
+        """
+        if not isinstance(items, (list, tuple)):
+            raise MuninnValidationError("items must be a list of dicts")
+        prepared_items: list[_PreparedMemory] = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise MuninnValidationError("each item must be a dict")
+            unknown = set(item) - _REMEMBER_MANY_KEYS
+            if unknown:
+                raise MuninnValidationError(
+                    f"unknown item fields: {sorted(unknown)}"
+                )
+            if "content" not in item:
+                raise MuninnValidationError(
+                    "each item must carry a 'content' key"
+                )
+            prepared_items.append(
+                self._prepare_remember(
+                    item["content"],
+                    category=item.get("category", "general"),
+                    path=item.get("path", ""),
+                    importance=item.get("importance", 5),
+                    tags=item.get("tags"),
+                    emotional_valence=item.get("emotional_valence", 0.0),
+                    metadata=item.get("metadata"),
+                )
+            )
+        if not prepared_items:
+            return []
+        at = self._tick()
+        with self._lock:
+            self._get_conn()
+            ids: list[int] = []
+            created = 0
+            try:
+                for prepared in prepared_items:
+                    node_id, is_new = self._insert_prepared_locked(prepared, at)
+                    ids.append(node_id)
+                    if is_new:
+                        created += 1
+            except MuninnValidationError:
+                # One transaction: a collision anywhere
+                # discards the whole batch, earlier items
+                # included (see the contract above).
+                self._conn.rollback()
+                raise
+            self._conn.commit()
+            if created:
+                self._apply_backpressure_locked()
+            if self.config.debug_log_content:
+                # RM-044 discipline, unchanged: content reaches
+                # a log only on this flag, only at DEBUG.
+                for prepared, node_id in zip(prepared_items, ids, strict=True):
+                    logger.debug(
+                        "muninn: stored memory id=%d content=%r",
+                        node_id,
+                        prepared.text,
+                    )
+            return ids
 
     def store(
         self,

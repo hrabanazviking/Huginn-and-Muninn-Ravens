@@ -300,6 +300,25 @@ def test_row_m10_remember_is_idempotent(tmp_path):
         m.close()
 
 
+def test_row_m30_remember_many_is_idempotent(tmp_path):
+    m = _mem(tmp_path)
+    try:
+        items = [
+            {"content": "batch raven one", "category": "lore", "importance": 7},
+            {"content": "batch raven two", "category": "lore", "importance": 6},
+            {"content": "batch raven one", "category": "lore", "importance": 7},
+        ]
+        first = m.remember_many(items)
+        stats_after_first = m.stats()
+        second = m.remember_many(items)
+        assert second == first  # same ids, in the same order
+        assert first[0] == first[2]  # the in-batch duplicate shares its id
+        assert m.stats() == stats_after_first  # no duplicate nodes
+        assert m.stats()["total_nodes"] == 2
+    finally:
+        m.close()
+
+
 def test_row_m11_store_alias_is_idempotent(tmp_path):
     m = _mem(tmp_path)
     try:

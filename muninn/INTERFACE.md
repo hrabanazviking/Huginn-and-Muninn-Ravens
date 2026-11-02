@@ -38,7 +38,12 @@ integers (Mímir row ids in Bifröst deployments).
 
 `remember(content, *, category, path, importance=1..10, tags,
 emotional_valence=-1..1, metadata) -> int` — idempotent by content
-hash. `store(...)` is the ancestor-shaped alias (`memory_type` =
+hash. `remember_many(items) -> list[int]` is its batch form
+(RM-060): item dicts carrying the same arguments by name, one
+preparation pass, one transaction (a bad item or collision
+rolls the whole batch back), one timestamp, backpressure
+applied once; per-item idempotency unchanged. `store(...)` is
+the ancestor-shaped alias (`memory_type` =
 category). Also: `get_node`, `retrieve(query, path, tags, memory_type,
 top_k, touch=False)`, `get_by_path`, `get_children`, `update`, `move`,
 `delete`/`forget`, `get_tree_structure`, `dump`, and `Muninn` — an

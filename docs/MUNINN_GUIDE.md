@@ -216,9 +216,10 @@ Every read method is a pure read — it never mutates the store:
 `get_tree_structure`, `get_associations`, `spread_activation`,
 `activation_count`, `health`, `stats`, `get_stats`, `dump`.
 
-The write methods are named as writes: `remember`, `store`, `update`,
-`move`, `forget`, `delete`, `activate`, `activate_batch`, `associate`,
-`decay`, `consolidate`, `heal_structure`, `backup`.
+The write methods are named as writes: `remember`, `remember_many`,
+`store`, `update`, `move`, `forget`, `delete`, `activate`,
+`activate_batch`, `associate`, `decay`, `consolidate`,
+`heal_structure`, `backup`.
 
 There is exactly **one** reinforcing read, and it is explicit and
 opt-in: `retrieve(..., touch=True)`. With `touch=True`, each returned
@@ -312,6 +313,38 @@ oak_id = mem.store(
     importance=5,
 )
 ```
+
+### Store many at once: `remember_many`
+
+```python
+remember_many(items) -> list[int]
+```
+
+The batch form of `remember` (RM-060): `items` is a list of
+dicts, each carrying `remember`'s arguments by name —
+`content` (required) plus any of `category`, `path`,
+`importance`, `tags`, `emotional_valence`, `metadata`. The
+ids come back in input order.
+
+```python
+ids = mem.remember_many([
+    {"content": "First of the batch", "category": "lore"},
+    {"content": "Second of the batch", "importance": 8},
+])
+```
+
+The contract differs from calling `remember` in a loop in
+four stated ways: every item is validated and hashed once,
+*before* anything is written; all inserts land in **one
+transaction** — a bad item (or a hash collision) anywhere
+rolls the whole batch back, where a loop's earlier calls
+would stay stored; the whole batch carries one timestamp;
+and backpressure runs **once**, after the commit. Per item,
+idempotency is `remember`'s own: content that already lives
+under its category+path returns that node's id, and a
+duplicate inside the batch shares its first occurrence's
+id. The 10k-node ingest record against the loop is in
+`docs/BULK_REMEMBER.md`.
 
 ### Read one node: `get_node`
 

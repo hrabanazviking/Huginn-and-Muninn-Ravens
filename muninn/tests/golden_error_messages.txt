@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (61): every raise site except the one that cannot
+# CASE lines (65): every raise site except the one that cannot
 # be triggered deterministically — "node insert reported
 # success but returned no row id" (unreachable by
 # construction; the RM-008 guard), pinned below as a TEMPLATE
@@ -43,6 +43,10 @@ CASE valence_type | MuninnValidationError | emotional_valence must be a number i
 CASE valence_range | MuninnValidationError | emotional_valence must be in [-1, 1], got 1.5
 CASE content_not_serializable | MuninnValidationError | content must be a string or JSON-serializable value
 CASE batch_not_a_list | MuninnValidationError | memory_ids must be a list of ints
+CASE bulk_not_a_list | MuninnValidationError | items must be a list of dicts
+CASE bulk_item_not_a_dict | MuninnValidationError | each item must be a dict
+CASE bulk_unknown_fields | MuninnValidationError | unknown item fields: ['bogus']
+CASE bulk_missing_content | MuninnValidationError | each item must carry a 'content' key
 CASE associate_self | MuninnValidationError | cannot associate a memory with itself
 CASE associate_both | MuninnValidationError | pass strength or delta, not both
 CASE associate_strength_range | MuninnValidationError | strength must be in [0, 1]
@@ -79,7 +83,7 @@ CASE attestation_passphrase_required | MuninnConfigurationError | integrity_pass
 CASE attestation_plain_open | MuninnStorageError | muninn store <tmp_path>/att.db carries integrity attestation; refusing to open it without integrity_attestation enabled
 CASE write_guard_generic | MuninnStorageError | muninn write failed during remember: IntegrityError
 CASE prepare_generic | MuninnStorageError | muninn store <tmp_path>/trigprep.db could not be prepared: IntegrityError
-# TEMPLATE lines (87 raise sites; RM-025 added the
+# TEMPLATE lines (91 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
 # RM-028 added the three path guards; RM-029 added the
@@ -101,7 +105,10 @@ CASE prepare_generic | MuninnStorageError | muninn store <tmp_path>/trigprep.db 
 # RM-054 added the write guard's fixed disk-full raise site
 # in core.py — the generic branch's template is unchanged,
 # but it now interpolates the exception's class name, never
-# its text).
+# its text; RM-060 added remember_many's four item-shape
+# raise sites in core.py — the container guard, the per-item
+# dict guard, the unknown-key guard, and the missing-content
+# guard, listed at the end of the TEMPLATE block).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -189,3 +196,7 @@ TEMPLATE | MuninnStorageError | muninn store {} carries an unreadable attestatio
 TEMPLATE | MuninnStorageError | muninn store {} carries an unreadable attestation header; refusing to write
 TEMPLATE | MuninnStorageError | muninn store {} carries integrity attestation; refusing to open it without integrity_attestation enabled
 TEMPLATE | MuninnStorageError | muninn store {} carries integrity attestation; refusing to open it without integrity_attestation enabled
+TEMPLATE | MuninnValidationError | items must be a list of dicts
+TEMPLATE | MuninnValidationError | each item must be a dict
+TEMPLATE | MuninnValidationError | unknown item fields: {}
+TEMPLATE | MuninnValidationError | each item must carry a 'content' key

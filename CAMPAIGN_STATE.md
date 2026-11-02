@@ -63,12 +63,126 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   slices banked and pushed; evidence bundle in
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
-- Banked (Part V, in progress): RM-057, RM-058, RM-059.
-- Next: RM-060 in roadmap order (bulk remember: a
-  `remember_many` batch API — one transaction, one
-  content-hash pass, backpressure applied once;
-  acceptance: 10k-node ingest benchmark vs the loop it
-  replaces).
+- Banked (Part V, in progress): RM-057, RM-058, RM-059,
+  RM-060.
+- Next: RM-061 in roadmap order (Huginn candidate
+  generation: local TF-IDF search currently scores every
+  candidate's full term set; add posting-list pruning —
+  top-term candidate narrowing — with a recall test
+  proving result parity on the benchmark corpus).
+- **RM-060 BANKED 2026-11-02 (keeper tick ~10:36 EST):**
+  bulk remember — BENCH. Muninn gains
+  `remember_many(items) -> list[int]`: item dicts
+  carrying `remember`'s arguments by name (`content`
+  required; `category`, `path`, `importance`, `tags`,
+  `emotional_valence`, `metadata` optional, same
+  defaults), ids in input order. Contract per the
+  roadmap — one transaction, one content-hash pass,
+  backpressure applied once: `remember`'s preparation
+  was extracted as `_prepare_remember` (validate +
+  serialize + the one hash) and its insert as
+  `_insert_prepared_locked`, both shared by the two
+  roads, so semantics cannot drift and the RM-040
+  audit total is unchanged at 98 sites (no new SQL
+  shape). Every item is prepared before the transaction
+  opens; all inserts land or none do — an invalid item
+  or an RM-047 collision (against the store or within
+  the batch) rolls the whole batch back, deliberately
+  stricter than a loop; one `_tick()` stamps the batch
+  (the `activate_batch` discipline); the `max_nodes`
+  check runs once after the commit. Per-item
+  idempotency is `remember`'s (first write wins; an
+  in-batch duplicate shares its first id). Item shape
+  is closed — four new typed refusals pinned as RM-018
+  CASE + TEMPLATE lines (61 → 65 cases, 87 → 91
+  templates). New gate script
+  `muninn/scripts/bulk_remember.py` ingests 10,000
+  distinct RM-020-corpus nodes into a fresh store by
+  the loop and by the batch, verifying both roads
+  built logically identical stores (same ids in order,
+  same per-node fields excluding timestamps) inside
+  every run before quoting timings. Three full runs
+  (each the median of 3 ingests per road, tmpfs):
+  loop 2,079.9 / 1,603.2 / 1,028.6 ms, batch 677.7 /
+  603.9 / 367.4 ms — **medians of the runs: loop
+  1,603.2 ms → batch 603.9 ms, 2.65×** (per-run
+  speedups 3.07× / 2.65× / 2.80×), indicative only —
+  1-minute load 3.6–4.6 and the loop's own time swung
+  2× between runs; the durable claim is the
+  test-pinned shape (one COMMIT + one backpressure
+  count per batch, counted by trace callback). Record
+  at `muninn/scripts/bulk_remember.json` (third run,
+  recorded 2026-11-02T15:52:31Z, load [4.58, 3.79,
+  4.25]); human record `docs/BULK_REMEMBER.md`;
+  BENCHMARKS.md pointer. New
+  `tests/test_bulk_remember.py` (17, muninn only);
+  RM-013 matrix gains row M-30 with its test; RM-019
+  golden gained the two `remember_many` lines;
+  `test_slice_log.py` EXPECTED to RM-060 in both.
+  Negation vs the RM-059 tree: bulk suite **17 failed
+  / 0 passed**, idempotency **1 failed / 30 passed**
+  (M-30 only), error messages **2 failed / 1 passed**,
+  API surface **1 failed / 2 passed**, SQL audit 9
+  passed (unchanged, as designed), slice-log pins
+  **2 failed** per package. **Bifröst
+  re-verification PASS** (public API grew additively;
+  fresh venv on `/var/tmp`, bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke
+  PASS — store mimir_id+huginn_id, search 1 merged
+  result, recall grew the Muninn activation log
+  exactly +1, decay/consolidate reports,
+  `decay_wall_clock()` armed at 0 days, stats over
+  all three backends, both raven health dicts carry
+  `sqlite_version` 3.45.1, huginn local via
+  auto-fallback, double close safe; evidence
+  `/var/tmp/rm060evidence/`). One smoke adaptation,
+  recorded honestly: the bridge's Huginn uses its
+  default store path under `$HOME`, and the live
+  Hermes store there could not open while the home
+  quota was shut (its WAL creation draws the typed
+  read-only refusal), so the smoke ran with `HOME`
+  pointed at scratch on `/var/tmp` — the same bridge,
+  packages and assertions, the default store in
+  scratch instead of the live one. Suites in the
+  RM-060 fresh venv on the final banking tree
+  (non-editable installs from a full-repo copy,
+  encryption + qdrant extras, cryptography 50.0.2,
+  qdrant-client 1.20.0, pytest 9.2.0): huginn **306
+  passed** in one full run (its first attempt died
+  at collection on an EDQUOT pycache creation; the
+  green run used `PYTHONDONTWRITEBYTECODE=1`, TMPDIR
+  on `/var/tmp`); muninn **396 passed** (378+18)
+  **assembled per-file, all 57 test files green**,
+  after two full-run attempts died with a fatal Bus
+  error mid-suite (`close()` in
+  `test_contract_freeze`, then `activate` in
+  `test_benchmark_atlas` — both files pass alone and
+  in the assembly; the RM-039 environment class:
+  SQLite WAL `-shm` faults while the quota is shut
+  under multi-campaign write load). Ruff clean
+  (whole tree, `--no-cache` under the quota flaps);
+  mypy clean in a deps-free tool venv (muninn 7
+  files, huginn 9 files). Environment incidents:
+  the home-quota EDQUOT closure flapped shut
+  repeatedly all tick (the first banking-venv
+  install, the huginn collection, several doc
+  writes); writes reopened after this keeper freed
+  the shared pip/uv caches, this tick's spent
+  negation worktree and banking venv, and the spent
+  RM-058/RM-059 `/var/tmp` venv dirs of this
+  campaign (regenerable scratch only; the RM-058
+  dir also held a bifrost checkout copy — three
+  checkouts at the same pinned b66e98cc survive in
+  `~/workspace/.verify-tmp/`, and the verification
+  above ran from one of them via a `/var/tmp`
+  copy). Slice-internal repairs: none in package
+  code — one test-design fix (the backpressure
+  test's importance grading first ran past the
+  1–10 cap and was re-graded before any run was
+  recorded). Live Qdrant + sentence-transformers
+  stay NOT PROVEN. Founding tree NEEDS A SYNC for
+  the `remember_many` build (extends the standing
+  package-source sync note).
 - **RM-059 BANKED 2026-11-02 (keeper tick ~10:06 EST):**
   Muninn activation write path — BENCH + UNIT. New gate
   script `muninn/scripts/write_path.py` profiles

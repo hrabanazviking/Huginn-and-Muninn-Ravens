@@ -129,6 +129,20 @@ statement anatomy, changes, median-of-three before/after
 table with its load-confounding disclosure, and honest
 limits — lives in `docs/WRITE_PATH.md`.
 
+## Muninn bulk remember (RM-060)
+
+`muninn/scripts/bulk_remember.py` ingests 10,000 distinct
+nodes (the RM-020 corpus) into a fresh store by the
+`remember` loop and by the new `remember_many` batch API —
+one preparation pass, one transaction, backpressure
+applied once — verifying both roads built logically
+identical stores before quoting any timing. Record
+committed as `muninn/scripts/bulk_remember.json`; the
+human record — the batch contract, the median-of-three
+before/after table (loop 1,603.2 ms → batch 603.9 ms,
+2.65×, load-disclosed), and honest limits — lives in
+`docs/BULK_REMEMBER.md`.
+
 ## Reproducible corpus (RM-020)
 
 The corpora are synthetic and formula-generated — muninn's

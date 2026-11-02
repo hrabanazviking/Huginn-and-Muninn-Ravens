@@ -3009,3 +3009,97 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   (extends the standing package-source sync note). Live
   Qdrant + sentence-transformers stay NOT PROVEN.
   Banking verification: see `CAMPAIGN_STATE.md`.
+
+## RM-060 — Bulk remember
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Muninn gains `remember_many(items) -> list[int]`:
+  item dicts carrying `remember`'s arguments by name
+  (`content` required; `category`, `path`, `importance`,
+  `tags`, `emotional_valence`, `metadata` optional, same
+  defaults), ids returned in input order. The batch
+  contract, per the roadmap — **one transaction, one
+  content-hash pass, backpressure applied once**: every
+  item is prepared exactly once before the transaction
+  opens (validation, serialization, the one hash), by
+  `remember`'s own preparation extracted as
+  `_prepare_remember` and shared by both roads, with the
+  insert likewise shared (`_insert_prepared_locked`), so
+  the roads cannot drift and the RM-040 audit total is
+  unchanged at 98 sites (no new SQL shape). All inserts
+  land or none do — an invalid item, or an RM-047 hash
+  collision against the store or within the batch, rolls
+  the whole batch back (deliberately stricter than a
+  loop, whose earlier calls stay stored); the batch
+  carries one `_tick()` timestamp (the `activate_batch`
+  discipline); the `max_nodes` check runs once after the
+  commit. Per-item idempotency is `remember`'s (first
+  write wins; an in-batch duplicate shares its first
+  occurrence's id). Item shape is closed: four new typed
+  refusals (container, per-item dict, unknown key,
+  missing `content`), pinned as RM-018 CASE + TEMPLATE
+  lines (61 → 65 cases, 87 → 91 templates). Gate script
+  `muninn/scripts/bulk_remember.py` ingests 10,000
+  distinct RM-020-corpus nodes into a fresh store by the
+  loop and by the batch, verifying both roads built
+  logically identical stores (same ids in order, same
+  per-node fields excluding timestamps) inside every run
+  before quoting timings. Three full runs on the after
+  tree (each the median of 3 ingests per road, tmpfs):
+  loop 2,079.9 / 1,603.2 / 1,028.6 ms, batch 677.7 /
+  603.9 / 367.4 ms — **medians of the runs: loop
+  1,603.2 ms → batch 603.9 ms, 2.65×** (per-run speedups
+  3.07× / 2.65× / 2.80×). Timings are indicative only:
+  the shared VM's 1-minute load ran 3.6–4.6 and the
+  loop's own time swung 2× between runs; the durable
+  claim is the test-pinned shape — one COMMIT and one
+  backpressure head-count per batch instead of one per
+  node. Record at `muninn/scripts/bulk_remember.json`
+  (third run, recorded 2026-11-02T15:52:31Z, load
+  [4.58, 3.79, 4.25]); human record
+  `docs/BULK_REMEMBER.md`; BENCHMARKS.md pointer. New
+  `tests/test_bulk_remember.py` (17, muninn only):
+  field fidelity, loop parity + one-timestamp stamp,
+  empty-batch no-op, in-batch + store-hit idempotency,
+  facade, transaction/backpressure statement counts by
+  trace callback, exact backpressure victims, atomic
+  refusals (invalid, oversize, shape guards), the
+  forced-collision rollback, the disk-full typed road,
+  the encrypted-store composition, the RM-044 log
+  discipline, gate-script shape + committed record.
+  RM-013 matrix gains row M-30 with its test; RM-019
+  golden gained the two `remember_many` lines.
+  Negation vs the RM-059 tree: `test_bulk_remember.py`
+  **17 failed / 0 passed**; `test_idempotency.py`
+  **1 failed / 30 passed** (M-30 only);
+  `test_error_messages.py` **2 failed / 1 passed**;
+  `test_api_surface.py` **1 failed / 2 passed**;
+  `test_sql_injection.py` 9 passed (audit unchanged, as
+  designed); slice-log pins **2 failed** per package.
+  Public API grew additively, so the **Bifröst
+  re-verification was run before banking** — see
+  `CAMPAIGN_STATE.md`. Suites in the RM-060 fresh venv
+  on the final banking tree (non-editable installs
+  from a full-repo copy, encryption + qdrant extras,
+  cryptography 50.0.2, qdrant-client 1.20.0, pytest
+  9.2.0): huginn **306 passed** in one full run
+  (slice-log pin only; its first attempt died at
+  collection on an EDQUOT pycache creation and the
+  green run used `PYTHONDONTWRITEBYTECODE=1` with
+  TMPDIR on `/var/tmp`); muninn **396 passed**
+  (378+18) **assembled per-file — all 57 test files
+  green** — after two full-run attempts died with a
+  fatal Bus error mid-suite (the first in `close()`
+  during `test_contract_freeze`, the second in
+  `activate` during `test_benchmark_atlas`; both
+  files pass alone and in the assembly). The pattern
+  is the RM-039 environment class: SQLite WAL `-shm`
+  faults while the home quota is shut under the VM's
+  multi-campaign write load, not a code failure.
+  Ruff clean (whole tree); mypy clean in a deps-free
+  tool venv (muninn 7 files, huginn 9 files).
+  Founding tree NEEDS A SYNC for the `remember_many`
+  build (extends the standing package-source sync
+  note). Live Qdrant + sentence-transformers stay
+  NOT PROVEN.

@@ -75,6 +75,7 @@ METHOD | HebbianMemory.heal_structure |
 METHOD | HebbianMemory.health | 
 METHOD | HebbianMemory.move | node_id:POSITIONAL_OR_KEYWORD=<required>;new_path:POSITIONAL_OR_KEYWORD=<required>
 METHOD | HebbianMemory.remember | content:POSITIONAL_OR_KEYWORD=<required>;category:KEYWORD_ONLY='general';path:KEYWORD_ONLY='';importance:KEYWORD_ONLY=5;tags:KEYWORD_ONLY=None;emotional_valence:KEYWORD_ONLY=0.0;metadata:KEYWORD_ONLY=None
+METHOD | HebbianMemory.remember_many | items:POSITIONAL_OR_KEYWORD=<required>
 METHOD | HebbianMemory.retrieve | query:POSITIONAL_OR_KEYWORD=None;path:POSITIONAL_OR_KEYWORD=None;tags:POSITIONAL_OR_KEYWORD=None;memory_type:POSITIONAL_OR_KEYWORD=None;top_k:POSITIONAL_OR_KEYWORD=5;category:KEYWORD_ONLY=None;touch:KEYWORD_ONLY=False
 METHOD | HebbianMemory.secure_forget | memory_id:POSITIONAL_OR_KEYWORD=<required>
 METHOD | HebbianMemory.spread_activation | seed_ids:POSITIONAL_OR_KEYWORD=<required>;depth:KEYWORD_ONLY=2;attenuation:KEYWORD_ONLY=0.5;min_strength:KEYWORD_ONLY=0.0;limit:KEYWORD_ONLY=1000
@@ -107,6 +108,7 @@ METHOD | Muninn.heal_structure |
 METHOD | Muninn.health | 
 METHOD | Muninn.move | node_id:POSITIONAL_OR_KEYWORD=<required>;new_path:POSITIONAL_OR_KEYWORD=<required>
 METHOD | Muninn.remember | content:POSITIONAL_OR_KEYWORD=<required>;category:KEYWORD_ONLY='general';path:KEYWORD_ONLY='';importance:KEYWORD_ONLY=5;tags:KEYWORD_ONLY=None;emotional_valence:KEYWORD_ONLY=0.0;metadata:KEYWORD_ONLY=None
+METHOD | Muninn.remember_many | items:POSITIONAL_OR_KEYWORD=<required>
 METHOD | Muninn.retrieve | query:POSITIONAL_OR_KEYWORD=None;path:POSITIONAL_OR_KEYWORD=None;tags:POSITIONAL_OR_KEYWORD=None;memory_type:POSITIONAL_OR_KEYWORD=None;top_k:POSITIONAL_OR_KEYWORD=5;category:KEYWORD_ONLY=None;touch:KEYWORD_ONLY=False
 METHOD | Muninn.secure_forget | memory_id:POSITIONAL_OR_KEYWORD=<required>
 METHOD | Muninn.spread_activation | seed_ids:POSITIONAL_OR_KEYWORD=<required>;depth:KEYWORD_ONLY=2;attenuation:KEYWORD_ONLY=0.5;min_strength:KEYWORD_ONLY=0.0;limit:KEYWORD_ONLY=1000

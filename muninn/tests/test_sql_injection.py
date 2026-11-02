@@ -182,6 +182,9 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
 # fallback road, whose SELECT re-read was already counted);
 # the attestation head executemany became one combined
 # execute (site total unchanged for that change).
+# RM-060: no new sites — remember_many reuses remember's two
+# pinned statements (the INSERT OR IGNORE and the identity
+# SELECT) through the shared _insert_prepared_locked helper.
 EXPECTED_SITE_TOTAL = 98
 
 

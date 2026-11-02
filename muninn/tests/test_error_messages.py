@@ -257,6 +257,12 @@ def _cases(tmp_path):
         "valence_range": lambda: m.activate(1, emotional_valence=1.5),
         "content_not_serializable": lambda: m.remember({1, 2}),
         "batch_not_a_list": lambda: m.activate_batch("nope"),
+        "bulk_not_a_list": lambda: m.remember_many("nope"),
+        "bulk_item_not_a_dict": lambda: m.remember_many(["nope"]),
+        "bulk_unknown_fields": lambda: m.remember_many(
+            [{"content": "x", "bogus": 1}]
+        ),
+        "bulk_missing_content": lambda: m.remember_many([{"path": "p"}]),
         "associate_self": lambda: m.associate(1, 1),
         "associate_both": lambda: m.associate(1, 2, strength=0.5, delta=0.5),
         "associate_strength_range": lambda: m.associate(1, 2, strength=1.5),
