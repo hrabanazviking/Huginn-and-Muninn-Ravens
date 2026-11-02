@@ -58,12 +58,61 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
   RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050,
-  RM-051. Part IV (Security) is under way — thirteen of
-  eighteen slices banked.
-- Next: RM-052 in roadmap order (Part IV — dependency
-  hygiene; cites TH-12). Both packages' extras pinned
-  with upper bounds (already); add a lockfile example
-  and a vulnerability-scan step to the manual CI.
+  RM-051, RM-052. Part IV (Security) is under way —
+  fourteen of eighteen slices banked.
+- Next: RM-053 in roadmap order (Part IV —
+  denial-of-service bounds; cites TH-13). Query cost
+  ceilings: spread_activation and local search already
+  bound their work; add explicit candidate-set caps with
+  typed/stat visibility when a cap bites. Class: BENCH.
+- **RM-052 BANKED 2026-11-02 (keeper tick ~05:26 EST):**
+  dependency hygiene — TH-12, record in
+  `docs/DEPENDENCY_HYGIENE.md`. The inventory, now
+  test-pinned in both packages (`test_dependency_
+  hygiene.py`, 7 tests each): both cores dependency-free
+  and every declared requirement (build setuptools,
+  cryptography, qdrant-client, sentence-transformers,
+  the four dev tools) carries a `>=floor,<ceiling` bound
+  with no direct references. Lockfile example added at
+  `docs/examples/requirements-lock.example.txt` — the
+  exact 23-pin closure pip resolved for
+  `muninn[encryption]` + `huginn[encryption,qdrant]` on
+  CPython 3.12.3 (frozen 2026-11-02 from this tick's
+  venv; generation road + embeddings/dev exclusions in
+  its header and the record). The manual CI gains a
+  `dependency-scan` job (bounded `pip-audit>=2.7,<3`,
+  2.10.1 at this slice; scans the lockfile example and
+  an installed runtime + dev environment; parsed-YAML
+  check: trigger still exactly `workflow_dispatch`).
+  **Found and fixed in-slice (never-leave-a-bug):** the
+  slice's own locally run scan flagged PYSEC-2026-1845
+  in pytest 8.4.2 — the newest the old dev bound
+  `pytest>=7,<9` allowed — whose fix (9.0.3) sat
+  outside the ceiling; the runtime closure scanned
+  clean in the same run. Dev bound raised to
+  `pytest>=7,<10` in both pyprojects + the CI install
+  line (`docs/INTEGRATION.md` corrected to match); a
+  hygiene test pins that the bound reaches 9.0.3.
+  Post-fix, the scan environment at pytest 9.2.0 audited
+  clean (environment + lockfile example) and both
+  suites run green under it. Negation against the
+  RM-051 tree: 5 failed / 2 passed per package (passes
+  = the pre-existing truths). No package code, public
+  API, or schema change, so no Bifröst re-verification
+  required. Full suites green in the RM-052 fresh venv
+  on the final banking tree (TMPDIR + installs on
+  `/var/tmp`, encryption extra installed): muninn
+  **329 passed** (322+7), huginn **274 passed**
+  (267+7); ruff clean; mypy clean in a deps-free tool
+  venv (muninn 7 files, huginn 9 files — the scan
+  venv's numpy stubs break the 3.11-target check, an
+  environment artefact, not a finding). GitHub-hosted
+  CI stays NOT PROVEN (manual-only, never dispatched);
+  live Qdrant + sentence-transformers stay NOT PROVEN.
+  Founding tree needs no sync for this slice (no
+  package source changed); the standing package-source
+  sync note stands. TH-12's register update remains
+  RM-056's.
 - **RM-051 BANKED 2026-11-02 (keeper tick ~05:06 EST):**
   forget is forgetting — TH-11, record in
   `docs/SECURE_FORGET.md`. The audit, proven by forensic

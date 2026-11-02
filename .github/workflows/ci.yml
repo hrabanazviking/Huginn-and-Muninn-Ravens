@@ -32,7 +32,7 @@ jobs:
       - name: Install both packages from this repo
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./muninn ./huginn "pytest>=7,<9"
+          python -m pip install ./muninn ./huginn "pytest>=7,<10"
 
       - name: Install lint/type/coverage tools (RM-008/RM-009 floors, dev-only)
         run: python -m pip install "ruff>=0.6,<1" "mypy>=1.11,<2" "coverage>=7,<8"
@@ -67,3 +67,31 @@ jobs:
 
       - name: Run the huginn suite (installed package)
         run: python -m pytest huginn/tests -q
+
+  dependency-scan:
+    name: dependency vulnerability scan (RM-052)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit (bounded — RM-052 dependency law)
+        run: python -m pip install "pip-audit>=2.7,<3"
+
+      - name: Scan the lockfile example (RM-052)
+        run: python -m pip_audit -r docs/examples/requirements-lock.example.txt
+
+      # The embeddings extra is not installed here: sentence-transformers
+      # pulls a torch-scale tree. Its spec stays bounded in huginn's
+      # pyproject (pinned by tests/test_dependency_hygiene.py) and a host
+      # that uses it scans it by the lockfile road in
+      # docs/DEPENDENCY_HYGIENE.md.
+      - name: Scan the installed runtime + dev environment (RM-052)
+        run: |
+          python -m pip install "./muninn[encryption,dev]" "./huginn[encryption,qdrant,dev]"
+          python -m pip_audit

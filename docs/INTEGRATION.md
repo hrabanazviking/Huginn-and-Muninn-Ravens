@@ -46,7 +46,7 @@ pip install -e ./huginn
 ```
 
 Muninn has no runtime dependencies and no extras that change its
-behaviour (only a `dev` extra: `pytest>=7,<9`). Huginn's core is
+behaviour (only a `dev` extra: `pytest>=7,<10`). Huginn's core is
 likewise dependency-free; the two extras above are the only optional
 dependencies in either package.
 

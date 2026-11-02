@@ -1,0 +1,44 @@
+# requirements-lock.example.txt — RM-052 lockfile EXAMPLE.
+#
+# What this is: the exact-version closure pip resolved for the two
+# ravens' runtime extras on the machine that froze it, kept as a
+# worked example of the lockfile road in docs/DEPENDENCY_HYGIENE.md.
+# It is an EXAMPLE, not a promise: re-freeze on your own Python and
+# platform before deploying (the road is in the doc above).
+#
+# Frozen: 2026-11-02, CPython 3.12.3, Linux x86-64, with:
+#   python -m pip install "./muninn[encryption]" "./huginn[encryption,qdrant]"
+#   python -m pip freeze        (the two ravens themselves omitted —
+#                                they are this repo, installed from it)
+#
+# The embeddings extra (sentence-transformers) is NOT in this closure:
+# it pulls a torch-scale tree and is frozen separately by any host
+# that uses it, by the same road. The dev extra is development-only
+# and likewise frozen per-checkout, never deployed.
+#
+# Scanned clean at freeze time: `pip-audit -r` over exactly this set
+# reported no known vulnerabilities (RM-052; the manual CI re-scans
+# this file on every dispatch — see .github/workflows/ci.yml).
+annotated-types==0.8.0
+anyio==4.16.0
+certifi==2026.10.23
+cffi==2.1.1
+cryptography==50.0.2
+grpcio==1.85.1
+h11==0.16.0
+h2==4.4.1
+hpack==4.2.0
+httpcore==1.0.9
+httpx==0.28.1
+hyperframe==6.1.0
+idna==3.20
+numpy==2.5.4
+portalocker==4.4.2
+protobuf==7.36.2
+pycparser==3.12
+pydantic==2.14.2
+pydantic_core==2.50.2
+qdrant-client==1.20.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.8.0

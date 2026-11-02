@@ -2453,3 +2453,57 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   Founding tree NEEDS A SYNC for the `secure_forget`
   build (extends the standing package-source sync
   note). TH-11's register update remains RM-056's.
+
+## RM-052 — Dependency hygiene
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Dependency hygiene (TH-12), record in
+  `docs/DEPENDENCY_HYGIENE.md`. The audit at this slice:
+  both cores dependency-free; every declared requirement
+  (build-system setuptools `>=68,<82`; cryptography
+  `>=42,<51`; qdrant-client `>=1.9,<2`;
+  sentence-transformers `>=2.2,<6`; dev pytest / ruff /
+  mypy / coverage) carries a `>=floor,<ceiling` bound and
+  no direct reference — now pinned by new
+  `tests/test_dependency_hygiene.py` in both packages
+  (7 tests each). Lockfile example added:
+  `docs/examples/requirements-lock.example.txt`, the exact
+  23-pin closure `pip freeze` resolved for
+  `muninn[encryption]` + `huginn[encryption,qdrant]` on
+  CPython 3.12.3 (2026-11-02), with its generation road and
+  the embeddings/dev exclusions stated in its header and
+  the record; tests pin its exact-pin shape and that its
+  direct-extra pins satisfy the declared bounds. The
+  manual CI gains a `dependency-scan` job (bounded
+  `pip-audit>=2.7,<3`; scans the lockfile example and an
+  installed runtime + dev environment; the workflow stays
+  manual-only — parsed-YAML check: trigger is exactly
+  `workflow_dispatch`, jobs `test` + `dependency-scan`).
+  **Found and fixed in-slice:** the slice's own scan,
+  actually run locally with pip-audit 2.10.1, flagged
+  **PYSEC-2026-1845** in pytest 8.4.2 — the newest release
+  the old dev bound `pytest>=7,<9` allowed; the fix
+  (9.0.3) sat outside the ceiling. The runtime closure
+  scanned clean in the same run. The dev bound is now
+  `pytest>=7,<10` in both pyprojects and the CI install
+  line (`docs/INTEGRATION.md` corrected to match); after
+  upgrading the scan environment to pytest 9.2.0,
+  pip-audit over the full environment and over the
+  lockfile example both reported no known vulnerabilities,
+  and a hygiene test pins that the bound reaches 9.0.3.
+  Negation against the RM-051 tree: **5 failed / 2 passed**
+  per package (the passes are the pre-existing truths —
+  dependency-free cores and bounds already present).
+  No package code, public API, or schema change, so no
+  Bifröst re-verification required. Full suites green in
+  the RM-052 fresh venv on the final banking tree
+  (TMPDIR + installs on `/var/tmp`, encryption extra
+  installed, pytest 9.2.0): muninn **329 passed**
+  (322+7), huginn **274 passed** (267+7); ruff + mypy
+  floors clean. A GitHub-hosted run of the new job stays
+  NOT PROVEN (manual-only, never dispatched); live
+  Qdrant and sentence-transformers stay NOT PROVEN.
+  Founding tree needs no sync for this slice (no package
+  source changed); the standing package-source sync note
+  stands. TH-12's register update remains RM-056's.

@@ -19,7 +19,7 @@ dependencies = []
 encryption = ["cryptography>=42,<51"]
 qdrant = ["qdrant-client>=1.9,<2"]
 embeddings = ["sentence-transformers>=2.2,<6"]
-dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2", "coverage>=7,<8"]
+dev = ["pytest>=7,<10", "ruff>=0.6,<1", "mypy>=1.11,<2", "coverage>=7,<8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
