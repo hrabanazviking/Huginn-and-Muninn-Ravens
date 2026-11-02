@@ -56,7 +56,40 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-037, RM-038. **Part III (Robustness) is complete** — all
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
-- Next: RM-039 in roadmap order (Part IV — Threat model).
+- Banked (Part IV): RM-039. Part IV (Security) is under
+  way — one of eighteen slices banked.
+- Next: RM-040 in roadmap order (Part IV — SQL-injection
+  audit; cites TH-01).
+- **RM-039 BANKED 2026-11-01 (keeper tick ~19:56 EST):**
+  threat model — `docs/THREAT_MODEL.md` reviewed against
+  both codebases at the RM-038 head (78acff3): 10 assets,
+  4 actors (+2 named sub-cases), 7 trust boundaries, a
+  21-threat register (TH-01–TH-21) with states today,
+  8 explicit non-goals, and the citation rule mapping
+  RM-040–RM-056 to the threats they own. Headline open
+  findings: no `chmod` anywhere (TH-03), plaintext stores
+  + backups (TH-09), no tamper evidence (TH-10), forget
+  leaves WAL/backup/log residue (TH-11), Qdrant default
+  plaintext HTTP with no TLS rule (TH-06). Pinned by new
+  `tests/test_threat_model.py` in both packages (2 tests
+  each); negation: RM-047 lines removed → mapping test
+  fails (1 failed / 1 passed). EXPECTED pins extended to
+  RM-039. Suites: huginn **173 passed** in one full
+  final-tree run; muninn **243 passed** assembled
+  per-file (all 38 files green; chunk logs in
+  `~/workspace/.verify-tmp/rm039/chunks/`) — the home
+  quota kept closing mid-run under concurrent campaigns
+  (EDQUOT Errno 122 proven in the pytest internal-error
+  log; SQLite SIGBUS in heavy-write tests while shut;
+  `test_huge_batch_atomicity` passes in 7.1 s on a free
+  filesystem). Writes reopened after deleting five of
+  this campaign's spent venvs + the shared pip/uv
+  download caches. First full muninn run also lost one
+  wall-clock test to the load (file passes alone, 6/6,
+  and in its chunk). Ruff + mypy floors clean. No
+  package code, API, or schema change, so no Bifröst
+  re-verification required. Founding tree needs no sync
+  for this slice (docs + tests only).
 - **RM-038 BANKED 2026-11-01 (keeper tick ~19:36 EST):**
   Part III gate — `docs/PART_III_EVIDENCE.md` files every
   FAULT result (RM-029 disk-full, RM-030 read-only
@@ -1824,3 +1857,55 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   sync note stands. **Part III (Robustness) is complete
   with this slice** — 14 of 14 slices banked. The road
   continues at Part IV — Security (RM-039–RM-056).
+- **RM-039 — Threat model. BANKED 2026-11-01. Class: UNIT
+  (inspection).** Record: `docs/THREAT_MODEL.md` — Part IV's
+  foundation, reviewed against both codebases at HEAD
+  78acff3 (all sources of both packages, both pyprojects,
+  inventories of every SQL site, logger site, file-creation
+  site, the Qdrant client construction + payload dict, both
+  content_hash definitions, and both forget/delete paths —
+  the review record is in the document). Ten assets
+  (AS-01–AS-10), the roadmap's four actors (AC-1 buggy
+  caller, AC-2 hostile input source, AC-3 local file
+  attacker, AC-4 network attacker against Qdrant; sub-cases:
+  compromised optional dependency, hostile co-tenant
+  process), seven trust boundaries (TB-1 caller↔API, TB-2
+  library↔store files, TB-3 library↔backups, TB-4
+  library↔diagnostics, TB-5 Huginn↔Qdrant, TB-6 optional
+  extras, TB-7 cross-store readers of the shared tables),
+  twenty-one threats (TH-01–TH-21) each with its state
+  today and owning slice, eight explicit non-goals
+  (NG-1–NG-8), the model's assumptions, and the citation
+  rule: every RM-040–RM-056 slice-log entry cites the
+  threats it closes, and a newly found threat amends the
+  model in its own commit. States, plainly: TH-17/TH-18
+  Controlled (Parts II–III); TH-01/05/07/08/12/13/14/15/19
+  Partial; TH-02/03/04/06/09/10/11/16 Open; TH-20/TH-21
+  Accepted (contractual / bounded). Pinned by new
+  `tests/test_threat_model.py` in both packages (2 tests
+  each); EXPECTED pins in both `test_slice_log.py` copies
+  extended to RM-039. Negation: a scratch copy of the model
+  with the RM-047 lines removed fails the mapping test
+  (1 failed / 1 passed). Suites in a fresh venv
+  (`ravens-rm039-venv`, non-editable installs): huginn
+  **173 passed** (171+2) in one full final-tree run
+  (TMPDIR on the workspace disk); muninn **243 passed**
+  (241+2) assembled per-file, all 38 test files green
+  (per-file logs `~/workspace/.verify-tmp/rm039/chunks/`),
+  because the home quota kept closing mid-run under the
+  concurrent campaigns — EDQUOT (Errno 122) proven in a
+  pytest internal-error log, SQLite SIGBUS in heavy-write
+  tests while the quota was shut, `test_huge_batch_
+  atomicity` green in 7.1 s on the then-free /tmp; the
+  first full muninn run also failed one wall-clock-decay
+  test under load average ~12 (the file passes alone and
+  in its chunk; RM-001 environment pattern). Writes
+  reopened after this keeper deleted five of this
+  campaign's spent per-slice venvs and the shared pip/uv
+  download caches (~2.5G, regenerable; huggingface and
+  rattler caches untouched). Ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files). No
+  package code, public API, or schema change, so no
+  Bifröst re-verification required. Founding tree needs
+  no sync for this slice (docs + tests only); the
+  Part II/III package-source sync note stands.

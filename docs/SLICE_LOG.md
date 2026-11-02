@@ -1505,3 +1505,77 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   gate itself. **Part III (Robustness) is complete with
   this slice** — 14 of 14 slices banked. The road
   continues at Part IV — Security (RM-039–RM-056).
+
+## RM-039 — Threat model
+
+- **Class:** UNIT (inspection)
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `docs/THREAT_MODEL.md` — the Part IV
+  foundation, reviewed against both codebases at the
+  Part III gate (HEAD `78acff3`): ten assets (AS-01–AS-10:
+  memory content, wiring, the activation log, retrieval
+  indexes, the store file family, tombstones + `meta`,
+  the Qdrant API key, diagnostics, availability, content
+  identity), the roadmap's four actors (AC-1 buggy caller,
+  AC-2 hostile input source, AC-3 local file attacker,
+  AC-4 network attacker against Qdrant — plus the two
+  named sub-cases: compromised optional dependency,
+  hostile co-tenant process), seven trust boundaries
+  (TB-1 caller↔API through TB-7 cross-store readers of
+  the shared tables), a twenty-one-threat register
+  (TH-01–TH-21) with each threat's state today —
+  Controlled / Partial / Open / Accepted — and eight
+  explicit non-goals (NG-1–NG-8: no defence against the
+  host process itself, no authn/authz, no platform
+  protection, no content-truth judgement, and kin).
+  Findings stated plainly, from inventories taken over
+  the sources in this slice: every SQL value is bound
+  (the interpolated sites are enumerated — `int()`-cast
+  PRAGMA, `update()`'s allow-listed column names,
+  `len()`-built placeholders, the static schema script),
+  no `chmod` exists in either package (TH-03), the
+  Qdrant default is plaintext localhost HTTP with no TLS
+  requirement (TH-06), stores and backups are plaintext
+  (TH-09), raw-SQL tampering is undetectable today
+  (TH-10), and `forget`/`delete` leave WAL frames,
+  backup generations and (Muninn, by design) the
+  activation log holding forgotten content (TH-11).
+  The citation rule binds every later Part IV slice:
+  RM-040–RM-056 are each mapped to the threats they own,
+  and a slice that finds an unnamed threat amends the
+  model in its own commit. Pinned by new
+  `tests/test_threat_model.py` in both packages (2 tests
+  each: the model names the four actors + core assets,
+  and maps every slice RM-040–RM-056 with its non-goals
+  and honesty ledger present). Negation: a scratch copy
+  of the model with the RM-047 lines removed fails the
+  mapping test (1 failed / 1 passed). Suites green in
+  a fresh venv (`ravens-rm039-venv`, non-editable
+  installs): huginn **173 passed** (171+2) in one full
+  run on the final tree (TMPDIR on the workspace disk);
+  muninn **243 passed** (241+2) assembled per-file —
+  all 38 test files green in this tick (per-file logs
+  in `~/workspace/.verify-tmp/rm039/chunks/`), because
+  the home filesystem's quota kept closing mid-run
+  under ~14 concurrent campaigns: repeated EDQUOT
+  (Errno 122), and SQLite `SIGBUS` crashes in
+  heavy-write tests while the quota was shut
+  (`test_huge_batch_atomicity` passes in 7.1 s with
+  TMPDIR on the then-free `/tmp` — the crash follows
+  the quota, not the code; root cause proven to the
+  Errno-122 line in the pytest internal-error log).
+  Writes reopened after this keeper deleted five of
+  this campaign's own spent per-slice venvs and the
+  shared pip/uv download caches (~2.5G, regenerable;
+  model and rattler caches untouched). On the road, the
+  first full muninn run (load average ~12) also failed
+  exactly `test_wall_clock_decay.py::test_corrupt_
+  marker_is_rearmed_and_reported` (1 failed / 242
+  passed); that file passes alone (6 passed) and in
+  its chunk run — recorded, environment class (the
+  RM-001 pattern). ruff + mypy floors clean (rm014
+  venv; mypy muninn 5 files, huginn 8 files).
+  No package code, public API, or schema change (docs +
+  tests only), so no Bifröst re-verification required.
+  Founding tree needs no sync for this slice; the
+  Part II/III package-source sync note stands.
