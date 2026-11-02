@@ -77,6 +77,7 @@ class FakeQdrantClient:
 
     def __init__(self, url=None, api_key=None, timeout=None):
         self.url = url
+        self.api_key = api_key
         self.points = {}
         self.collections = set()
         FakeQdrantClient.instances.append(self)
@@ -150,7 +151,10 @@ def dead_qdrant(monkeypatch):
 def _cfg(tmp_path, **kw):
     base = {
         "backend": "qdrant",
+        # RM-045: a non-localhost http URL needs the explicit
+        # opt-in — the fake host is exactly that case.
         "qdrant_url": "http://fake:6333",
+        "allow_insecure_http": True,
         "local_db_path": str(tmp_path / "h.db"),
         "embedder": "hashing",
         "vector_dim": 64,
@@ -205,6 +209,7 @@ def test_auto_falls_back_to_local(dead_qdrant, tmp_path):
     cfg = HuginnConfig(
         backend="auto",
         qdrant_url="http://dead:6333",
+        allow_insecure_http=True,  # RM-045 opt-in for the fake host
         local_db_path=str(tmp_path / "h.db"),
     )
     h = HuginnMemory(config=cfg)

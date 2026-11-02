@@ -57,10 +57,58 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044. Part IV (Security) is under way — six of eighteen
-  slices banked.
-- Next: RM-045 in roadmap order (Part IV — Qdrant transport
-  safety; cites TH-06).
+  RM-044, RM-045. Part IV (Security) is under way — seven of
+  eighteen slices banked.
+- Next: RM-046 in roadmap order (Part IV — Qdrant payload
+  hygiene; cites TH-07).
+- **RM-045 BANKED 2026-11-02 (keeper tick ~00:56 EST):**
+  Qdrant transport safety — TH-06, record in
+  `docs/QDRANT_TRANSPORT.md`. Huginn-only slice.
+  `HuginnConfig` validation now enforces the transport
+  rule at construction: scheme must be http/https with a
+  host; `https` accepted for any host; plain `http` only
+  for loopback hosts (`localhost`/`*.localhost`/
+  127.0.0.0/8/`::1` via `ipaddress`; lookalikes refused),
+  so the default `http://localhost:6333` is unchanged;
+  the opt-out is the new additive flag
+  `allow_insecure_http: bool = False`. Three static typed
+  refusal messages (four raise sites) carry neither the
+  key nor the URL. Key handling audited + pinned: sole
+  destination is the `QdrantClient` constructor (recording
+  fake proves url/key/timeout delivered exactly);
+  `field(repr=False)` keeps it out of `repr(config)`;
+  every wrapped client error (ping, collection create,
+  upsert, delete, retrieve, search, count) is scrubbed of
+  the key (`***`) before raising, and the facade scrubs
+  `auto`'s fallback reason + INFO line and `health()`'s
+  unhealthy error the same way. New
+  `tests/test_qdrant_transport.py` (15 tests, leaky fake
+  clients embedding the key in exception text — the
+  roadmap's error-string scan); negation against the
+  RM-044 packages **13 failed / 2 passed** (passes = the
+  preserved loopback defaults + constructor delivery).
+  The existing fake-client suite now opts in explicitly
+  for its non-localhost fake hosts. RM-018 goldens
+  extended (59 CASE / 72 TEMPLATE, 60 distinct); RM-019
+  golden gained the field. **Bifröst re-verification
+  PASS** (fresh venv `ravens-rm045-bifrost-venv` on
+  `/var/tmp`, bifrost at b66e98cc — its own suites **25
+  passed**; BifrostBridge smoke PASS, evidence
+  `~/workspace/.verify-tmp/rm045/`). Full suites green in
+  the RM-045 fresh venv on the final banking tree
+  (TMPDIR on `/var/tmp`, installs from `/var/tmp` copies):
+  muninn **280 passed** (no code change; slice-log pin
+  only), huginn **222 passed** (207+15); ruff + mypy
+  floors clean (rm042 tool venv; mypy muninn 5 files,
+  huginn 8 files). Founding tree NEEDS A SYNC for the
+  config flag + transport validation and the scrubbing
+  (extends the standing package-source sync note).
+  Environment, honestly: the home quota (EDQUOT) closed
+  repeatedly all tick; this keeper freed this campaign's
+  own spent scratch (~170 MB of pytest/bench/tmp scratch
+  across the `rm0*` evidence dirs + the RM-008/RM-009
+  drift copies; every log, script and record kept) and
+  built all RM-045 venvs on `/var/tmp`.
 - **RM-044 BANKED 2026-11-02 (keeper tick ~00:06 EST):**
   log redaction — TH-05, record in `docs/LOG_REDACTION.md`.
   Both configs gain `debug_log_content: bool = False`

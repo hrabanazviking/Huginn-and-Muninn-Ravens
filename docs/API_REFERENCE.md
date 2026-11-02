@@ -642,13 +642,14 @@ class HuginnConfig:
     max_content_bytes: int = 1048576
     strict_path_safety: bool = False
     debug_log_content: bool = False
+    allow_insecure_http: bool = False
 ```
 
 | Field | Meaning |
 |---|---|
 | `backend` | One of `BACKENDS`. `"auto"` (default) probes Qdrant once, lazily, on first use, and falls back to the local backend **permanently for that object** if anything fails, recording why for `health()`. `"local"` never touches the network. `"qdrant"` is explicit: failures raise `HuginnBackendError`. |
-| `qdrant_url` | Qdrant server URL. Non-empty string. |
-| `qdrant_api_key` | Optional Qdrant API key. |
+| `qdrant_url` | Qdrant server URL. Non-empty string; transport rule (RM-045, threat TH-06): scheme must be http or https with a host; `https` for any host, plain `http` only for a loopback host or with `allow_insecure_http=True`. |
+| `qdrant_api_key` | Optional Qdrant API key. Handed only to the client constructor; excluded from the config `repr`, never logged, and scrubbed out of wrapped client error strings (RM-045). |
 | `collection_name` | Qdrant collection for memories. Non-empty string. |
 | `local_db_path` | SQLite file for the local backend. Non-empty string. |
 | `embedder` | One of `EMBEDDERS`. `"tfidf"` (default): the local backend's native lexical scoring, no vectors. `"hashing"`: deterministic feature-hashing vectors (stdlib). `"sentence-transformers"`: neural embeddings, needs the `embeddings` extra. With a Qdrant backend, `"tfidf"` resolves to `"hashing"` (Qdrant needs fixed-space vectors); `health()` reports the effective embedder honestly. |
@@ -659,6 +660,7 @@ class HuginnConfig:
 | `max_content_bytes` | Oversize ceiling (`>= 1`, RM-027): one memory's content, in UTF-8 bytes. Above it, `upsert_memory` refuses with a typed validation error in the facade, before any backend is touched. Huginn memories carry no caller metadata, so there is no metadata ceiling here. See `docs/OVERSIZE_POLICY.md`. |
 | `strict_path_safety` | Path safety (RM-041, threat TH-02): when `True`, opening the **local** store refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed `HuginnStorageError` before anything is created. Default `False` — paths are `~`-expanded, never symlink-resolved, parents unchecked (the recorded behaviour). The Qdrant backend has no local file and is unaffected. See `docs/PATH_SAFETY.md`. |
 | `debug_log_content` | Log redaction (RM-044, threat TH-05): when `True`, the facade's `upsert_memory`/`search` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False` — no log record at any level carries memory content. See `docs/LOG_REDACTION.md`. |
+| `allow_insecure_http` | Qdrant transport opt-out (RM-045, threat TH-06): when `True`, a plain-`http` Qdrant URL is accepted for a non-localhost host. Default `False` — remote Qdrant traffic must use `https`. See `docs/QDRANT_TRANSPORT.md`. |
 
 All values are validated in `__post_init__`; illegal values raise
 `HuginnConfigurationError` at construction.

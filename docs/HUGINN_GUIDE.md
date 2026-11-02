@@ -563,8 +563,8 @@ config = HuginnConfig()   # all defaults — the Bifröst contract shape
 | Field | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
 | `backend` | `str` | `"auto"` | `"auto"` probes Qdrant once, lazily, and falls back to local permanently for that object on any failure (reason in `health()`). `"local"` never touches the network. `"qdrant"` is explicit — failures raise `HuginnBackendError` | Must be one of `("auto", "local", "qdrant")` |
-| `qdrant_url` | `str` | `"http://localhost:6333"` | Qdrant server URL | Must be a non-empty string |
-| `qdrant_api_key` | `str \| None` | `None` | Optional Qdrant API key, passed to the client | No validation in the code |
+| `qdrant_url` | `str` | `"http://localhost:6333"` | Qdrant server URL | Must be a non-empty string with an http/https scheme and a host; plain `http` only for loopback hosts unless `allow_insecure_http=True` (RM-045) |
+| `qdrant_api_key` | `str \| None` | `None` | Optional Qdrant API key, passed only to the client constructor; never logged, excluded from the config `repr`, scrubbed from wrapped error strings (RM-045) | Must be a string or None |
 | `collection_name` | `str` | `"huginn_memories"` | Qdrant collection for memories. Created on first use if missing, with cosine distance and vector size = the embedder's dimension | Must be a non-empty string |
 | `local_db_path` | `str` | `"~/.hermes/memory/huginn_local.db"` (`DEFAULT_LOCAL_DB_PATH`) | SQLite file for the local backend. `~` is expanded (`resolved_local_path()`); the parent directory is created on open | Must be a non-empty string |
 | `embedder` | `str` | `"tfidf"` | `"tfidf"` — the local backend's native lexical TF-IDF scoring, no vectors. `"hashing"` — deterministic feature-hashing vectors (stdlib). `"sentence-transformers"` — neural embeddings, needs the `embeddings` extra. On a Qdrant backend, `"tfidf"` resolves to `"hashing"` (reported in `health()`) | Must be one of `("tfidf", "hashing", "sentence-transformers")` |
@@ -577,6 +577,7 @@ config = HuginnConfig()   # all defaults — the Bifröst contract shape
 | `max_content_bytes` | `int` | `1048576` | Oversize ceiling (RM-027): one memory's content, in UTF-8 bytes; above it `upsert_memory` is refused with a typed error in the facade, before any backend is touched (see `docs/OVERSIZE_POLICY.md`) | Must be >= 1 |
 | `strict_path_safety` | `bool` | `False` | Path safety (RM-041, threat TH-02): when `True`, opening the **local** store refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed storage error before anything is created — for locked-down deployments. Default `False` keeps the recorded behaviour (paths never symlink-resolved, parents unchecked; see `docs/PATH_SAFETY.md`). The Qdrant backend has no local file | No range check — used as a boolean flag |
 | `debug_log_content` | `bool` | `False` | Log redaction (RM-044, threat TH-05): when `True`, the facade's `upsert_memory`/`search` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False`: no log record at any level carries memory content (see `docs/LOG_REDACTION.md`) | No range check — used as a boolean flag |
+| `allow_insecure_http` | `bool` | `False` | Qdrant transport opt-out (RM-045, threat TH-06): when `True`, a plain-`http` `qdrant_url` is accepted for a non-localhost host. Default `False`: `https` is required remotely; plain `http` is accepted only for loopback hosts (see `docs/QDRANT_TRANSPORT.md`) | No range check — used as a boolean flag |
 
 Example — local store with hashing vectors:
 

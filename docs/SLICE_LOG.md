@@ -1901,3 +1901,80 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   note). TH-05 closed by this slice; the register state
   is re-checked at the RM-056 part gate, per the threat
   model's rule.
+
+## RM-045 — Qdrant transport safety
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/QDRANT_TRANSPORT.md` —
+  TH-06. HTTPS is now required by default for
+  non-localhost Qdrant URLs: `HuginnConfig` validation
+  refuses a non-http(s) scheme, a hostless URL, and plain
+  `http` to a non-localhost host, with three static typed
+  messages (four raise sites in `config.py`; the host
+  message stands at two of them) that carry neither the
+  API key nor the URL. Plain `http` stays accepted for
+  loopback hosts (`localhost` / `*.localhost` /
+  127.0.0.0/8 / `::1`, judged by `ipaddress` — lookalike
+  hostnames such as `localhost.evil.example` are refused),
+  so the recorded default `http://localhost:6333` works
+  unchanged; the explicit opt-out is the new additive
+  config flag `allow_insecure_http: bool = False` (a plain
+  boolean flag like `auto_backup`). The API key's handling
+  is audited and pinned: its one destination is the
+  `QdrantClient` constructor (proven by a recording fake);
+  it is excluded from the config's `repr`
+  (`field(repr=False)`); and every client exception the
+  Qdrant backend wraps — ping, collection creation,
+  upsert, delete, retrieve, search, count — is scrubbed of
+  the configured key (`***` placeholder) before the
+  `HuginnBackendError` is raised, with the facade applying
+  the same scrub to `auto`'s recorded fallback reason, its
+  INFO log line, and `health()`'s unhealthy error string.
+  Pinned by new `tests/test_qdrant_transport.py` (15
+  tests, fake clients only — the roadmap's acceptance,
+  error strings scanned for key material, is met by leaky
+  fakes that embed the key in their exception text and are
+  scanned on every road above). Negation against the
+  RM-044 installed packages: **13 failed / 2 passed**
+  (the passes are the preserved behaviours — loopback
+  defaults already worked, and the constructor already
+  received the key). The existing fake-client suite now
+  opts in explicitly for its non-localhost fake hosts.
+  RM-018 goldens extended deliberately (59 CASE, 72
+  TEMPLATE sites / 60 distinct) and the RM-019
+  API-surface golden gained the field. Public config
+  surface changed additively, so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm045-bifrost-venv`, on `/var/tmp`), bifrost
+  at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id;
+  search 1 merged result; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` armed at 0 days; stats over all
+  three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1 through the bridge; huginn on
+  the local backend; live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm045/`). Full suites green in
+  a fresh venv (`ravens-rm045-venv`, on `/var/tmp`,
+  non-editable installs from `/var/tmp` package copies,
+  TMPDIR on `/var/tmp`) on the final banking tree:
+  muninn **280 passed** (no muninn code change; slice-log
+  EXPECTED pin only), huginn **222 passed** (207+15);
+  ruff + mypy floors clean (rm042 tool venv; mypy muninn
+  5 files, huginn 8 files). Founding tree
+  (`~/workspace/ravens`) NEEDS A SYNC for the config flag
+  + transport validation, the backend scrubbing and the
+  facade scrubs (extends the standing package-source sync
+  note). TH-06 closed at the code level this slice
+  reviews; a live Qdrant round-trip remains NOT PROVEN,
+  and the register state is re-checked at the RM-056
+  part gate, per the threat model's rule. Environment,
+  honestly: the home quota (EDQUOT) closed repeatedly
+  during this tick; this keeper freed this campaign's own
+  spent pytest/bench scratch across its `rm0*` evidence
+  dirs (all logs and scripts kept) and built every
+  RM-045 venv on `/var/tmp`, installing from `/var/tmp`
+  package copies after an in-tree pip build hit the
+  quota writing egg-info.

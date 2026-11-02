@@ -279,6 +279,11 @@ def _cases(tmp_path):
         "config_backend": cfg(backend="bogus"),
         "config_embedder": cfg(embedder="bogus"),
         "config_qdrant_url": cfg(qdrant_url=""),
+        "config_qdrant_url_scheme": cfg(qdrant_url="ftp://localhost:6333"),
+        "config_qdrant_url_host": cfg(qdrant_url="https://"),
+        "config_qdrant_url_insecure": cfg(
+            qdrant_url="http://qdrant.example:6333"
+        ),
         "config_local_db_path": cfg(local_db_path=""),
         "config_collection_name": cfg(collection_name=""),
         "config_vector_dim": cfg(vector_dim=7),

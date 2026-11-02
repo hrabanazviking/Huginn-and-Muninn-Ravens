@@ -16,8 +16,10 @@ that road.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import ipaddress
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .errors import HuginnConfigurationError
 
@@ -43,6 +45,56 @@ def _coerce_float(value: object) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _is_loopback_host(host: str) -> bool:
+    """RM-045: is this URL hostname a loopback host?
+
+    ``localhost`` (and any ``*.localhost`` name) plus the
+    loopback IP ranges (127.0.0.0/8, ::1) as judged by
+    :mod:`ipaddress`. Anything unparseable is not loopback.
+    """
+    name = host.rstrip(".").lower()
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
+def _check_qdrant_url_transport(url: str, allow_insecure_http: bool) -> None:
+    """RM-045: the Qdrant URL's transport must be safe (TH-06).
+
+    ``https`` is accepted for any host. Plain ``http`` is
+    accepted only for a loopback host (the recorded local
+    convenience: the default ``http://localhost:6333``), or
+    for any host when the caller explicitly opted in with
+    ``allow_insecure_http=True``. Every other shape — a
+    non-http(s) scheme, a missing host, an unparseable URL,
+    or plain http to a non-localhost host without the
+    opt-in — is refused here, at construction, with the
+    typed configuration error. The messages are static: the
+    URL itself (which a caller could have loaded with
+    credentials) and the API key never appear in them.
+    """
+    try:
+        parts = urlsplit(url)
+        scheme = parts.scheme.lower()
+        host = parts.hostname
+    except ValueError:
+        raise HuginnConfigurationError(
+            "qdrant_url must include a host"
+        ) from None
+    if scheme not in ("http", "https"):
+        raise HuginnConfigurationError("qdrant_url must use http or https")
+    if not host:
+        raise HuginnConfigurationError("qdrant_url must include a host")
+    if scheme == "http" and not allow_insecure_http and not _is_loopback_host(host):
+        raise HuginnConfigurationError(
+            "qdrant_url uses plain http for a non-localhost host; "
+            "use https or set allow_insecure_http=True"
+        )
 
 
 def _coerce_int(value: object) -> int | None:
@@ -76,8 +128,27 @@ class HuginnConfig:
             explicit: failures raise :class:`HuginnBackendError`.
         qdrant_url: Qdrant server URL (Bifröst's own default is
             ``http://localhost:6333``; it never passes it, so Huginn
-            carries the same default).
-        qdrant_api_key: Optional Qdrant API key.
+            carries the same default). Transport safety (RM-045,
+            threat TH-06): the scheme must be http or https and
+            the URL must name a host; ``https`` is accepted for
+            any host, while plain ``http`` is accepted only for
+            a loopback host (localhost / 127.0.0.0/8 / ::1) or
+            with ``allow_insecure_http=True``. Refusals are
+            typed configuration errors whose messages never
+            carry the URL or the API key.
+        qdrant_api_key: Optional Qdrant API key. Handed only to
+            the Qdrant client constructor: it is excluded from
+            the config's ``repr``, never logged, and scrubbed
+            out of every wrapped client error string before
+            that string can reach a caller or a log (RM-045).
+        allow_insecure_http: Qdrant transport opt-out (RM-045):
+            when True, a plain-``http`` Qdrant URL is accepted
+            for a non-localhost host. Default False: remote
+            Qdrant traffic must use ``https``, so the API key
+            and the memory payloads never cross the network in
+            clear text (threat TH-06). Like ``auto_backup`` it
+            is a plain boolean flag, used as given. See
+            ``docs/QDRANT_TRANSPORT.md``.
         collection_name: Qdrant collection for memories.
         local_db_path: SQLite file for the local backend.
         embedder: ``"tfidf"`` (default; local backend's native lexical
@@ -128,7 +199,8 @@ class HuginnConfig:
 
     backend: str = "auto"
     qdrant_url: str = "http://localhost:6333"
-    qdrant_api_key: str | None = None
+    # RM-045: repr=False — the key never appears in repr(config).
+    qdrant_api_key: str | None = field(default=None, repr=False)
     collection_name: str = "huginn_memories"
     local_db_path: str = DEFAULT_LOCAL_DB_PATH
     embedder: str = "tfidf"
@@ -141,6 +213,7 @@ class HuginnConfig:
     max_content_bytes: int = 1048576
     strict_path_safety: bool = False
     debug_log_content: bool = False
+    allow_insecure_http: bool = False
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:
@@ -149,6 +222,7 @@ class HuginnConfig:
             raise HuginnConfigurationError(f"embedder must be one of {EMBEDDERS}")
         if not isinstance(self.qdrant_url, str) or not self.qdrant_url.strip():
             raise HuginnConfigurationError("qdrant_url must be a non-empty string")
+        _check_qdrant_url_transport(self.qdrant_url, self.allow_insecure_http)
         if not isinstance(self.local_db_path, str) or not self.local_db_path.strip():
             raise HuginnConfigurationError("local_db_path must be a non-empty string")
         if not isinstance(self.collection_name, str) or not self.collection_name.strip():

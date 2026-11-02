@@ -50,7 +50,7 @@ from .errors import (
     HuginnValidationError,
 )
 from .local_backend import LocalBackend
-from .qdrant_backend import QdrantBackend
+from .qdrant_backend import QdrantBackend, scrub_api_key
 from .text import (
     STOPWORDS,
     Embedder,
@@ -418,8 +418,13 @@ class HuginnMemory:
                 self._backend = backend
                 logger.info("huginn: auto backend selected Qdrant at %s", self.config.qdrant_url)
             except Exception as exc:
-                self._fallback_reason = f"qdrant unavailable: {exc}"
-                logger.info("huginn: auto backend fell back to local (%s)", exc)
+                # RM-045: the fallback reason is recorded in
+                # health() and logged at INFO — the Qdrant API
+                # key must never ride it there (TH-06), and the
+                # wrapped client wording is not ours to control.
+                safe = scrub_api_key(str(exc), self.config.qdrant_api_key)
+                self._fallback_reason = f"qdrant unavailable: {safe}"
+                logger.info("huginn: auto backend fell back to local (%s)", safe)
                 self._backend = self._build_local()
             return self._backend
 
@@ -557,7 +562,11 @@ class HuginnMemory:
             return {
                 "status": "unhealthy",
                 "backend_configured": self.config.backend,
-                "error": str(exc),
+                # RM-045: defence in depth — a backend error
+                # string is already key-scrubbed at its raise
+                # site; scrub again here so no error text this
+                # facade reports can carry the key (TH-06).
+                "error": scrub_api_key(str(exc), self.config.qdrant_api_key),
                 "error_type": type(exc).__name__,
             }
         info = dict(info)

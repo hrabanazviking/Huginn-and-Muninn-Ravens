@@ -9,6 +9,14 @@ Identity: a point's id is the caller's ``memory_id`` when given, else
 derived deterministically from the content hash — re-upserting the
 same memory naturally targets the same point, and identical content
 in the same category is one point (idempotent, like the local store).
+
+Transport safety (RM-045, threat TH-06): the URL's scheme rule is
+enforced at config construction (https for remote hosts, plain http
+only for loopback or with an explicit opt-in). The API key is handed
+only to the client constructor; every client exception this backend
+wraps has the configured key scrubbed out of its text first
+(:func:`scrub_api_key`), because the client's wording is not ours to
+control and a server or proxy error can quote the credential back.
 """
 
 from __future__ import annotations
@@ -24,6 +32,19 @@ from .errors import HuginnBackendError, HuginnConfigurationError
 from .text import Embedder
 
 logger = logging.getLogger("huginn.qdrant")
+
+
+def scrub_api_key(text: str, api_key: str | None) -> str:
+    """RM-045: ``text`` with every occurrence of the key removed.
+
+    The replacement is a fixed placeholder, so a scrubbed error
+    string still shows where the credential stood without
+    carrying it. An unset or empty key scrubs nothing (an empty
+    string would otherwise match everywhere).
+    """
+    if api_key:
+        return text.replace(api_key, "***")
+    return text
 
 
 def _content_hash(content: str, category: str) -> str:
@@ -47,6 +68,10 @@ class QdrantBackend:
         self._models: Any = None
         self._collection_ready = False
         self._closed = False
+
+    def _scrub(self, exc: BaseException) -> str:
+        """RM-045: a client exception's text, key-scrubbed."""
+        return scrub_api_key(str(exc), self.config.qdrant_api_key)
 
     # ─── lazy client ──────────────────────────────────────────────────
 
@@ -84,7 +109,7 @@ class QdrantBackend:
             raise
         except Exception as exc:
             raise HuginnBackendError(
-                f"Qdrant at {self.config.qdrant_url} unreachable: {exc}"
+                f"Qdrant at {self.config.qdrant_url} unreachable: {self._scrub(exc)}"
             ) from exc
 
     def _ensure_collection(self) -> None:
@@ -106,7 +131,7 @@ class QdrantBackend:
             except Exception as exc:
                 raise HuginnBackendError(
                     f"could not create Qdrant collection "
-                    f"{self.config.collection_name!r}: {exc}"
+                    f"{self.config.collection_name!r}: {self._scrub(exc)}"
                 ) from exc
         self._collection_ready = True
 
@@ -148,7 +173,9 @@ class QdrantBackend:
                     points=[point],
                 )
             except Exception as exc:
-                raise HuginnBackendError(f"Qdrant upsert failed: {exc}") from exc
+                raise HuginnBackendError(
+                    f"Qdrant upsert failed: {self._scrub(exc)}"
+                ) from exc
             return point_id
 
     def delete(self, memory_id: int) -> bool:
@@ -170,7 +197,9 @@ class QdrantBackend:
                 )
                 return True
             except Exception as exc:
-                raise HuginnBackendError(f"Qdrant delete failed: {exc}") from exc
+                raise HuginnBackendError(
+                    f"Qdrant delete failed: {self._scrub(exc)}"
+                ) from exc
 
     # ─── reads ────────────────────────────────────────────────────────
 
@@ -186,7 +215,9 @@ class QdrantBackend:
                     with_payload=True,
                 )
             except Exception as exc:
-                raise HuginnBackendError(f"Qdrant retrieve failed: {exc}") from exc
+                raise HuginnBackendError(
+                    f"Qdrant retrieve failed: {self._scrub(exc)}"
+                ) from exc
             if not points:
                 return None
             return self._point_to_doc(points[0])
@@ -259,7 +290,9 @@ class QdrantBackend:
                         with_payload=True,
                     )
             except Exception as exc:
-                raise HuginnBackendError(f"Qdrant search failed: {exc}") from exc
+                raise HuginnBackendError(
+                    f"Qdrant search failed: {self._scrub(exc)}"
+                ) from exc
             return [
                 self._point_to_doc(p, score=getattr(p, "score", 0.0)) for p in points
             ]
@@ -273,7 +306,9 @@ class QdrantBackend:
                 result = client.count(collection_name=self.config.collection_name)
                 return int(result.count)
             except Exception as exc:
-                raise HuginnBackendError(f"Qdrant count failed: {exc}") from exc
+                raise HuginnBackendError(
+                    f"Qdrant count failed: {self._scrub(exc)}"
+                ) from exc
 
     def health(self) -> dict[str, Any]:
         with self._lock:
