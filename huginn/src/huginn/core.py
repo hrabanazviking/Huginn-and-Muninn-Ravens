@@ -33,11 +33,13 @@ vector form); true neural embeddings need
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import logging
 import math
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -384,6 +386,19 @@ class HuginnMemory:
         self._fallback_reason: str | None = None
         self._closed = False
         self._flight_history: list[RetrievalResult] = []
+        # RM-063: the warm ``get`` cache (see the config's
+        # ``cache_size`` note and docs/WARM_CACHES.md). An
+        # LRU OrderedDict of document-dict copies held in
+        # the FACADE, so it covers both backends; per-object
+        # only, empty and unused while ``cache_size`` is 0.
+        # Counters are lifetime counts for this object;
+        # invalidation never rewrites them. Like the RM-053
+        # accounting, the stats live OUTSIDE ``health()`` —
+        # health snapshots are pinned pure.
+        self._doc_cache: OrderedDict[int, dict[str, Any]] = OrderedDict()
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._cache_evictions = 0
 
     # ─── lazy construction (Slice 86 ground 3) ────────────────────────
 
@@ -447,6 +462,70 @@ class HuginnMemory:
         self._embedder_name = name
         return QdrantBackend(self.config, embedder=embedder)
 
+    # ─── warm cache (RM-063) ──────────────────────────────────────────
+
+    @property
+    def cache_stats(self) -> dict[str, Any]:
+        """RM-063: this object's ``get`` cache accounting.
+
+        ``enabled`` (``cache_size`` > 0), ``size`` (entries
+        currently held), ``cap`` (the configured ceiling),
+        ``hits``, ``misses`` and ``evictions`` (lifetime
+        counts for this object — an enabled ``get`` that
+        finds no entry is a miss, whether or not the
+        backend then returns a document; misses are never
+        cached, so a missing id is re-checked against the
+        backend on every call), and ``hit_rate`` (hits /
+        (hits + misses), 0.0 before any enabled call). A
+        dedicated property, deliberately NOT a ``health()``
+        field: health snapshots are pinned pure, so
+        per-object accounting lives here — the RM-053
+        pattern. Reading it never constructs the backend
+        (lazy construction is contractual) and touches
+        nothing. Returns a fresh dict.
+        """
+        with self._lock:
+            total = self._cache_hits + self._cache_misses
+            return {
+                "enabled": int(self.config.cache_size) > 0,
+                "size": len(self._doc_cache),
+                "cap": int(self.config.cache_size),
+                "hits": self._cache_hits,
+                "misses": self._cache_misses,
+                "evictions": self._cache_evictions,
+                "hit_rate": (self._cache_hits / total) if total else 0.0,
+            }
+
+    def _cache_invalidate(self, memory_id: int) -> None:
+        """RM-063: drop one cached document.
+
+        Called by every write road through this facade
+        (``upsert_memory``, ``delete``, ``secure_forget``),
+        so a later ``get`` can never serve this object's
+        own stale write.
+        """
+        with self._lock:
+            self._doc_cache.pop(memory_id, None)
+
+    def _cache_store(self, doc: dict[str, Any]) -> None:
+        """RM-063: cache a copy of ``doc``.
+
+        Least-recently-used entries are evicted first once
+        the cache holds ``cache_size`` entries. The stored
+        value is a deep copy, and hits hand out deep copies
+        too, so no caller-held dict ever aliases the cache.
+        """
+        cap = int(self.config.cache_size)
+        if cap <= 0:
+            return
+        doc_id = int(doc["id"])
+        with self._lock:
+            self._doc_cache[doc_id] = copy.deepcopy(doc)
+            self._doc_cache.move_to_end(doc_id)
+            while len(self._doc_cache) > cap:
+                self._doc_cache.popitem(last=False)
+                self._cache_evictions += 1
+
     # ─── contract API (Bifröst) ───────────────────────────────────────
 
     def upsert_memory(
@@ -491,6 +570,8 @@ class HuginnMemory:
             emotional_valence=emotional_valence,
             memory_id=memory_id,
         )
+        # RM-063: the written document must not be served stale.
+        self._cache_invalidate(result)
         if self.config.debug_log_content:
             # RM-044: the ONLY road by which memory content
             # reaches a log — this flag, at DEBUG level.
@@ -539,9 +620,38 @@ class HuginnMemory:
         return results
 
     def get(self, memory_id: int) -> dict[str, Any] | None:
-        """One memory by id, or None. PURE READ."""
+        """One memory by id, or None. PURE READ.
+
+        With ``cache_size`` > 0 (RM-063) a hit is served
+        from this object's warm cache — a deep copy of the
+        cached document, so mutating the result touches
+        neither the cache nor the store. The cache is
+        per-object only and lives in the facade, covering
+        both backends: writes through this object
+        invalidate the entries they change (never stale
+        for own writes), while a write through another
+        object or process — or directly on a Qdrant
+        server — is not seen until eviction or an own
+        write to that id; see ``docs/WARM_CACHES.md``.
+        A miss is never cached. With the default
+        ``cache_size`` of 0 every call reads the backend,
+        exactly the pre-RM-063 behaviour.
+        """
         memory_id = _check_memory_id(memory_id)
-        return self._ensure_backend().get(memory_id)
+        if int(self.config.cache_size) > 0:
+            if self._closed:
+                raise HuginnBackendError("HuginnMemory is closed")
+            with self._lock:
+                cached = self._doc_cache.get(memory_id)
+                if cached is not None:
+                    self._doc_cache.move_to_end(memory_id)
+                    self._cache_hits += 1
+                    return copy.deepcopy(cached)
+                self._cache_misses += 1
+        doc = self._ensure_backend().get(memory_id)
+        if doc is not None:
+            self._cache_store(doc)
+        return doc
 
     def delete(self, memory_id: int) -> bool:
         """Remove one memory (WRITE). True when something was removed.
@@ -554,7 +664,10 @@ class HuginnMemory:
         use :meth:`secure_forget`.
         """
         memory_id = _check_memory_id(memory_id)
-        return self._ensure_backend().delete(memory_id)
+        removed = self._ensure_backend().delete(memory_id)
+        # RM-063: a deleted document leaves the cache too.
+        self._cache_invalidate(memory_id)
+        return removed
 
     def secure_forget(self, memory_id: int) -> bool:
         """Remove one memory **and purge its content** (WRITE).
@@ -576,7 +689,12 @@ class HuginnMemory:
         domain.
         """
         memory_id = _check_memory_id(memory_id)
-        return self._ensure_backend().secure_forget(memory_id)
+        removed = self._ensure_backend().secure_forget(memory_id)
+        # RM-063: a securely forgotten document leaves the
+        # cache too — its content must not linger in memory
+        # on this object either.
+        self._cache_invalidate(memory_id)
+        return removed
 
     def health(self) -> dict[str, Any]:
         """Backend health; never raises for backend trouble.
@@ -648,6 +766,7 @@ class HuginnMemory:
             if self._closed:
                 return
             self._closed = True
+            self._doc_cache.clear()
             if self._backend is not None:
                 with contextlib.suppress(Exception):
                     self._backend.close()

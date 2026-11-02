@@ -56,6 +56,13 @@ store. `get(id)` / `delete(id)` complete the API. All local reads are
 pure; Huginn has **no reinforcing read** — reinforcement is Muninn's
 job.
 
+Warm cache (RM-063): `HuginnConfig(cache_size=N)` with N > 0 gives
+the facade's `get` a bounded per-object LRU cache covering both
+backends (default 0 = off, every call reads the backend). Own
+writes invalidate; another object's writes are not seen until
+eviction or an own write — see `docs/WARM_CACHES.md`. Hit
+accounting: `h.cache_stats` (reading it constructs nothing).
+
 ## Ancestor semantics
 
 `analyze_query(query)` — query type, key terms, strategy, hops (the

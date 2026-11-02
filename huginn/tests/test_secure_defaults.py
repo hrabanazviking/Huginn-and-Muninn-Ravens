@@ -44,6 +44,7 @@ EXPECTED_DEFAULTS = {
     "store_encryption": False,
     "encryption_passphrase": None,
     "max_search_candidates": 10000,
+    "cache_size": 0,
 }
 
 
@@ -111,6 +112,7 @@ def test_waits_and_ceilings_are_bounded_by_default():
     assert config.busy_timeout_ms > 0
     assert config.max_content_bytes >= 1
     assert config.max_search_candidates >= 1
+    assert config.cache_size >= 0
 
 
 def test_default_transport_posture_confines_plaintext_to_loopback():

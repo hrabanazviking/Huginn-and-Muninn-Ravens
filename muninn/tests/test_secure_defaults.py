@@ -41,6 +41,7 @@ EXPECTED_DEFAULTS = {
     "integrity_attestation": False,
     "integrity_passphrase": None,
     "max_spread_candidates": 100000,
+    "cache_size": 0,
 }
 
 
@@ -109,6 +110,7 @@ def test_waits_and_ceilings_are_bounded_by_default():
     assert config.max_content_bytes >= 1
     assert config.max_metadata_bytes >= 1
     assert config.max_spread_candidates >= 1
+    assert config.cache_size >= 0
 
 
 def test_review_record_names_every_field(root):

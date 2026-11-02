@@ -352,6 +352,14 @@ Both validate the id (`int`, >= 0, bools rejected) and raise
 `HuginnValidationError` otherwise. `get` is a pure read; `delete` is
 a write.
 
+With `cache_size` set above 0, `get` serves repeats from
+this object's bounded warm cache (RM-063, in the facade, so
+both backends are covered): hits are copies, own writes
+(`upsert_memory`, `delete`, `secure_forget`) invalidate,
+and the hit rate is visible in `h.cache_stats`. The cache
+is per-object only — see `docs/WARM_CACHES.md` for the
+staleness window that buys the speed.
+
 `delete` removes the live rows only: on the local backend the
 content can persist in WAL frames, in freed pages of the store
 file, and in every rolling backup generation until rotation
@@ -615,6 +623,7 @@ config = HuginnConfig()   # all defaults — the Bifröst contract shape
 | `store_encryption` | `bool` | `False` | Store encryption (RM-049, threat TH-09): when `True`, the **local** store's content-bearing values are sealed with application-level envelope encryption (per-store data key wrapped under `encryption_passphrase`) before they reach SQL, the term index stores keyed HMAC tags, and `content_hash` becomes a keyed lookup tag. A marked store is encrypted for its whole life and refuses plain opens. Default `False` — encryption cannot default on, because it needs a passphrase a default cannot invent (see `docs/STORE_ENCRYPTION.md`). The Qdrant backend has no local file; the server owns its disk | No range check — used as a boolean flag |
 | `encryption_passphrase` | `str \| None` | `None` | The passphrase the local store's data key is wrapped under (RM-049). Required when `store_encryption` is `True`; excluded from `repr`; never stored, logged, or placed in an error string. There is no recovery: a lost passphrase is a lost store | Must be a string or `None` |
 | `max_search_candidates` | `int` | `10000` | Query cost ceiling (RM-053, threat TH-13): the maximum candidate documents one local-backend search may score. When more candidates exist, the lowest-id candidates are scored and the rest are not considered by that call; the bite is recorded in `HuginnMemory.last_search_stats` (see `docs/QUERY_COST_CAPS.md`). Local backend only | Must be >= 1 |
+| `cache_size` | `int` | `0` | Warm cache (RM-063): the maximum documents this object's `get` cache holds in memory (LRU eviction), in the facade so it covers both backends. `0` disables it — every `get` reads the backend. Own writes always invalidate; the cache is per-object only, so another object's writes are not seen until eviction or an own write to that id (see `docs/WARM_CACHES.md`). Accounting in `cache_stats` | Must be >= 0 |
 
 **Secure defaults (RM-055, threat TH-15).** Every default
 in this table was re-judged for safety in one recorded

@@ -14,7 +14,7 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (69): every raise site except the two that
+# CASE lines (70): every raise site except the two that
 # cannot be triggered deterministically — the "document
 # insert reported success but returned no row id" guards
 # (unreachable by construction; RM-008), pinned below as
@@ -36,6 +36,7 @@ CASE config_busy_timeout | HuginnConfigurationError | busy_timeout_ms must be >=
 CASE config_backup_keep | HuginnConfigurationError | backup_keep must be >= 0
 CASE config_max_content_bytes | HuginnConfigurationError | max_content_bytes must be >= 1
 CASE config_max_search_candidates | HuginnConfigurationError | max_search_candidates must be >= 1
+CASE config_cache_size | HuginnConfigurationError | cache_size must be >= 0
 CASE content_oversize | HuginnValidationError | content size 9 bytes exceeds max_content_bytes (8 bytes)
 CASE config_st_model | HuginnConfigurationError | st_model must be a non-empty string
 CASE config_api_key_type | HuginnConfigurationError | qdrant_api_key must be a string or None
@@ -91,7 +92,7 @@ CASE encryption_plain_open | HuginnStorageError | huginn store <tmp_path>/enc.db
 CASE encryption_wrong_passphrase | HuginnStorageError | huginn store <tmp_path>/enc.db is encrypted and the supplied passphrase does not unlock it; refusing to open
 CASE write_guard_generic | HuginnStorageError | huginn write failed during upsert: IntegrityError
 CASE prepare_generic | HuginnStorageError | huginn store <tmp_path>/trigprep.db could not be prepared: IntegrityError
-# TEMPLATE lines (90 raise sites, 73 distinct — the insert
+# TEMPLATE lines (92 raise sites, 74 distinct — the insert
 # guard's line is duplicated, once per insert path, and the
 # "could not be prepared" line likewise since RM-030 wrapped
 # the main connection in _db.py; RM-029 added the write-guard
@@ -123,8 +124,13 @@ CASE prepare_generic | HuginnStorageError | huginn store <tmp_path>/trigprep.db 
 # in local_backend.py — the generic branch's template is
 # unchanged, but it now interpolates the exception's class
 # name, never its text, and the Qdrant wrap templates likewise
-# now carry a class name where client text rode before).
+# now carry a class name where client text rode before);
+# RM-063 added the cache_size configuration raise site in
+# config.py and a second "HuginnMemory is closed" raise site
+# in core.py (the warm-cache get path checks closedness
+# before it may serve a hit)).
 TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
+TEMPLATE | HuginnBackendError | HuginnMemory is closed
 TEMPLATE | HuginnBackendError | HuginnMemory is closed
 TEMPLATE | HuginnBackendError | Qdrant at {} unreachable: {}
 TEMPLATE | HuginnBackendError | Qdrant count failed: {}
@@ -140,6 +146,7 @@ TEMPLATE | HuginnBackendError | content hash collision: a different memory alrea
 TEMPLATE | HuginnConfigurationError | backend must be one of {}
 TEMPLATE | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 TEMPLATE | HuginnConfigurationError | backup_keep must be >= 0
+TEMPLATE | HuginnConfigurationError | cache_size must be >= 0
 TEMPLATE | HuginnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | HuginnConfigurationError | collection_name must be a non-empty string
 TEMPLATE | HuginnConfigurationError | embedder must be one of {}

@@ -64,12 +64,106 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060, RM-061, RM-062.
-- Next: RM-063 in roadmap order (Warm caches: optional
-  bounded in-memory cache for `get_node` / document
-  `get` with explicit invalidation on writes through
-  the same object; documented as per-object only;
-  acceptance: hit-rate + staleness tests. Class: UNIT).
+  RM-060, RM-061, RM-062, RM-063.
+- Next: RM-064 in roadmap order (Decay/consolidate at
+  scale: both are full-store UPDATEs; add chunked
+  maintenance with progress reporting that preserves
+  all-or-nothing semantics per chunk boundary stated
+  in the report; acceptance: 100k-edge run within the
+  gate. Class: BENCH).
+- **RM-063 BANKED 2026-11-02 (keeper tick ~16:46 EST):**
+  Warm caches — UNIT. Both packages gain an optional
+  bounded in-memory cache for their single-item read
+  behind one new config field per package,
+  `cache_size: int = 0` (validated `>= 0`, typed
+  message `cache_size must be >= 0`; RM-018 goldens
+  65 → 66 CASE muninn, 69 → 70 CASE huginn, templates
+  92 / 92 — Huginn also gained a second
+  `HuginnMemory is closed` template from the cache
+  path's closed check). Muninn caches `get_node`
+  results in the core; Huginn caches document `get`
+  results in the FACADE, so both backends ride one
+  invalidation discipline (proven against a counting
+  toy backend). **Default 0 = off** — the RM-055
+  secure-defaults judgement extended in-slice (rows in
+  `docs/SECURE_DEFAULTS.md`): a cache trades freshness
+  for speed and is per-object only, so the safe default
+  is the pre-RM-063 road, every read reading the
+  store. When enabled: LRU-bounded at `cache_size`;
+  stored values and hits are deep copies (caller
+  mutation can never poison the cache — pinned);
+  misses are never cached. **Own writes always
+  invalidate** — Muninn `remember` / `remember_many`
+  (their ids; backpressure victims invalidated inside
+  `_apply_backpressure_locked` itself), `update` /
+  `move`, `activate` / `activate_batch` /
+  `retrieve(touch=True)` (activation changes
+  access_count/updated_at), `forget` /
+  `secure_forget`; Huginn `upsert_memory`, `delete`,
+  `secure_forget`. **Per-object only, stated plainly**
+  in `docs/WARM_CACHES.md`, both guides, both
+  INTERFACE files and API_REFERENCE: another object /
+  process (or a direct Qdrant write) is not seen until
+  eviction or an own write to that id — the staleness
+  window is pinned by test, not hidden. Accounting in
+  a new dedicated `cache_stats` property per package
+  (enabled/size/cap/hits/misses/evictions/hit_rate,
+  lifetime counts, invalidation never rewrites them;
+  RM-053 pattern, outside the pinned-pure
+  health()/stats(); Huginn's reading never constructs
+  the backend). RM-019 goldens gained the field + the
+  property in both packages; no SQL added (RM-040
+  audit totals unchanged), no schema change. New
+  `tests/test_warm_caches.py` (muninn 15, huginn 13).
+  Negation vs the RM-062 packages: warm-caches muninn
+  **14 failed / 1 passed**, huginn **12 failed / 1
+  passed** (the pass in each is the record-doc pin,
+  which judges the tree), secure-defaults **2 failed**
+  per package, error-messages **1 failed / 2 passed**
+  per package, api-surface **1 failed / 2 passed**
+  per package, slice-log **2 failed** per package.
+  **Bifröst re-verification PASS** (public API grew
+  additively; fresh venv on `/var/tmp`, bifrost
+  source from the git-clean pinned b66e98cc checkout —
+  its own suites **25 passed**; BifrostBridge smoke
+  PASS — store mimir_id+huginn_id, search 1 merged
+  result, recall grew the Muninn activation log
+  exactly +1, decay/consolidate reports,
+  `decay_wall_clock()` armed at 0 days, stats over
+  all three backends, both raven health dicts carry
+  `sqlite_version` 3.45.1, huginn local via
+  auto-fallback, double close safe; evidence
+  `/var/tmp/rm063/evidence/`). Full suites on the
+  final banking tree (non-editable installs from a
+  full-repo copy on `/var/tmp`, encryption + qdrant
+  extras, cryptography 50.0.2, qdrant-client 1.20.0,
+  pytest 9.2.0): muninn **411 passed** (396+15),
+  huginn **335 passed** (322+13). Ruff clean (both
+  packages; the one repo-root `scripts/soak.py`
+  BLE001 finding is pre-existing, untouched, and
+  outside the packages' ruff floor); mypy 1.20.2
+  clean in a deps-free tool venv (muninn 7 files,
+  huginn 9 files). Environment, honestly: the
+  home-quota EDQUOT closure was shut for most of this
+  tick — the slice was built in the home tree until
+  the closure, then finished and verified in a
+  full-repo copy on `/var/tmp` (the RM-060 pattern)
+  after freeing only regenerable caches (the shared
+  npm cache and this repo's mypy/pytest caches,
+  ~84 MB); the `.verify-tmp` Janas store is Volmarr's
+  pending decision, untouched. The closure never
+  reopened for the banking step, so this slice was
+  committed and pushed FROM the `/var/tmp` full-repo
+  copy (remote-diffed first, fast-forward only); the
+  home tree at `~/workspace/ravens-repo/` still holds
+  the identical RM-063 changes uncommitted on top of
+  RM-062 — the next tick with home writes open must
+  reconcile it (`git fetch`, verify the working-tree
+  diff matches this commit, then reset to
+  `origin/main`) before taking RM-064. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding
+  tree NEEDS A SYNC for the RM-063 build (extends
+  the standing package-source sync note).
 - **RM-062 BANKED 2026-11-02 (keeper tick ~15:46 EST, completed
   by the following tick after an interruption):** Huginn
   vector scan — BENCH. The embedder-mode scan gains the

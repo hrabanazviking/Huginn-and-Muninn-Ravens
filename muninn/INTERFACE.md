@@ -52,6 +52,12 @@ ancestor-shaped facade constructed with a data directory.
 `retrieve` is a **pure read** by default. `touch=True` is the one
 explicitly named reinforcing read: it also activates what it returns.
 
+Warm cache (RM-063): `MuninnConfig(cache_size=N)` with N > 0 gives
+`get_node` a bounded per-object LRU cache (default 0 = off, every
+call reads the store). Own writes invalidate; another object's
+writes are not seen until eviction or an own write — see
+`docs/WARM_CACHES.md`. Hit accounting: `mem.cache_stats`.
+
 ## Semantics
 
 - **Activation**: appends one `activation_log` row, increments the

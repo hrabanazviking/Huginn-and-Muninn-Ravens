@@ -186,6 +186,26 @@ class MuninnConfig:
             ceiling).
             Below the ceiling, results are exactly what the
             unbounded walk would return.
+        cache_size: Warm cache (RM-063): the maximum number
+            of nodes this object's ``get_node`` cache holds
+            in memory, least-recently-used eviction first
+            (record ``docs/WARM_CACHES.md``). ``0`` (the
+            default) disables the cache: every ``get_node``
+            reads the store, exactly the pre-RM-063
+            behaviour. When positive, a ``get_node`` hit is
+            served from memory and counted in
+            ``cache_stats``; every write through the *same
+            object* invalidates the entries it changes, so
+            a hit is never stale for this object's own
+            writes. The cache is **per-object only**: a
+            write through another object or process on the
+            same store file is NOT seen until the entry is
+            evicted or this object writes that id itself —
+            that staleness window is the documented price
+            of the cache, and it is why the cache is off by
+            default. Cached nodes are copies: mutating a
+            returned node never changes the cache or the
+            store.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -209,6 +229,7 @@ class MuninnConfig:
     # RM-050: repr=False — the passphrase never appears in repr(config).
     integrity_passphrase: str | None = field(default=None, repr=False)
     max_spread_candidates: int = 100000
+    cache_size: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
@@ -262,6 +283,9 @@ class MuninnConfig:
         max_spread_candidates = _coerce_int(self.max_spread_candidates)
         if max_spread_candidates is None or max_spread_candidates < 1:
             raise MuninnConfigurationError("max_spread_candidates must be >= 1")
+        cache_size = _coerce_int(self.cache_size)
+        if cache_size is None or cache_size < 0:
+            raise MuninnConfigurationError("cache_size must be >= 0")
 
     def resolved_path(self) -> Path:
         """The store path with ``~`` expanded (not symlink-resolved)."""

@@ -36,6 +36,7 @@ reinforcing-read variant is explicit and opt-in:
 from __future__ import annotations
 
 import contextlib
+import copy
 import functools
 import hashlib
 import json
@@ -43,6 +44,7 @@ import logging
 import math
 import sqlite3
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -714,6 +716,20 @@ class HebbianMemory:
             "capped": False,
             "nodes_returned": 0,
         }
+        # RM-063: the warm ``get_node`` cache (see the config's
+        # ``cache_size`` note and docs/WARM_CACHES.md). An LRU
+        # OrderedDict of node copies, per-object only, empty
+        # and unused while ``cache_size`` is 0. The hit/miss/
+        # eviction counters are lifetime counts for this
+        # object; invalidation removes entries but never
+        # rewrites the counters, so ``cache_stats`` is an
+        # honest hit-rate record. Like the RM-053 accounting,
+        # the stats live OUTSIDE ``health()``/``stats()`` —
+        # those snapshots are pinned pure.
+        self._node_cache: OrderedDict[int, MemoryNode] = OrderedDict()
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._cache_evictions = 0
         # RM-049: store encryption setup and the open-time key
         # proof run BEFORE the store is opened, on pure pre-reads,
         # so a refused open (wrong passphrase, a plain open of a
@@ -1064,8 +1080,68 @@ class HebbianMemory:
             if self._closed:
                 return
             self._closed = True
+            self._node_cache.clear()
             with contextlib.suppress(sqlite3.Error):
                 self._conn.close()
+
+    # ─── warm cache (RM-063) ──────────────────────────────────────────
+
+    @property
+    def cache_stats(self) -> dict[str, Any]:
+        """RM-063: this object's ``get_node`` cache accounting.
+
+        ``enabled`` (``cache_size`` > 0), ``size`` (entries
+        currently held), ``cap`` (the configured ceiling),
+        ``hits``, ``misses`` and ``evictions`` (lifetime
+        counts for this object — an enabled ``get_node``
+        that finds no entry is a miss, whether or not the
+        store then returns a node; misses are never cached,
+        so a missing id is re-checked against the store on
+        every call), and ``hit_rate`` (hits / (hits +
+        misses), 0.0 before any enabled call). A dedicated
+        property, deliberately NOT a ``health()`` /
+        ``stats()`` field: those snapshots are pinned pure,
+        so per-object accounting lives here — the RM-053
+        pattern. Reading it touches nothing. Returns a
+        fresh dict.
+        """
+        with self._lock:
+            total = self._cache_hits + self._cache_misses
+            return {
+                "enabled": int(self.config.cache_size) > 0,
+                "size": len(self._node_cache),
+                "cap": int(self.config.cache_size),
+                "hits": self._cache_hits,
+                "misses": self._cache_misses,
+                "evictions": self._cache_evictions,
+                "hit_rate": (self._cache_hits / total) if total else 0.0,
+            }
+
+    def _cache_invalidate_locked(self, memory_id: int) -> None:
+        """RM-063: drop one cached node (lock held).
+
+        Called by every write road that changes a node's
+        row through this object, so a later ``get_node``
+        can never serve this object's own stale write.
+        """
+        self._node_cache.pop(memory_id, None)
+
+    def _cache_store_locked(self, node: MemoryNode) -> None:
+        """RM-063: cache a copy of ``node`` (lock held).
+
+        Least-recently-used entries are evicted first once
+        the cache holds ``cache_size`` entries. The stored
+        value is a deep copy, and hits hand out deep copies
+        too, so no caller-held node ever aliases the cache.
+        """
+        cap = int(self.config.cache_size)
+        if cap <= 0:
+            return
+        self._node_cache[node.id] = copy.deepcopy(node)
+        self._node_cache.move_to_end(node.id)
+        while len(self._node_cache) > cap:
+            self._node_cache.popitem(last=False)
+            self._cache_evictions += 1
 
     def __enter__(self) -> HebbianMemory:
         return self
@@ -1267,6 +1343,9 @@ class HebbianMemory:
                 memory_id, emotional_valence, str(source), self._tick()
             )
             self._conn.commit()
+            # RM-063: activation bumps the node's access_count
+            # and updated_at — a cached copy is now stale.
+            self._cache_invalidate_locked(memory_id)
             return total
 
     @_storage_write("activate_batch")
@@ -1301,9 +1380,13 @@ class HebbianMemory:
         with self._lock:
             self._get_conn()
             if len(ids) >= _HUGE_BATCH_MIN_IDS:
-                return self._activate_batch_bulk_locked(
+                result = self._activate_batch_bulk_locked(
                     ids, emotional_valence, str(source), at
                 )
+                # RM-063: every activated id's node row changed.
+                for mid in ids:
+                    self._cache_invalidate_locked(mid)
+                return result
             for mid in ids:
                 self._log_activation_locked(mid, emotional_valence, str(source), at)
             created = 0
@@ -1313,6 +1396,8 @@ class HebbianMemory:
                 if self._wire_pair_locked(a, b, at):
                     created += 1
             self._conn.commit()
+            for mid in ids:
+                self._cache_invalidate_locked(mid)
             return {
                 "activated": len(ids),
                 "pairs_wired": pairs,
@@ -1824,6 +1909,13 @@ class HebbianMemory:
                 self._conn.rollback()
                 raise
             self._conn.commit()
+            # RM-063: a cached entry for this id (it cannot
+            # exist for a genuinely new id, but an idempotent
+            # hit's row is unchanged — invalidation is the
+            # uniform, always-safe road) must not outlive
+            # the write; backpressure victims are invalidated
+            # inside _apply_backpressure_locked itself.
+            self._cache_invalidate_locked(node_id)
             if is_new:
                 self._apply_backpressure_locked()
             if self.config.debug_log_content:
@@ -1919,6 +2011,10 @@ class HebbianMemory:
                 self._conn.rollback()
                 raise
             self._conn.commit()
+            # RM-063: no cached entry survives a batch write
+            # to its id (see remember()).
+            for _node_id in ids:
+                self._cache_invalidate_locked(_node_id)
             if created:
                 self._apply_backpressure_locked()
             if self.config.debug_log_content:
@@ -1973,13 +2069,43 @@ class HebbianMemory:
         )
 
     def get_node(self, memory_id: int) -> MemoryNode | None:
-        """One node by id, or None. PURE READ."""
+        """One node by id, or None. PURE READ.
+
+        With ``cache_size`` > 0 (RM-063) a hit is served
+        from this object's warm cache — a deep copy of the
+        cached node, so mutating the result touches neither
+        the cache nor the store. The cache is per-object
+        only: writes through this object invalidate the
+        entries they change (never stale for own writes),
+        while a write through another object or process on
+        the same file is not seen until eviction or an own
+        write to that id — see ``docs/WARM_CACHES.md``.
+        A miss is never cached. With the default
+        ``cache_size`` of 0 every call reads the store,
+        exactly the pre-RM-063 behaviour. A pure read
+        either way: the store is never mutated, and the
+        hit/miss accounting lives in ``cache_stats``, not
+        in the pinned-pure ``health()``/``stats()``
+        snapshots.
+        """
         memory_id = _check_memory_id(memory_id)
+        if int(self.config.cache_size) > 0:
+            with self._lock:
+                self._get_conn()
+                cached = self._node_cache.get(memory_id)
+                if cached is not None:
+                    self._node_cache.move_to_end(memory_id)
+                    self._cache_hits += 1
+                    return copy.deepcopy(cached)
+                self._cache_misses += 1
         with self._lock:
             row = self._get_conn().execute(
                 "SELECT * FROM nodes WHERE id = ?", (memory_id,)
             ).fetchone()
-        return self._row_to_node(row) if row else None
+            node = self._row_to_node(row) if row else None
+            if node is not None:
+                self._cache_store_locked(node)
+            return node
 
     @_storage_write("retrieve")
     def retrieve(
@@ -2052,6 +2178,10 @@ class HebbianMemory:
                         node.id, node.emotional_valence, "retrieve:touch", at
                     )
                 self._conn.commit()
+                # RM-063: touch is a write — each returned
+                # node's access_count changed in the store.
+                for node in rows_out:
+                    self._cache_invalidate_locked(node.id)
         if self.config.debug_log_content:
             # RM-044: content in logs only here, only at DEBUG,
             # only with the flag on (see remember()).
@@ -2166,6 +2296,8 @@ class HebbianMemory:
                     "update would duplicate an existing node (same content, category, path)"
                 ) from exc
             self._conn.commit()
+            # RM-063: the updated row must not be served stale.
+            self._cache_invalidate_locked(node_id)
             return True
 
     def _forget_rows_locked(self, memory_id: int) -> bool:
@@ -2213,6 +2345,8 @@ class HebbianMemory:
             self._get_conn()
             removed = self._forget_rows_locked(memory_id)
             self._conn.commit()
+            # RM-063: a forgotten node leaves the cache too.
+            self._cache_invalidate_locked(memory_id)
             return removed
 
     @_storage_write("secure_forget")
@@ -2259,6 +2393,10 @@ class HebbianMemory:
                 purge_forgotten_content(
                     self._db_path, self._conn, self.config.backup_keep
                 )
+            # RM-063: a securely forgotten node leaves the
+            # cache too — its content must not linger in
+            # memory on this object either.
+            self._cache_invalidate_locked(memory_id)
             return removed
 
     def delete(self, node_id: int) -> bool:
@@ -2296,6 +2434,10 @@ class HebbianMemory:
             (overflow,),
         ).fetchall()
         for (victim,) in victims:
+            # RM-063: a pruned node must leave the warm cache
+            # in the same breath — this is the one write road
+            # whose victims its callers cannot name.
+            self._cache_invalidate_locked(int(victim))
             self._conn.execute("DELETE FROM nodes WHERE id = ?", (victim,))
             self._conn.execute(
                 "DELETE FROM hebbian_connections WHERE memory_a_id = ? OR memory_b_id = ?",

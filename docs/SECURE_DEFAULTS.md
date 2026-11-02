@@ -91,6 +91,7 @@ reader most needs to know:
 | `integrity_attestation` | `False` | Safe-off | Same shape as `store_encryption`: needs `integrity_passphrase`. A marked store refuses unattested opens (RM-050). Keep. |
 | `integrity_passphrase` | `None` | Safe-none | Same judgement as `encryption_passphrase`. Keep. |
 | `max_spread_candidates` | `100000` | Bounded | The RM-053 query-cost ceiling (TH-13); a bite returns the partial result and is visible in `last_spread_activation_stats`. Keep. |
+| `cache_size` | `0` | Safe-off | The RM-063 warm `get_node` cache, off by default: a cache trades freshness for speed and is per-object only (another object's writes are not seen until eviction or an own write), so the safe default is no cache — every read reads the store. When explicitly enabled it is bounded (validated `>= 0`, LRU eviction at the bound) and own writes always invalidate. Judged at RM-063, the slice that added it. Keep. |
 
 ## Huginn — field by field
 
@@ -115,6 +116,7 @@ reader most needs to know:
 | `store_encryption` | `False` | Safe-off | Same judgement as Muninn's (RM-049); local backend only — the Qdrant server owns its disk. The guide now names the field (it was missing — fixed in this slice). Keep. |
 | `encryption_passphrase` | `None` | Safe-none | Same judgement as Muninn's. Keep. |
 | `max_search_candidates` | `10000` | Bounded | The RM-053 query-cost ceiling (TH-13), local backend only; a bite is visible in `last_search_stats`. Keep. |
+| `cache_size` | `0` | Safe-off | The RM-063 warm `get` cache, off by default — the same judgement as Muninn's: per-object only, so the freshness trade must be an explicit choice. The cache lives in the facade and covers both backends; when enabled it is bounded with LRU eviction and own writes always invalidate. Judged at RM-063. Keep. |
 
 ## Drift found and fixed in this slice
 

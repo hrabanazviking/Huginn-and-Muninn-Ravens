@@ -359,6 +359,13 @@ print(node.access_count)      # 0 — nothing has activated it yet
 print(mem.get_node(999999))   # None
 ```
 
+With `cache_size` set above 0, `get_node` serves repeats
+from this object's bounded warm cache (RM-063): hits are
+copies, own writes invalidate, and the hit rate is visible
+in `mem.cache_stats`. The cache is per-object only — see
+`docs/WARM_CACHES.md` for the staleness window that buys
+the speed.
+
 ### Retrieve: `retrieve`, `touch=False` by default
 
 ```python
@@ -727,6 +734,7 @@ config = MuninnConfig(db_path="~/.hermes/memory/muninn_hebbian.db")
 | `integrity_attestation` | `bool` | `False` | Integrity attestation (RM-050, threat TH-10): when `True`, every `activation_log` row extends an HMAC-SHA256 chain keyed by `integrity_passphrase` (never stored), and each open verifies the chain and reports the verdict in `health()`'s `integrity_attestation` field — raw-SQL tampering with the log is detectable on open. A marked store refuses to open without the flag. Default `False` (see `docs/INTEGRITY_ATTESTATION.md`) | No range check — used as a boolean flag |
 | `integrity_passphrase` | `str \| None` | `None` | The passphrase the attestation chain key is derived from (RM-050). Required when `integrity_attestation` is `True`; excluded from `repr`; never stored, logged, or placed in an error string | Must be a string or `None` |
 | `max_spread_candidates` | `int` | `100000` | Query cost ceiling (RM-053, threat TH-13): the maximum candidate edges (neighbour rows) one `spread_activation` call may examine. When the ceiling bites the expansion stops deterministically (id order) and the call returns what it has; the bite is recorded in `last_spread_activation_stats` (see `docs/QUERY_COST_CAPS.md`) | Must be >= 1 |
+| `cache_size` | `int` | `0` | Warm cache (RM-063): the maximum nodes this object's `get_node` cache holds in memory (LRU eviction). `0` disables it — every `get_node` reads the store. Own writes always invalidate; the cache is per-object only, so another object's writes are not seen until eviction or an own write to that id (see `docs/WARM_CACHES.md`). Accounting in `cache_stats` | Must be >= 0 |
 
 **Secure defaults (RM-055, threat TH-15).** Every default
 in this table was re-judged for safety in one recorded

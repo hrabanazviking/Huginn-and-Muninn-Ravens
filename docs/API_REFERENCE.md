@@ -60,6 +60,7 @@ class MuninnConfig:
     integrity_attestation: bool = False
     integrity_passphrase: str | None = None  # repr excluded
     max_spread_candidates: int = 100000
+    cache_size: int = 0
 ```
 
 | Field | Meaning |
@@ -83,6 +84,7 @@ class MuninnConfig:
 | `integrity_attestation` | Integrity attestation (RM-050, threat TH-10): when `True`, every `activation_log` row extends an HMAC-SHA256 chain keyed by `integrity_passphrase` (derived with PBKDF2, never stored), and each open verifies the chain over the log as it stands, reporting `"ok"` / `"tamper_detected"` in `health()`'s `integrity_attestation` field. A marked store refuses to open without the flag. Default `False`. See `docs/INTEGRITY_ATTESTATION.md`. |
 | `integrity_passphrase` | The passphrase the attestation chain key is derived from (RM-050); required when `integrity_attestation` is `True`, excluded from `repr(config)`, never stored or logged. A wrong passphrase is reported as `tamper_detected` — the chain cannot tell the two apart, by design. |
 | `max_spread_candidates` | Query cost ceiling (`>= 1`, RM-053, threat TH-13): the maximum candidate edges (neighbour rows) one `spread_activation` call may examine. When the ceiling bites the expansion stops deterministically (id order) and the call returns what it has; the bite is recorded in `HebbianMemory.last_spread_activation_stats`. See `docs/QUERY_COST_CAPS.md`. |
+| `cache_size` | Warm cache (`>= 0`, RM-063): the maximum nodes this object's `get_node` cache holds in memory (LRU eviction). `0` (default) disables it — every `get_node` reads the store. Own writes always invalidate; per-object only, so another object's writes are not seen until eviction or an own write to that id. Accounting in the `cache_stats` property. See `docs/WARM_CACHES.md`. |
 
 All values are validated in `__post_init__`; an illegal value raises
 `MuninnConfigurationError` at construction, never mid-write.
@@ -371,7 +373,7 @@ Acceptance record (10k-node ingest vs the loop):
 
 #### `get_node(memory_id: int) -> Optional[MemoryNode]`
 
-**READ (pure).** One node by id, or `None`.
+**READ (pure).** One node by id, or `None`. With `cache_size` > 0 the result may come from this object's warm cache (RM-063): a copy, never stale for this object's own writes, per-object only — see `docs/WARM_CACHES.md`. The object's `cache_stats` property reports `enabled`, `size`, `cap`, `hits`, `misses`, `evictions` and `hit_rate` for the cache; it is deliberately not a `health()`/`stats()` field, so those snapshots stay pure.
 
 #### `retrieve(query: Optional[str] = None, path: Optional[str] = None, tags: Optional[List[str]] = None, memory_type: Optional[str] = None, top_k: int = 5, *, category: Optional[str] = None, touch: bool = False) -> List[MemoryNode]`
 
@@ -695,6 +697,7 @@ class HuginnConfig:
     store_encryption: bool = False
     encryption_passphrase: str | None = None  # repr excluded
     max_search_candidates: int = 10000
+    cache_size: int = 0
 ```
 
 | Field | Meaning |
@@ -716,6 +719,7 @@ class HuginnConfig:
 | `store_encryption` | Store encryption (RM-049, threat TH-09): when `True`, the **local** store's content-bearing values are sealed with application-level envelope encryption (per-store data key wrapped under `encryption_passphrase`) before they reach SQL, the term index stores keyed HMAC tags, and `content_hash` becomes a keyed lookup tag. A marked store is encrypted for its whole life and refuses plain opens. Default `False`. The Qdrant backend has no local file. See `docs/STORE_ENCRYPTION.md`. |
 | `encryption_passphrase` | The passphrase the local store's data key is wrapped under (RM-049); required when `store_encryption` is `True`, excluded from `repr(config)`, never stored or logged. There is no recovery: a lost passphrase is a lost store. |
 | `max_search_candidates` | Query cost ceiling (`>= 1`, RM-053, threat TH-13): the maximum candidate documents one local-backend search may score. When more candidates exist, the lowest-id candidates are scored — deterministically, before the category/importance filter — and the rest are not considered by that call; the bite is recorded in `HuginnMemory.last_search_stats`. Local backend only; the Qdrant server owns its query cost. See `docs/QUERY_COST_CAPS.md`. |
+| `cache_size` | Warm cache (`>= 0`, RM-063): the maximum documents this object's `get` cache holds in memory (LRU eviction), held in the facade so it covers both backends. `0` (default) disables it — every `get` reads the backend. Own writes always invalidate; per-object only, so another object's writes are not seen until eviction or an own write to that id. Accounting in the `cache_stats` property. See `docs/WARM_CACHES.md`. |
 
 All values are validated in `__post_init__`; illegal values raise
 `HuginnConfigurationError` at construction.
@@ -829,7 +833,7 @@ Only positive scores are returned.
 #### `get(memory_id: int) -> Optional[Dict[str, Any]]`
 
 **READ (pure).** One memory by id, or `None`. The dict has the same
-keys as a search result **without** `score`.
+keys as a search result **without** `score`. With `cache_size` > 0 the result may come from this object's facade warm cache (RM-063): a copy, never stale for this object's own writes, per-object only — see `docs/WARM_CACHES.md`. The object's `cache_stats` property reports `enabled`, `size`, `cap`, `hits`, `misses`, `evictions` and `hit_rate`; reading it never constructs the backend.
 
 #### `delete(memory_id: int) -> bool`
 

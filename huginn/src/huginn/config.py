@@ -237,6 +237,29 @@ class HuginnConfig:
             what the unbounded search would return. Applies
             to the local backend only; the Qdrant server
             owns its own query cost.
+        cache_size: Warm cache (RM-063): the maximum number
+            of documents this object's ``get`` cache holds
+            in memory, least-recently-used eviction first
+            (record ``docs/WARM_CACHES.md``). ``0`` (the
+            default) disables the cache: every ``get``
+            reads the backend, exactly the pre-RM-063
+            behaviour. When positive, a ``get`` hit is
+            served from memory and counted in
+            ``cache_stats``; every write through the *same
+            object* (``upsert_memory``, ``delete``,
+            ``secure_forget``) invalidates the entry it
+            changes, so a hit is never stale for this
+            object's own writes. The cache is **per-object
+            only**: a write through another object or
+            process — or directly on a Qdrant server — is
+            NOT seen until the entry is evicted or this
+            object writes that id itself; that staleness
+            window is the documented price of the cache,
+            and it is why the cache is off by default.
+            The cache lives in the facade, so it covers
+            both backends. Cached documents are copies:
+            mutating a returned dict never changes the
+            cache or the store.
     """
 
     backend: str = "auto"
@@ -260,6 +283,7 @@ class HuginnConfig:
     # RM-049: repr=False — the passphrase never appears in repr(config).
     encryption_passphrase: str | None = field(default=None, repr=False)
     max_search_candidates: int = 10000
+    cache_size: int = 0
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:
@@ -303,6 +327,9 @@ class HuginnConfig:
         max_search_candidates = _coerce_int(self.max_search_candidates)
         if max_search_candidates is None or max_search_candidates < 1:
             raise HuginnConfigurationError("max_search_candidates must be >= 1")
+        cache_size = _coerce_int(self.cache_size)
+        if cache_size is None or cache_size < 0:
+            raise HuginnConfigurationError("cache_size must be >= 0")
 
     def resolved_local_path(self) -> Path:
         return Path(self.local_db_path).expanduser()

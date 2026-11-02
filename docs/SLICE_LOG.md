@@ -3274,3 +3274,83 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   the RM-062 build (extends the standing
   package-source sync note). Live Qdrant +
   sentence-transformers stay NOT PROVEN.
+
+## RM-063 — Warm caches
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Both packages gain an optional bounded
+  in-memory cache for their single-item read — Muninn's
+  `get_node`, Huginn's document `get` (held in the Huginn
+  facade, so it covers both backends) — behind one new
+  config field per package, `cache_size: int = 0`
+  (validated `>= 0`; the RM-018 goldens gained the
+  `config_cache_size` case and template in both packages,
+  66 / 70 CASE lines). **Off by default** — the RM-055
+  judgement extended in the same commit (rows added to
+  `docs/SECURE_DEFAULTS.md`): a cache trades freshness for
+  speed and is per-object only, so the safe default is the
+  pre-RM-063 behaviour, every read reading the store.
+  When enabled the cache is LRU-bounded at `cache_size`
+  entries; hits and the values stored are deep copies, so
+  a caller mutating a returned node/dict can never poison
+  the cache; misses are never cached. **Own writes always
+  invalidate** — Muninn: `remember` / `remember_many`
+  (their ids; backpressure victims are invalidated inside
+  `_apply_backpressure_locked`, the one road that knows
+  them), `update` / `move`, `activate` / `activate_batch`
+  and `retrieve(touch=True)` (activations change
+  `access_count` / `updated_at`), `forget` /
+  `secure_forget`; Huginn: `upsert_memory`, `delete`,
+  `secure_forget`. **Per-object only, stated plainly in
+  the record (`docs/WARM_CACHES.md`), both guides, both
+  INTERFACE files and the API reference:** a write through
+  another object or process (or directly on a Qdrant
+  server) is not seen until eviction or an own write to
+  that id — that staleness window is the documented price.
+  Accounting rides in a new dedicated `cache_stats`
+  property per package (`enabled` / `size` / `cap` /
+  `hits` / `misses` / `evictions` / `hit_rate`, lifetime
+  counts, invalidation never rewrites them) — the RM-053
+  pattern, deliberately outside the pinned-pure
+  `health()` / `stats()` snapshots; on Huginn, reading it
+  never constructs the backend. RM-019 goldens gained the
+  field and the property in both packages. No SQL added
+  (the RM-040 audit totals are unchanged), no schema or
+  signature change. New `tests/test_warm_caches.py`
+  (muninn 15, huginn 13): default-off + zeroed stats,
+  typed validation, exact hit/miss accounting, misses
+  never cached, LRU bound + eviction order, invalidation
+  on every write road above (incl. backpressure victims
+  and `retrieve(touch=True)`), caller-mutation copy
+  safety, the pinned per-object staleness window and its
+  end at an own write, health/stats purity under cached
+  reads, a hit proven not to read the store (raw-SQL
+  change behind the object's back), and on Huginn the
+  lazy `cache_stats` pin plus the facade cache proven
+  against a counting toy backend (the backend-agnostic
+  road). Negation against the RM-062 packages (RM-063
+  test files): warm-caches muninn **14 failed / 1
+  passed**, huginn **12 failed / 1 passed** (the pass in
+  each is the record-doc pin, which judges the tree not
+  the package), secure-defaults **2 failed** per
+  package, error-messages **1 failed / 2 passed** per
+  package, api-surface **1 failed / 2 passed** per
+  package; slice-log pins **2 failed** per package.
+  **Bifröst re-verification PASS** (public API grew
+  additively — a config field and a property per
+  package; fresh venv on `/var/tmp`, bifrost source
+  from the git-clean pinned b66e98cc checkout — its own
+  suites **25 passed**; BifrostBridge smoke PASS —
+  store mimir_id+huginn_id, search 1 merged result,
+  recall grew the Muninn activation log exactly +1,
+  decay/consolidate reports, `decay_wall_clock()` armed
+  at 0 days, stats over all three backends, both raven
+  health dicts carry `sqlite_version` 3.45.1, huginn
+  local via auto-fallback, double close safe; evidence
+  `/var/tmp/rm063/evidence/`). Full suites, ruff and
+  mypy on the final banking tree are recorded in
+  `CAMPAIGN_STATE.md`. Founding tree NEEDS A SYNC for
+  the RM-063 build (extends the standing package-source
+  sync note). Live Qdrant + sentence-transformers stay
+  NOT PROVEN.
