@@ -1,7 +1,10 @@
 # RM-004 golden schema snapshot - muninn store (sqlite_master, sqlite_% excluded)
 # Six tables + indexes. Update ONLY deliberately, in the same commit as a schema change,
 # with migration proof against the pinned Bifrost contract (roadmap Part X governs schema changes).
+# RM-058: idx_conn_a_strength added deliberately — a covering index for the get_associations
+# ordering; tables and columns unchanged, created on every open so older stores gain it.
 index|idx_activation_memory|activation_log|CREATE INDEX idx_activation_memory ON activation_log(memory_id)
+index|idx_conn_a_strength|hebbian_connections|CREATE INDEX idx_conn_a_strength ON hebbian_connections( memory_a_id, strength DESC, co_activation_count DESC, memory_b_id ASC, consolidated, last_coactivated_at)
 index|idx_conn_b|hebbian_connections|CREATE INDEX idx_conn_b ON hebbian_connections(memory_b_id)
 table|activation_log|activation_log|CREATE TABLE activation_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, memory_id INTEGER NOT NULL, activated_at TEXT NOT NULL, emotional_valence REAL NOT NULL DEFAULT 0.0, source TEXT NOT NULL DEFAULT 'api' )
 table|deleted_nodes|deleted_nodes|CREATE TABLE deleted_nodes ( memory_id INTEGER PRIMARY KEY, deleted_at TEXT NOT NULL )

@@ -1,0 +1,55 @@
+{
+  "package": "muninn",
+  "schema": 1,
+  "kind": "read_path",
+  "environment": {
+    "recorded_at": "2026-11-02T14:24:28.068585+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      1.97607421875,
+      2.8876953125,
+      3.6015625
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "uniform_get_associations": 7.0096939998620655,
+    "uniform_spread_depth2": 94.30517700002383,
+    "uniform_spread_depth3": 99.82801099977223,
+    "hub_get_associations_limit100": 2.8762550000465126,
+    "hub_get_associations_limit10000": 805.5846409997685,
+    "hub_spread_depth1": 19.785698000305274,
+    "hub_spread_depth2": 191.91700400006084
+  },
+  "details": {
+    "uniform": {
+      "n_nodes": 5000,
+      "directed_rows": 100000,
+      "samples": {
+        "get_associations": 200,
+        "spread_depth2": 50,
+        "spread_depth3": 20
+      }
+    },
+    "hub": {
+      "n_nodes": 10001,
+      "directed_rows": 20000,
+      "samples": {
+        "get_associations_limit100": 20,
+        "get_associations_limit10000": 20,
+        "spread_depth1": 3,
+        "spread_depth2": 3
+      }
+    },
+    "get_associations_query_plan": [
+      "SEARCH hebbian_connections USING COVERING INDEX idx_conn_a_strength (memory_a_id=? AND strength>?)"
+    ],
+    "unit": "median total ms for the labelled fixed sample batch (median of 3 runs)",
+    "storage_class": "tmpfs (tempfile default on this machine)"
+  }
+}

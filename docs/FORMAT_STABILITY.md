@@ -35,7 +35,11 @@ empty over lost data.
 Pinned byte-for-byte (normalised) by RM-004's golden schema
 snapshot: `activation_log`, `deleted_nodes`,
 `hebbian_connections`, `meta`, `node_activation`, `nodes`,
-plus indexes `idx_activation_memory` and `idx_conn_b`.
+plus indexes `idx_activation_memory` and `idx_conn_b`, and
+(since RM-058) `idx_conn_a_strength` — a covering index over
+`hebbian_connections` serving `get_associations`' ordering;
+it changes no table or column, is created on every open, and
+was banked with a Bifröst re-verification.
 
 | Table | Class | Promise |
 |---|---|---|

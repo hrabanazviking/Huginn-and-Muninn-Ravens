@@ -152,6 +152,14 @@ def test_update_field_name_injection_is_refused_typed(mem):
 EXPECTED_FSTR_TEMPLATES = {
     "PRAGMA busy_timeout={int(busy_timeout_ms)}",
     "UPDATE nodes SET {assignments} WHERE id = ?",
+    # RM-058: spread_activation's batched frontier query — the
+    # only interpolated value is the generated placeholder list
+    # (question marks only); every id still travels as a bound
+    # parameter. This replaces the per-node constant SELECT, so
+    # the site total below is unchanged.
+    "SELECT memory_a_id, memory_b_id, strength FROM hebbian_connections"
+    " WHERE memory_a_id IN ({placeholders}) AND strength >= ?"
+    " ORDER BY memory_a_id ASC, memory_b_id ASC",
 }
 # Every SQL-shaped f-string anywhere in the source is one of
 # the execute-site templates above (no SQL is built into a

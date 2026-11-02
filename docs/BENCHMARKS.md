@@ -102,6 +102,19 @@ shows (`stats()` is the outlier) — lives in `docs/ATLAS.md`.
 The atlas is a record, not a gate; RM-071 wires its
 operations into this gate.
 
+## Muninn read path (RM-058)
+
+`muninn/scripts/read_path.py` profiles `get_associations`
+and `spread_activation` at 100k edges (a 5,000-node ring
+graph with 100,000 directed rows, plus a 10,000-spoke hub
+graph), records the `get_associations` query plan, and
+serves as the before/after gate for the read-path changes:
+the covering index `idx_conn_a_strength` and spread's
+batched frontier queries. Record committed as
+`muninn/scripts/read_path.json`; the human record — profile,
+changes, median-of-three before/after table, and honest
+limits — lives in `docs/READ_PATH.md`.
+
 ## Reproducible corpus (RM-020)
 
 The corpora are synthetic and formula-generated — muninn's

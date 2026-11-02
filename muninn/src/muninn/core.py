@@ -122,6 +122,9 @@ CREATE TABLE IF NOT EXISTS hebbian_connections (
     PRIMARY KEY (memory_a_id, memory_b_id)
 );
 CREATE INDEX IF NOT EXISTS idx_conn_b ON hebbian_connections(memory_b_id);
+CREATE INDEX IF NOT EXISTS idx_conn_a_strength ON hebbian_connections(
+memory_a_id, strength DESC, co_activation_count DESC, memory_b_id ASC,
+consolidated, last_coactivated_at);
 CREATE TABLE IF NOT EXISTS node_activation (
     memory_id INTEGER PRIMARY KEY,
     total_activations INTEGER NOT NULL DEFAULT 0,
@@ -1424,7 +1427,10 @@ class HebbianMemory:
         Each dict: ``memory_id`` (the other end), ``strength``,
         ``co_activation_count``, ``consolidated``, ``last_coactivated_at``.
         Bifröst consumes ``[0]["strength"]`` as its associative boost,
-        so ordering by strength DESC is contractual.
+        so ordering by strength DESC is contractual. RM-058: the
+        ordering is served by the covering ``idx_conn_a_strength``
+        index, so a limited read of a high-degree node no longer
+        sorts its whole neighbourhood.
         """
         memory_id = _check_memory_id(memory_id)
         min_strength = _check_min_strength(min_strength)
@@ -1502,21 +1508,34 @@ class HebbianMemory:
             conn = self._get_conn()
             for _ in range(depth):
                 next_frontier: dict[int, float] = {}
-                for mid in sorted(frontier):
+                # RM-058: one batched query per chunk of frontier
+                # nodes instead of one query per node. The chunk's
+                # rows come back ordered by (memory_a_id,
+                # memory_b_id) — exactly the order the per-node
+                # walk examined candidates in (frontier ids sorted,
+                # neighbours in id order) — so the RM-053 cap still
+                # bites at the same candidate and every result,
+                # capped or not, is the per-node walk's result.
+                # Chunked at 500 ids so the bound-variable count
+                # stays under SQLite's legacy 999 limit.
+                frontier_ids = sorted(frontier)
+                for chunk_start in range(0, len(frontier_ids), 500):
                     if capped:
                         break
-                    level = frontier[mid]
+                    chunk = frontier_ids[chunk_start : chunk_start + 500]
+                    placeholders = ",".join("?" * len(chunk))
                     rows = conn.execute(
-                        "SELECT memory_b_id, strength FROM hebbian_connections"
-                        " WHERE memory_a_id = ? AND strength >= ?",
-                        (mid, float(min_strength)),
+                        f"SELECT memory_a_id, memory_b_id, strength FROM hebbian_connections"
+                        f" WHERE memory_a_id IN ({placeholders}) AND strength >= ?"
+                        " ORDER BY memory_a_id ASC, memory_b_id ASC",
+                        (*chunk, float(min_strength)),
                     ).fetchall()
-                    for other, strength in sorted(rows, key=lambda r: int(r[0])):
+                    for a_id, other, strength in rows:
                         if examined >= cap:
                             capped = True
                             break
                         examined += 1
-                        value = level * float(strength) * float(attenuation)
+                        value = frontier[a_id] * float(strength) * float(attenuation)
                         if value > next_frontier.get(other, 0.0):
                             next_frontier[other] = value
                 for mid, value in next_frontier.items():

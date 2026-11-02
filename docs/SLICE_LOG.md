@@ -2860,3 +2860,86 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   stands. Live Qdrant + sentence-transformers stay
   NOT PROVEN.
   Banking verification: see `CAMPAIGN_STATE.md`.
+
+## RM-058 — Muninn read path
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The atlas (RM-057) showed Muninn reads flat
+  to 100k *nodes* — on a store with only ~4,000 connection
+  rows. This slice profiles `get_associations` and
+  `spread_activation` at **100k edges** with a new gate
+  script, `muninn/scripts/read_path.py` (deterministic
+  graphs: a 5,000-node ring with 100,000 directed rows,
+  degree 20; and a hub with 10,000 spokes, 20,000 directed
+  rows), run unchanged on the pre- and post-slice trees,
+  three full runs per tree, medians reported. The profile
+  found the pain exactly at the hub: `get_associations`
+  with the default limit cost ~10 ms/call (plan: PK-index
+  search + `USE TEMP B-TREE FOR ORDER BY` — all 10,000 hub
+  rows fetched and sorted to return 100), and depth-2
+  `spread_activation` from the hub issued one query per
+  frontier node (10,001 queries) plus a redundant Python
+  re-sort of rows the PK index already orders. Two changes,
+  nothing else: (1) covering index `idx_conn_a_strength`
+  on `hebbian_connections (memory_a_id, strength DESC,
+  co_activation_count DESC, memory_b_id ASC, consolidated,
+  last_coactivated_at)` — the first four keys are the
+  query's filter + ordering, the last two are trailing
+  keys carrying the remaining selected columns (this
+  machine's SQLite build rejects `INCLUDE` outright,
+  probed directly on 3.45.1; trailing keys do the job).
+  No table or column changed; the schema script creates
+  the index on every open, so pre-RM-058 stores gain it on
+  their next open (test-pinned). (2) `spread_activation`
+  reads each depth level in chunks of 500 frontier ids
+  (`IN (...)` bound parameters, `ORDER BY memory_a_id,
+  memory_b_id`) — exactly the old walk's candidate order,
+  so results and the RM-053 cap's bite point are
+  bit-for-bit preserved (parity pinned against an
+  independent reference walk in the new tests, including
+  a cap bite inside the second chunk); the new SQL shape
+  is a pinned template in the RM-040 audit (site total
+  unchanged — one constant site became the template).
+  Gate numbers (median of 3 runs per tree, sample totals,
+  tmpfs, loaded VM): hub `get_associations` limit=100 ×20
+  **207.2 → 3.1 ms (~67×)**; hub limit=10000 ×20
+  1,870.9 → 1,091.4 ms (~1.7×); hub spread depth2
+  **208.3 → 95.3 ms (~2.2×)**; hub spread depth1 71.1 →
+  76.9 ms (no win claimed — one query either way, Python
+  row loop dominates); uniform reads flat (get ×200
+  10.7 → 7.2 ms, spread depth2 ×50 96.0 → 90.0 ms,
+  depth3 ×20 99.6 → 96.2 ms). After plan: `SEARCH ...
+  USING COVERING INDEX idx_conn_a_strength`, no temp
+  b-tree. Record committed at `muninn/scripts/read_path.json`;
+  human record in `docs/READ_PATH.md`; pointers in
+  `docs/BENCHMARKS.md`; `docs/FORMAT_STABILITY.md` names
+  the new index beside the other golden indexes. New
+  `tests/test_read_path.py` (10 tests, muninn only);
+  both `test_slice_log.py` EXPECTED pins extended to
+  RM-058. Negation against the RM-057 tree: muninn
+  **12 failed / 13 passed** (failures exactly on the
+  script/record/index/plan/audit-template/golden/format/
+  slice-log pins; the parity and limit semantics tests
+  pass on both trees, as they must), huginn **2 failed /
+  0 passed** (slice-log pins). **Bifröst re-verification
+  PASS** (schema gained an index: fresh venv, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  store/search/recall/decay/consolidate smoke PASS).
+  Full suites green in the RM-058 fresh venv on the final
+  banking tree (non-editable installs, encryption +
+  qdrant extras, cryptography 50.0.2, qdrant-client
+  1.20.0, pytest 9.2.0): muninn **368 passed** (358+10),
+  huginn **306 passed** (slice-log pin only); ruff check
+  clean (both packages, whole tree); mypy clean in a
+  deps-free tool venv per package (muninn 7 files,
+  huginn 9 files). Honest limits recorded in
+  `docs/READ_PATH.md`: the remaining hub costs are Python
+  (10k result dicts, the depth-1 row loop), and the index
+  is one more index maintained on connection writes —
+  RM-059/RM-060 measure write costs with it in place.
+  Founding tree NEEDS A SYNC for the index + batched
+  spread build (extends the standing package-source sync
+  note). Live Qdrant + sentence-transformers stay
+  NOT PROVEN.
+  Banking verification: see `CAMPAIGN_STATE.md`.

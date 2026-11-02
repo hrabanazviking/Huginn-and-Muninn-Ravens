@@ -63,12 +63,87 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   slices banked and pushed; evidence bundle in
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
-- Banked (Part V, in progress): RM-057.
-- Next: RM-058 in roadmap order (Muninn read path:
-  get_associations and spread_activation profiled at
-  100k edges; index/query changes only where the atlas
-  shows pain — the atlas shows reads flat, so evidence
-  first).
+- Banked (Part V, in progress): RM-057, RM-058.
+- Next: RM-059 in roadmap order (activation write path:
+  activate currently does several statements per call;
+  batch the counter/log/node updates into the fewest
+  statements that keep the semantics, proven by the
+  count-exact tests — with RM-058's new index in place
+  on the write side, per the READ_PATH record).
+- **RM-058 BANKED 2026-11-02 (keeper tick ~09:06 EST):**
+  Muninn read path — BENCH. New gate script
+  `muninn/scripts/read_path.py` profiles
+  `get_associations` + `spread_activation` at 100k
+  edges (5,000-node ring, 100,000 directed rows, degree
+  20; hub with 10,000 spokes, 20,000 directed rows),
+  run unchanged on the pre- and post-slice trees, three
+  full runs per tree, medians reported. Pain found at
+  the hub only: limited `get_associations` fetched and
+  temp-b-tree-sorted all 10,000 hub rows (~10 ms/call),
+  and hub depth-2 spread issued one query per frontier
+  node (10,001 queries) plus a redundant Python re-sort.
+  Two changes: (1) covering index `idx_conn_a_strength`
+  (memory_a_id, strength DESC, co_activation_count DESC,
+  memory_b_id ASC, consolidated, last_coactivated_at as
+  trailing keys — this machine's SQLite build rejects
+  `INCLUDE` outright, probed on 3.45.1); no table/column
+  change, created by the schema script on every open so
+  pre-RM-058 stores gain it on next open (test-pinned);
+  RM-004 golden extended deliberately, FORMAT_STABILITY
+  names the index. (2) `spread_activation` reads each
+  depth level in chunks of 500 frontier ids (bound
+  `IN (...)`, ORDER BY a, b) — exactly the old walk's
+  candidate order, so results and the RM-053 cap bite
+  are bit-for-bit preserved (parity vs an independent
+  reference walk pinned, incl. a cap bite inside the
+  second chunk); new SQL shape pinned in the RM-040
+  audit templates, site total unchanged. Gate numbers
+  (medians of 3, tmpfs, loaded VM): hub get limit=100
+  ×20 **207.2 → 3.1 ms (~67×)**; hub get limit=10000
+  ×20 1,870.9 → 1,091.4 ms (~1.7×); hub spread depth2
+  **208.3 → 95.3 ms (~2.2×)**; hub spread depth1 71.1 →
+  76.9 ms (no win claimed); uniform reads flat. After
+  plan: COVERING INDEX idx_conn_a_strength, no temp
+  b-tree. Record at `muninn/scripts/read_path.json`
+  (after tree's third run, recorded
+  2026-11-02T14:24:28Z, load [1.98, 2.89, 3.60]);
+  human record `docs/READ_PATH.md`;
+  BENCHMARKS.md pointer. New
+  `tests/test_read_path.py` (10, muninn only);
+  `test_slice_log.py` EXPECTED to RM-058 in both.
+  Negation vs RM-057 tree: muninn **12 failed / 13
+  passed** (failures exactly on the new pins; parity
+  passes on both trees), huginn **2 failed / 0 passed**.
+  **Bifröst re-verification PASS** (fresh venv,
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS, evidence
+  `/var/tmp/rm058/evidence/`). Full suites green in
+  the RM-058 fresh venv on the final banking tree
+  (non-editable installs, encryption + qdrant extras,
+  cryptography 50.0.2, qdrant-client 1.20.0, pytest
+  9.2.0): muninn **368 passed** (358+10), huginn
+  **306 passed**; ruff clean (both packages, whole
+  tree); mypy clean in a deps-free tool venv (muninn
+  7 files, huginn 9 files). Slice-internal repairs:
+  the first after-run crashed on the `INCLUDE` clause
+  (this SQLite build rejects it — index rebuilt with
+  trailing keys); the RM-058 golden first missed the
+  wrapped DDL's stored `( memory_a_id` form and
+  FORMAT_STABILITY's index-naming pin caught the new
+  index unnamed — both fixed and re-verified in-slice;
+  a first suite run from a package-only copy skipped
+  34 repo-root tests, so the banking suites were run
+  from a full-repo copy (368/306, no skips).
+  Environment incidents: home-quota EDQUOT closed
+  repeatedly (freed: this campaign's spent RM-057
+  venvs, the shared pip cache, repo build/pycache
+  scratch); a service restart wiped /var/tmp mid-tick,
+  losing the first RM-058 venv set (rebuilt; all bench
+  records survived on home disk). No public API or
+  return-shape change. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  NEEDS A SYNC for the index + batched spread build
+  (extends the standing package-source sync note).
 - **RM-057 BANKED 2026-11-02 (keeper tick ~08:06 EST):**
   baseline atlas — Part V (Speed) opens. New
   `scripts/atlas.py` in both packages extends the
