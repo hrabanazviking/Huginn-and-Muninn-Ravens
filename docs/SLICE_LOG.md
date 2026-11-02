@@ -2659,3 +2659,56 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   NOT PROVEN. Founding tree NEEDS A SYNC for the
   RM-054 build (extends the standing package-source sync
   note). TH-14's register update remains RM-056's.
+
+## RM-055 — Secure defaults review
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Every config default re-judged for safety
+  (TH-15), record in `docs/SECURE_DEFAULTS.md`, with the
+  judgements also recorded in both guides' config tables.
+  All 38 fields (MuninnConfig 19, HuginnConfig 19) were
+  judged in four classes — safe-off/safe-none,
+  safety-positive on, bounded, compatibility-kept — and
+  **no default changed**: every default that could leak
+  content, weaken transport, execute or download is
+  already off, loopback-confined, or opt-in; every default
+  that is on is safety-positive (backups) or bounded
+  (finite timeouts, validated ceilings); and the three
+  compatibility-kept judgements are named plainly in the
+  record — `strict_path_safety=False` in both packages
+  (recorded behaviour; flipping it would refuse legitimate
+  symlinked deployments at open; the opt-in is the
+  locked-down road), Huginn's `backend="auto"` (the
+  Bifröst no-config contract; the fallback is not silent —
+  lazy loopback probe bounded by `qdrant_timeout`, reason
+  and effective backend in `health()`; `backend="local"`
+  never touches the network), and
+  `store_encryption` / `integrity_attestation` off (each
+  needs a passphrase a default must never invent; a marked
+  store refuses unprotected opens, so opting in is
+  complete). **Drift found and fixed in-slice
+  (never-leave-a-bug):** `store_encryption` and
+  `encryption_passphrase` were missing from both guides'
+  config tables, and the `docs/API_REFERENCE.md` config
+  listings had drifted behind RM-049/RM-050/RM-053 — the
+  missing rows and listings are added, so a deployment can
+  discover and judge every default from the guides. New
+  `tests/test_secure_defaults.py` (muninn 7, huginn 8)
+  pin the exact default of every field, the field set
+  itself (a new field fails until reviewed here), the
+  security flags' posture, the absence of any invented
+  secret, the bounded waits/ceilings, Huginn's default
+  transport posture (loopback http accepted, remote http
+  refused at construction), and that the record and the
+  guide name every field. Negation against the RM-054
+  tree: muninn **2 failed / 5 passed**, huginn **2 failed
+  / 6 passed** — the failures are exactly the record and
+  guide pins; the passes are the defaults that were
+  already reviewed-safe, which is the expected shape for a
+  review that changes no default. No package source, public
+  API, or schema change (docs + tests only), so no Bifröst
+  re-verification required. Founding tree needs no sync
+  for this slice; the standing package-source sync note
+  stands. TH-15's register update remains RM-056's.
+  Banking verification: see `CAMPAIGN_STATE.md`.

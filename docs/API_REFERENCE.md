@@ -55,6 +55,11 @@ class MuninnConfig:
     max_metadata_bytes: int = 65536
     strict_path_safety: bool = False
     debug_log_content: bool = False
+    store_encryption: bool = False
+    encryption_passphrase: str | None = None  # repr excluded
+    integrity_attestation: bool = False
+    integrity_passphrase: str | None = None  # repr excluded
+    max_spread_candidates: int = 100000
 ```
 
 | Field | Meaning |
@@ -73,6 +78,8 @@ class MuninnConfig:
 | `max_metadata_bytes` | Oversize ceiling (`>= 1`, RM-027): one node's metadata, in UTF-8 bytes of its serialized JSON form. Same refusal discipline as `max_content_bytes`. |
 | `strict_path_safety` | Path safety (RM-041, threat TH-02): when `True`, opening refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed `MuninnStorageError` before anything is created. Default `False` — paths are `~`-expanded, never symlink-resolved, parents unchecked (the recorded behaviour). See `docs/PATH_SAFETY.md`. |
 | `debug_log_content` | Log redaction (RM-044, threat TH-05): when `True`, `remember`/`retrieve` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False` — no log record at any level carries memory content. See `docs/LOG_REDACTION.md`. |
+| `store_encryption` | Store encryption (RM-049, threat TH-09): when `True`, the store's content-bearing values are sealed with application-level envelope encryption (per-store data key wrapped under `encryption_passphrase`) before they reach SQL, and `content_hash` becomes a keyed lookup tag. A marked store is encrypted for its whole life and refuses plain opens. Default `False`. See `docs/STORE_ENCRYPTION.md`. |
+| `encryption_passphrase` | The passphrase the store's data key is wrapped under (RM-049); required when `store_encryption` is `True`, excluded from `repr(config)`, never stored or logged. There is no recovery: a lost passphrase is a lost store. |
 | `integrity_attestation` | Integrity attestation (RM-050, threat TH-10): when `True`, every `activation_log` row extends an HMAC-SHA256 chain keyed by `integrity_passphrase` (derived with PBKDF2, never stored), and each open verifies the chain over the log as it stands, reporting `"ok"` / `"tamper_detected"` in `health()`'s `integrity_attestation` field. A marked store refuses to open without the flag. Default `False`. See `docs/INTEGRITY_ATTESTATION.md`. |
 | `integrity_passphrase` | The passphrase the attestation chain key is derived from (RM-050); required when `integrity_attestation` is `True`, excluded from `repr(config)`, never stored or logged. A wrong passphrase is reported as `tamper_detected` — the chain cannot tell the two apart, by design. |
 | `max_spread_candidates` | Query cost ceiling (`>= 1`, RM-053, threat TH-13): the maximum candidate edges (neighbour rows) one `spread_activation` call may examine. When the ceiling bites the expansion stops deterministically (id order) and the call returns what it has; the bite is recorded in `HebbianMemory.last_spread_activation_stats`. See `docs/QUERY_COST_CAPS.md`. |
@@ -651,6 +658,9 @@ class HuginnConfig:
     strict_path_safety: bool = False
     debug_log_content: bool = False
     allow_insecure_http: bool = False
+    store_encryption: bool = False
+    encryption_passphrase: str | None = None  # repr excluded
+    max_search_candidates: int = 10000
 ```
 
 | Field | Meaning |
@@ -669,6 +679,8 @@ class HuginnConfig:
 | `strict_path_safety` | Path safety (RM-041, threat TH-02): when `True`, opening the **local** store refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed `HuginnStorageError` before anything is created. Default `False` — paths are `~`-expanded, never symlink-resolved, parents unchecked (the recorded behaviour). The Qdrant backend has no local file and is unaffected. See `docs/PATH_SAFETY.md`. |
 | `debug_log_content` | Log redaction (RM-044, threat TH-05): when `True`, the facade's `upsert_memory`/`search` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False` — no log record at any level carries memory content. See `docs/LOG_REDACTION.md`. |
 | `allow_insecure_http` | Qdrant transport opt-out (RM-045, threat TH-06): when `True`, a plain-`http` Qdrant URL is accepted for a non-localhost host. Default `False` — remote Qdrant traffic must use `https`. See `docs/QDRANT_TRANSPORT.md`. |
+| `store_encryption` | Store encryption (RM-049, threat TH-09): when `True`, the **local** store's content-bearing values are sealed with application-level envelope encryption (per-store data key wrapped under `encryption_passphrase`) before they reach SQL, the term index stores keyed HMAC tags, and `content_hash` becomes a keyed lookup tag. A marked store is encrypted for its whole life and refuses plain opens. Default `False`. The Qdrant backend has no local file. See `docs/STORE_ENCRYPTION.md`. |
+| `encryption_passphrase` | The passphrase the local store's data key is wrapped under (RM-049); required when `store_encryption` is `True`, excluded from `repr(config)`, never stored or logged. There is no recovery: a lost passphrase is a lost store. |
 | `max_search_candidates` | Query cost ceiling (`>= 1`, RM-053, threat TH-13): the maximum candidate documents one local-backend search may score. When more candidates exist, the lowest-id candidates are scored — deterministically, before the category/importance filter — and the rest are not considered by that call; the bite is recorded in `HuginnMemory.last_search_stats`. Local backend only; the Qdrant server owns its query cost. See `docs/QUERY_COST_CAPS.md`. |
 
 All values are validated in `__post_init__`; illegal values raise

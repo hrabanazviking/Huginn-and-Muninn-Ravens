@@ -58,12 +58,61 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
   RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050,
-  RM-051, RM-052, RM-053, RM-054. Part IV (Security) is
-  under way — sixteen of eighteen slices banked.
-- Next: RM-055 in roadmap order (Part IV — secure
-  defaults review; cites TH-15). Every config default
-  re-judged for safety (timeouts, backup counts, fallback
-  behaviour) and the judgements recorded in the guides.
+  RM-051, RM-052, RM-053, RM-054, RM-055. Part IV
+  (Security) is under way — seventeen of eighteen slices
+  banked.
+- Next: RM-056 in roadmap order (Part IV — part gate:
+  security evidence bundle filed; threat model updated
+  with what the part actually built; closes Part IV).
+- **RM-055 BANKED 2026-11-02 (keeper tick ~07:05 EST):**
+  secure defaults review — TH-15, record in
+  `docs/SECURE_DEFAULTS.md`. All 38 config fields
+  (MuninnConfig 19, HuginnConfig 19) re-judged in four
+  classes (safe-off/safe-none, safety-positive on,
+  bounded, compatibility-kept) and **no default
+  changed**: every default that could leak content,
+  weaken transport, execute or download is already off,
+  loopback-confined, or opt-in; every on default is
+  safety-positive (backups on, keep 3, permissions
+  inherited) or bounded (finite 5000 ms / 2.0 s timeouts,
+  validated ceilings); the compatibility-kept three are
+  named plainly — `strict_path_safety=False` in both
+  (recorded behaviour; the opt-in is the locked-down
+  road), Huginn `backend="auto"` (Bifröst no-config
+  contract; fallback not silent — lazy loopback probe,
+  reason + effective backend in `health()`;
+  `backend="local"` never touches the network), and
+  `store_encryption` / `integrity_attestation` off (each
+  needs a passphrase a default must never invent; a
+  marked store refuses unprotected opens). **Drift found
+  and fixed in-slice:** `store_encryption` and
+  `encryption_passphrase` were missing from both guides'
+  config tables and the API_REFERENCE config listings had
+  drifted behind RM-049/RM-050/RM-053 — rows and listings
+  added; the new suites pin that the guide names every
+  field. New `tests/test_secure_defaults.py` (muninn 7,
+  huginn 8) pin every field's exact default, the field
+  set itself, flag postures, no invented secret, bounded
+  waits/ceilings, and Huginn's default transport posture.
+  Negation against the RM-054 tree: muninn **2 failed /
+  5 passed**, huginn **2 failed / 6 passed** (failures are
+  exactly the record/guide pins; passes are the defaults
+  already reviewed-safe — the expected shape when no
+  default changes). Full suites green in the RM-055
+  fresh venv on the final banking tree (TMPDIR +
+  installs on `~/workspace/.verify-tmp` — `/var/tmp` was
+  at 91% with prior slices' venvs; encryption + qdrant
+  extras installed): muninn **350 passed** (343+7),
+  huginn **298 passed** (290+8); ruff check clean on the
+  touched test files (a style-only Yoda-condition fix to
+  the two new test files after the full run was
+  re-verified targeted: 7 + 8 passed). No package source,
+  public API, or schema change (docs + tests only), so
+  no Bifröst re-verification required. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  needs no sync for this slice; the standing
+  package-source sync note stands. TH-15's register
+  update remains RM-056's.
 - **RM-054 BANKED 2026-11-02 (keeper tick ~06:26 EST):**
   error-message hygiene — TH-14, record in
   `docs/ERROR_MESSAGE_HYGIENE.md`. Fourteen wrap sites

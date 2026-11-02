@@ -608,7 +608,21 @@ config = HuginnConfig()   # all defaults — the Bifröst contract shape
 | `strict_path_safety` | `bool` | `False` | Path safety (RM-041, threat TH-02): when `True`, opening the **local** store refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed storage error before anything is created — for locked-down deployments. Default `False` keeps the recorded behaviour (paths never symlink-resolved, parents unchecked; see `docs/PATH_SAFETY.md`). The Qdrant backend has no local file | No range check — used as a boolean flag |
 | `debug_log_content` | `bool` | `False` | Log redaction (RM-044, threat TH-05): when `True`, the facade's `upsert_memory`/`search` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False`: no log record at any level carries memory content (see `docs/LOG_REDACTION.md`) | No range check — used as a boolean flag |
 | `allow_insecure_http` | `bool` | `False` | Qdrant transport opt-out (RM-045, threat TH-06): when `True`, a plain-`http` `qdrant_url` is accepted for a non-localhost host. Default `False`: `https` is required remotely; plain `http` is accepted only for loopback hosts (see `docs/QDRANT_TRANSPORT.md`) | No range check — used as a boolean flag |
+| `store_encryption` | `bool` | `False` | Store encryption (RM-049, threat TH-09): when `True`, the **local** store's content-bearing values are sealed with application-level envelope encryption (per-store data key wrapped under `encryption_passphrase`) before they reach SQL, the term index stores keyed HMAC tags, and `content_hash` becomes a keyed lookup tag. A marked store is encrypted for its whole life and refuses plain opens. Default `False` — encryption cannot default on, because it needs a passphrase a default cannot invent (see `docs/STORE_ENCRYPTION.md`). The Qdrant backend has no local file; the server owns its disk | No range check — used as a boolean flag |
+| `encryption_passphrase` | `str \| None` | `None` | The passphrase the local store's data key is wrapped under (RM-049). Required when `store_encryption` is `True`; excluded from `repr`; never stored, logged, or placed in an error string. There is no recovery: a lost passphrase is a lost store | Must be a string or `None` |
 | `max_search_candidates` | `int` | `10000` | Query cost ceiling (RM-053, threat TH-13): the maximum candidate documents one local-backend search may score. When more candidates exist, the lowest-id candidates are scored and the rest are not considered by that call; the bite is recorded in `HuginnMemory.last_search_stats` (see `docs/QUERY_COST_CAPS.md`). Local backend only | Must be >= 1 |
+
+**Secure defaults (RM-055, threat TH-15).** Every default
+in this table was re-judged for safety in one recorded
+review, `docs/SECURE_DEFAULTS.md`; none changed. The three
+judgements to carry into a deployment: `backend="auto"`'s
+fallback to local is not silent (the reason and the
+effective backend are in `health()`; set `backend="local"`
+to never touch the network, or `"qdrant"` to fail loud);
+plaintext `http` is confined to loopback by construction,
+with `allow_insecure_http` off; and the default `tfidf`
+embedder needs no network and downloads nothing — the
+`sentence-transformers` road is opt-in only.
 
 Example — local store with hashing vectors:
 

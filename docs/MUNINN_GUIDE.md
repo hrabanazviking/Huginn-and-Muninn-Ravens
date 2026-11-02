@@ -689,9 +689,22 @@ config = MuninnConfig(db_path="~/.hermes/memory/muninn_hebbian.db")
 | `max_metadata_bytes` | `int` | `65536` | Oversize ceiling (RM-027): one node's metadata, in UTF-8 bytes of its serialized JSON form; same refusal discipline | Must be >= 1 |
 | `strict_path_safety` | `bool` | `False` | Path safety (RM-041, threat TH-02): when `True`, opening refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed storage error before anything is created — for locked-down deployments. Default `False` keeps the recorded behaviour (paths never symlink-resolved, parents unchecked; see `docs/PATH_SAFETY.md`) | No range check — used as a boolean flag |
 | `debug_log_content` | `bool` | `False` | Log redaction (RM-044, threat TH-05): when `True`, `remember`/`retrieve` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False`: no log record at any level carries memory content (see `docs/LOG_REDACTION.md`) | No range check — used as a boolean flag |
+| `store_encryption` | `bool` | `False` | Store encryption (RM-049, threat TH-09): when `True`, the store's content-bearing values are sealed with application-level envelope encryption (per-store data key wrapped under `encryption_passphrase`) before they reach SQL, and `content_hash` becomes a keyed lookup tag. A marked store is encrypted for its whole life and refuses plain opens. Default `False` — encryption cannot default on, because it needs a passphrase a default cannot invent (see `docs/STORE_ENCRYPTION.md`) | No range check — used as a boolean flag |
+| `encryption_passphrase` | `str \| None` | `None` | The passphrase the store's data key is wrapped under (RM-049). Required when `store_encryption` is `True`; excluded from `repr`; never stored, logged, or placed in an error string. There is no recovery: a lost passphrase is a lost store | Must be a string or `None` |
 | `integrity_attestation` | `bool` | `False` | Integrity attestation (RM-050, threat TH-10): when `True`, every `activation_log` row extends an HMAC-SHA256 chain keyed by `integrity_passphrase` (never stored), and each open verifies the chain and reports the verdict in `health()`'s `integrity_attestation` field — raw-SQL tampering with the log is detectable on open. A marked store refuses to open without the flag. Default `False` (see `docs/INTEGRITY_ATTESTATION.md`) | No range check — used as a boolean flag |
 | `integrity_passphrase` | `str \| None` | `None` | The passphrase the attestation chain key is derived from (RM-050). Required when `integrity_attestation` is `True`; excluded from `repr`; never stored, logged, or placed in an error string | Must be a string or `None` |
 | `max_spread_candidates` | `int` | `100000` | Query cost ceiling (RM-053, threat TH-13): the maximum candidate edges (neighbour rows) one `spread_activation` call may examine. When the ceiling bites the expansion stops deterministically (id order) and the call returns what it has; the bite is recorded in `last_spread_activation_stats` (see `docs/QUERY_COST_CAPS.md`) | Must be >= 1 |
+
+**Secure defaults (RM-055, threat TH-15).** Every default
+in this table was re-judged for safety in one recorded
+review, `docs/SECURE_DEFAULTS.md`; none changed. The three
+judgements to carry into a deployment: backups are on and
+keep 3 generations (the copies inherit the store's
+permissions); every capability that could leak content,
+weaken transport, or attest/encrypt is off until you turn
+it on, and the passphrases are never invented for you; and
+`strict_path_safety` stays `False` by deliberate,
+recorded choice — turn it on for locked-down deployments.
 
 Example — a small, fast-fading store for a test:
 
