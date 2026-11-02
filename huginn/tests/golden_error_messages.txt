@@ -14,7 +14,7 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (61): every raise site except the three that
+# CASE lines (63): every raise site except the three that
 # cannot be triggered deterministically — "could not be
 # prepared" (needs a store whose schema script fails mid-open)
 # and the two "document insert reported success but returned
@@ -54,6 +54,8 @@ CASE tags_type | HuginnValidationError | tags must be a list of strings
 CASE documents_type | HuginnValidationError | documents must be a list of strings
 CASE embedder_unknown | HuginnConfigurationError | no vector embedder named 'bogus'
 CASE local_id_clash | HuginnValidationError | memory_id 99 is free but this content already lives at id 1; upsert there instead
+CASE local_hash_collision | HuginnValidationError | content hash collision: a different memory already holds this content hash (id 2); refusing to merge
+CASE qdrant_hash_collision | HuginnBackendError | content hash collision: a different memory already holds this content hash (id 2064778846143823744); refusing to merge
 CASE facade_closed | HuginnBackendError | HuginnMemory is closed
 CASE local_closed | HuginnStorageError | Huginn local backend is closed
 CASE corrupt_store | HuginnStorageError | huginn store <tmp_path>/bad.db is corrupt and no rolling backup verified; refusing to start empty over lost memory
@@ -82,7 +84,7 @@ CASE qdrant_malformed_payload | HuginnBackendError | Qdrant point 41 has a malfo
 CASE qdrant_malformed_point_id | HuginnBackendError | Qdrant point has a malformed payload
 CASE strict_symlink_open | HuginnStorageError | huginn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
 CASE strict_world_writable_open | HuginnStorageError | huginn store <tmp_path>/shared/h.db has a world-writable parent directory and strict path safety is enabled; refusing to open
-# TEMPLATE lines (74 raise sites, 62 distinct — the insert
+# TEMPLATE lines (77 raise sites, 64 distinct — the insert
 # guard's line is duplicated, once per insert path, and the
 # "could not be prepared" line likewise since RM-030 wrapped
 # the main connection in _db.py; RM-029 added the write-guard
@@ -103,7 +105,13 @@ CASE strict_world_writable_open | HuginnStorageError | huginn store <tmp_path>/s
 # host template listed twice (unparseable URL + missing host);
 # RM-046 added the two malformed-payload raise sites in
 # qdrant_backend.py — the point-id template and the id-less
-# template for a point whose id itself is malformed).
+# template for a point whose id itself is malformed);
+# RM-047 added the two hash-collision raise sites carrying
+# the one collision template — local_backend.py's double
+# check (a ValidationError) and qdrant_backend.py's derived-id
+# pre-check (a BackendError) — and a second "Qdrant upsert
+# failed" site in qdrant_backend.py, where the pre-check's
+# retrieve failure is wrapped as an upsert failure).
 TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
 TEMPLATE | HuginnBackendError | HuginnMemory is closed
 TEMPLATE | HuginnBackendError | Qdrant at {} unreachable: {}
@@ -114,7 +122,9 @@ TEMPLATE | HuginnBackendError | Qdrant point {} has a malformed payload
 TEMPLATE | HuginnBackendError | Qdrant retrieve failed: {}
 TEMPLATE | HuginnBackendError | Qdrant search failed: {}
 TEMPLATE | HuginnBackendError | Qdrant upsert failed: {}
+TEMPLATE | HuginnBackendError | Qdrant upsert failed: {}
 TEMPLATE | HuginnBackendError | could not create Qdrant collection {}: {}
+TEMPLATE | HuginnBackendError | content hash collision: a different memory already holds this content hash (id {}); refusing to merge
 TEMPLATE | HuginnConfigurationError | backend must be one of {}
 TEMPLATE | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 TEMPLATE | HuginnConfigurationError | backup_keep must be >= 0
@@ -158,6 +168,7 @@ TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (bu
 TEMPLATE | HuginnStorageError | huginn store {} is read-only and cannot be opened for writing
 TEMPLATE | HuginnStorageError | huginn write failed during {}: store is locked by another process (busy timeout expired)
 TEMPLATE | HuginnStorageError | huginn write failed during {}: {}
+TEMPLATE | HuginnValidationError | content hash collision: a different memory already holds this content hash (id {}); refusing to merge
 TEMPLATE | HuginnValidationError | content must be a non-empty string
 TEMPLATE | HuginnValidationError | content size {} bytes exceeds max_content_bytes ({} bytes)
 TEMPLATE | HuginnValidationError | category must be a string

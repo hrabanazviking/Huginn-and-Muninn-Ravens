@@ -18,6 +18,7 @@ be broken by a casual rewording. Two pins enforce that:
 """
 
 import ast
+import hashlib
 import os
 import sqlite3
 from collections import Counter
@@ -149,6 +150,21 @@ def _cases(tmp_path):
     fifo_path = tmp_path / "fifo.db"
     os.mkfifo(fifo_path)
     walonly_path.unlink()
+    # RM-047: a planted row carrying the victim content's real
+    # SHA-256 but different content — the idempotent-store
+    # fallback must refuse the hash hit instead of merging.
+    collide = HebbianMemory(MuninnConfig(db_path=str(tmp_path / "collide.db")))
+    _victim_hash = hashlib.sha256(("s:" + "gamma incoming").encode()).hexdigest()
+    _cconn = collide._get_conn()
+    _cconn.execute(
+        "INSERT INTO nodes (content, content_is_json, content_hash,"
+        " path, category, importance, emotional_valence, tags,"
+        " metadata, created_at, updated_at)"
+        " VALUES (?, 0, ?, '', 'general', 5, 0.0, '[]', '{}',"
+        " '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')",
+        ("planted different content", _victim_hash),
+    )
+    _cconn.commit()
     # RM-041: a symlinked store path and a world-writable
     # parent directory, both opened with strict path safety on.
     link_path = tmp_path / "link.db"
@@ -228,6 +244,7 @@ def _cases(tmp_path):
                 db_path=str(shared_dir / "m.db"), strict_path_safety=True
             )
         ),
+        "hash_collision": lambda: collide.remember("gamma incoming"),
         "content_surrogate": lambda: m.remember("bad \ud800 end"),
         "path_surrogate": lambda: m.remember("clean", path="a/\ud800"),
         "metadata_too_deep": lambda: m.remember("ok", metadata=_deep_dict(101)),

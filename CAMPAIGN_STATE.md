@@ -57,14 +57,64 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044, RM-045, RM-046. Part IV (Security) is under way —
-  eight of eighteen slices banked.
-- Next: RM-047 in roadmap order (Part IV — hash-collision
-  honesty; cites TH-08). RM-047 also inherits the discovery
-  recorded in the RM-046 entry below: Qdrant's derived point
-  id is unsigned 64-bit, so roughly half of derived ids
-  exceed the facade's `memory_id` ceiling of 2⁶³−1 and
-  cannot be fetched through `HuginnMemory.get`.
+  RM-044, RM-045, RM-046, RM-047. Part IV (Security) is
+  under way — nine of eighteen slices banked.
+- Next: RM-048 in roadmap order (Part IV — store
+  encryption, design; cites TH-09). A design slice only:
+  SQLCipher vs application-level envelope encryption vs
+  filesystem encryption, judged against stdlib-first and
+  the shared-schema law; output is a decision record, not
+  code. RM-049 then implements the decision.
+- **RM-047 BANKED 2026-11-02 (keeper tick ~02:26 EST):**
+  hash-collision honesty — TH-08, record in
+  `docs/HASH_COLLISION.md`. Both packages. The collision
+  assumption is documented (SHA-256 on all three store
+  roads; a natural collision implausible, and the design
+  no longer stands on that alone) and every
+  idempotent-store road gained the length+content double
+  check: Muninn `remember`'s INSERT-OR-IGNORE fallback
+  (stored text length, exact text and string/JSON kind
+  must equal the incoming values; Muninn's hash extracted
+  to `_content_hash` as the injection seam), Huginn local
+  `upsert`'s (hash, category) hit plus its
+  free-explicit-id discrimination, and Huginn Qdrant's
+  derived-id upsert (existing point retrieved and
+  RM-046-hygiene-checked first) all refuse a different
+  memory under one hash with the one typed message
+  (`content hash collision: a different memory already
+  holds this content hash (id {id}); refusing to merge`;
+  existing memory/point untouched). Explicit-id replace
+  and Muninn addressed `update` keep their semantics.
+  The inherited RM-046 discovery is FIXED: Qdrant derived
+  ids are masked to 63 bits, so every derived id fits the
+  facade's `memory_id` ceiling; over-ceiling contents
+  found deterministically now round-trip through the
+  facade. New `tests/test_hash_collision.py` (muninn 8
+  tests, huginn 12; forced collisions via the injected
+  constant hash function — the roadmap's named acceptance
+  method); negation against the RM-046 packages muninn
+  **4 failed / 4 passed**, huginn **7 failed / 5 passed**.
+  RM-018 goldens extended (muninn 53 CASE / 68 TEMPLATE;
+  huginn 63 CASE / 77 TEMPLATE, 64 distinct). No schema
+  change. **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm047-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence `/var/tmp/rm047-evidence/`).
+  Full suites green in the RM-047 fresh venv on the
+  final banking tree (TMPDIR on `/var/tmp`, installs
+  from `/var/tmp` copies): muninn **288 passed**
+  (280+8), huginn **248 passed** (236+12); ruff + mypy
+  floors clean (rm042 tool venv, mypy cache on
+  `/var/tmp`; mypy muninn 5 files, huginn 8 files).
+  Founding tree NEEDS A SYNC for the double checks, the
+  hash seam and the 63-bit derivation (extends the
+  standing package-source sync note). Environment,
+  honestly: the home quota (EDQUOT) was full at this
+  tick's start and repeatedly mid-tick; this keeper
+  freed the shared chroma cache (~88 MB), the
+  regenerated shared pip cache (~2.5 GB) and the shared
+  rattler download cache (~2.8 GB), and built all
+  RM-047 venvs and evidence on `/var/tmp`.
 - **RM-046 BANKED 2026-11-02 (keeper tick ~01:26 EST):**
   Qdrant payload hygiene — TH-07, record in
   `docs/QDRANT_PAYLOAD.md`. Huginn-only slice. Write road

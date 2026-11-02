@@ -10,6 +10,15 @@ derived deterministically from the content hash — re-upserting the
 same memory naturally targets the same point, and identical content
 in the same category is one point (idempotent, like the local store).
 
+Hash-collision honesty (RM-047, threat TH-08): the derived id is
+the content hash truncated and masked to 63 bits, so it always
+fits the facade's ``memory_id`` ceiling. Before a derived-id
+upsert overwrites anything, the point already at that id must
+pass the length+content double check (same category, same
+content length, the exact content); a different memory there is
+a typed refusal, never a silent overwrite. See
+``docs/HASH_COLLISION.md``.
+
 Transport safety (RM-045, threat TH-06): the URL's scheme rule is
 enforced at config construction (https for remote hosts, plain http
 only for loopback or with an explicit opt-in). The API key is handed
@@ -63,11 +72,30 @@ def scrub_api_key(text: str, api_key: str | None) -> str:
 
 
 def _content_hash(content: str, category: str) -> str:
+    """RM-047: the content hash — SHA-256 of category + content.
+
+    The one hash function the idempotent-store path uses;
+    tests inject a constant replacement for it to force the
+    collisions SHA-256 makes implausible in nature (see
+    docs/HASH_COLLISION.md).
+    """
     return hashlib.sha256(f"{category}\x00{content}".encode()).hexdigest()
 
 
+#: RM-047: derived point ids are masked to 63 bits, so a derived
+#: id always fits the facade's ``memory_id`` ceiling
+#: (2⁶³−1, the signed-integer id space Bifröst merges by). The
+#: pre-RM-047 derivation used the full unsigned 64 bits, so
+#: roughly half of derived ids could be stored but never
+#: fetched through ``HuginnMemory.get`` (discovery recorded in
+#: RM-046's slice entry). Masking makes the derived space
+#: 63 bits wide; the collision surface that leaves is guarded
+#: by the length+content double check in ``upsert`` below.
+_DERIVED_ID_MASK = (1 << 63) - 1
+
+
 def _derived_id(content_hash: str) -> int:
-    return int.from_bytes(bytes.fromhex(content_hash[:16]), "big")
+    return int.from_bytes(bytes.fromhex(content_hash[:16]), "big") & _DERIVED_ID_MASK
 
 
 #: RM-046 (TH-07): the closed set of Qdrant payload keys, in the
@@ -184,6 +212,41 @@ class QdrantBackend:
             self._ensure_collection()
             client = self._ensure_client()
             models = self._models
+            if memory_id is None:
+                # RM-047 (TH-08): the derived id is a truncated
+                # hash, so an existing point at this id is the
+                # same memory only after the length+content
+                # double check — its payload (hygiene-checked
+                # first, RM-046) must carry the same category,
+                # a content of the same length, and that exact
+                # content. A different memory at the derived id
+                # — a full-hash collision, a truncation
+                # collision, or a co-tenant's point — is refused
+                # loudly instead of being silently overwritten.
+                # An explicit memory_id is the caller's own
+                # addressing and keeps its replace semantics.
+                try:
+                    existing = client.retrieve(
+                        collection_name=self.config.collection_name,
+                        ids=[point_id],
+                        with_payload=True,
+                    )
+                except Exception as exc:
+                    raise HuginnBackendError(
+                        f"Qdrant upsert failed: {self._scrub(exc)}"
+                    ) from exc
+                if existing:
+                    held = self._point_to_doc(existing[0])
+                    if (
+                        held["category"] != category
+                        or len(held["content"]) != len(content)
+                        or held["content"] != content
+                    ):
+                        raise HuginnBackendError(
+                            "content hash collision: a different memory already "
+                            f"holds this content hash (id {point_id}); "
+                            "refusing to merge"
+                        )
             # RM-046 (TH-07): the payload is this fixed dict —
             # exactly _PAYLOAD_KEYS, in that order. Caller values
             # (content, category, tags) are stored as values

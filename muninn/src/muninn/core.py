@@ -291,11 +291,24 @@ def _check_value_no_lone_surrogates(
         _check_no_lone_surrogates(str(value), what)
 
 
+def _content_hash(text: str, is_json: int) -> str:
+    """RM-047: the content hash — SHA-256 of the stored text with
+    its kind prefix (``s:`` for a string, ``j:`` for JSON).
+
+    This is the one hash function the idempotent-store path
+    uses; tests inject a constant replacement for it to force
+    the collisions SHA-256 makes implausible in nature (see
+    docs/HASH_COLLISION.md).
+    """
+    prefix = "j:" if is_json else "s:"
+    return hashlib.sha256((prefix + text).encode()).hexdigest()
+
+
 def _content_payload(content: Any) -> tuple[str, int, str]:
     """(stored_text, is_json, content_hash) for node content."""
     if isinstance(content, str):
         _check_no_lone_surrogates(content, "content")
-        return content, 0, hashlib.sha256(("s:" + content).encode()).hexdigest()
+        return content, 0, _content_hash(content, 0)
     _check_structure_depth(content, "content")
     _check_value_no_lone_surrogates(content, "content")
     try:
@@ -304,7 +317,7 @@ def _content_payload(content: Any) -> tuple[str, int, str]:
         raise MuninnValidationError(
             "content must be a string or JSON-serializable value"
         ) from exc
-    return text, 1, hashlib.sha256(("j:" + text).encode()).hexdigest()
+    return text, 1, _content_hash(text, 1)
 
 
 def _check_content_size(text: str, ceiling: int) -> None:
@@ -1191,7 +1204,10 @@ class HebbianMemory:
 
         Idempotent: storing the same content under the same category
         and path returns the existing node's id instead of duplicating
-        it (content-hash unique index) — safe under retries.
+        it (content-hash unique index) — safe under retries. The hit
+        is verified by a length+content double check (RM-047): a
+        different memory under the same hash raises a typed collision
+        error instead of being silently merged.
         """
         if content is None:
             raise MuninnValidationError("content must not be None")
@@ -1239,10 +1255,34 @@ class HebbianMemory:
                 is_new = True
             else:
                 row = self._conn.execute(
-                    "SELECT id FROM nodes WHERE content_hash = ? AND category = ? AND path = ?",
+                    "SELECT id, content, content_is_json FROM nodes"
+                    " WHERE content_hash = ? AND category = ? AND path = ?",
                     (content_hash, clean_category, clean_path),
                 ).fetchone()
-                node_id = int(row[0])
+                # RM-047 (TH-08): the hash alone does not prove
+                # identity. The idempotent hit is accepted only
+                # after the length+content double check — the
+                # stored text's length and then the stored text
+                # itself (and its kind) must equal what this
+                # call tried to store. A hash collision — real,
+                # crafted, or forced by an injected hash — lands
+                # here with different text under one hash, and
+                # is refused loudly instead of silently merging
+                # two memories into the existing node's id.
+                stored_text = row["content"]
+                if (
+                    len(stored_text) != len(text)
+                    or stored_text != text
+                    or int(row["content_is_json"]) != is_json
+                ):
+                    existing_id = int(row["id"])
+                    self._conn.rollback()
+                    raise MuninnValidationError(
+                        "content hash collision: a different memory already "
+                        f"holds this content hash (id {existing_id}); "
+                        "refusing to merge"
+                    )
+                node_id = int(row["id"])
                 is_new = False
             self._conn.commit()
             if is_new:

@@ -83,7 +83,31 @@ def _now() -> str:
 
 
 def _content_hash(content: str, category: str) -> str:
+    """RM-047: the content hash — SHA-256 of category + content.
+
+    The one hash function the idempotent-store path uses;
+    tests inject a constant replacement for it to force the
+    collisions SHA-256 makes implausible in nature (see
+    docs/HASH_COLLISION.md).
+    """
     return hashlib.sha256(f"{category}\x00{content}".encode()).hexdigest()
+
+
+def _check_not_a_collision(stored_content: str, content: str, existing_id: int) -> None:
+    """RM-047 (TH-08): the length+content double check.
+
+    A row found by (content_hash, category) is the same memory
+    only if its stored content has the same length as the
+    incoming content *and* is the incoming content. Anything
+    else is a hash collision: refuse loudly, naming only the
+    existing id — never merge, never overwrite.
+    """
+    if len(stored_content) != len(content) or stored_content != content:
+        raise HuginnValidationError(
+            "content hash collision: a different memory already "
+            f"holds this content hash (id {existing_id}); "
+            "refusing to merge"
+        )
 
 
 _R = TypeVar("_R")
@@ -307,20 +331,32 @@ class LocalBackend:
                     target_id = int(row["id"])
                 else:
                     clash = conn.execute(
-                        "SELECT id FROM documents WHERE content_hash = ? AND category = ?",
+                        "SELECT id, content FROM documents"
+                        " WHERE content_hash = ? AND category = ?",
                         (content_hash, category),
                     ).fetchone()
                     if clash is not None:
+                        # RM-047: a different memory under this
+                        # hash is a collision, not a clash.
+                        _check_not_a_collision(
+                            clash["content"], content, int(clash["id"])
+                        )
                         raise HuginnValidationError(
                             f"memory_id {memory_id} is free but this content already "
                             f"lives at id {int(clash['id'])}; upsert there instead"
                         )
             if target_id is None:
                 row = conn.execute(
-                    "SELECT id FROM documents WHERE content_hash = ? AND category = ?",
+                    "SELECT id, content FROM documents"
+                    " WHERE content_hash = ? AND category = ?",
                     (content_hash, category),
                 ).fetchone()
                 if row is not None:
+                    # RM-047 (TH-08): the idempotent hit counts
+                    # only after the length+content double
+                    # check — a colliding memory is refused,
+                    # never silently merged by the update below.
+                    _check_not_a_collision(row["content"], content, int(row["id"]))
                     target_id = int(row["id"])
             if target_id is not None:
                 self._deindex_terms_locked(target_id)

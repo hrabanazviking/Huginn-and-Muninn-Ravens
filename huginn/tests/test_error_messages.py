@@ -35,7 +35,7 @@ import pytest
 from huginn import HuginnMemory, semantic_search
 from huginn.config import HuginnConfig
 from huginn.local_backend import LocalBackend
-from huginn.qdrant_backend import QdrantBackend
+from huginn.qdrant_backend import QdrantBackend, _content_hash, _derived_id
 from huginn.text import HashingEmbedder, SentenceTransformerEmbedder
 
 GOLDEN = Path(__file__).parent / "golden_error_messages.txt"
@@ -153,6 +153,24 @@ class _MalformedClient:
         return [types.SimpleNamespace(id="bogus", payload={})]
 
 
+class _CollidingClient:
+    """RM-047: retrieve always hands back a well-formed point
+    (correct hash for its own content) holding different
+    content at the victim's derived id."""
+
+    def __init__(self, point):
+        self._point = point
+
+    def get_collections(self):
+        return types.SimpleNamespace(collections=[])
+
+    def get_collection(self, name):
+        return types.SimpleNamespace(name=name)
+
+    def retrieve(self, collection_name, ids, with_payload=False):
+        return [self._point]
+
+
 class _NoCollectionClient:
     def get_collections(self):
         return types.SimpleNamespace(collections=[])
@@ -194,6 +212,32 @@ def _cases(tmp_path):
     )
     first_id = h.upsert_memory("shared content")
     assert first_id == 1
+    # RM-047: a planted local row (id 2) carrying the victim
+    # content's real hash but different content — the
+    # idempotent upsert must refuse the hash hit.
+    _local_conn = h._ensure_backend()._conn
+    _local_conn.execute(
+        "INSERT INTO documents (content, content_hash, category,"
+        " importance, tags, emotional_valence, created_at, updated_at)"
+        " VALUES (?, ?, 'general', 5, '[]', 0.0,"
+        " '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')",
+        ("planted different content", _content_hash("collision victim", "general")),
+    )
+    _local_conn.commit()
+    # RM-047: a Qdrant point at the victim's derived id holding
+    # different content under its own correct hash.
+    _q_point = types.SimpleNamespace(
+        id=_derived_id(_content_hash("qdrant collision victim", "general")),
+        payload={
+            "content": "planted different content",
+            "category": "general",
+            "importance": 5,
+            "tags": [],
+            "emotional_valence": 0.0,
+            "content_hash": _content_hash("planted different content", "general"),
+        },
+    )
+    colliding = _qdrant_backend(_CollidingClient(_q_point))
     closed_local = LocalBackend(
         HuginnConfig(backend="local", local_db_path=str(tmp_path / "l.db"))
     )
@@ -329,6 +373,11 @@ def _cases(tmp_path):
         "documents_type": lambda: semantic_search("ravens", 123),
         "embedder_unknown": lambda: h._make_embedder("bogus"),
         "local_id_clash": lambda: h.upsert_memory("shared content", memory_id=99),
+        "local_hash_collision": lambda: h.upsert_memory("collision victim"),
+        "qdrant_hash_collision": lambda: colliding.upsert(
+            "qdrant collision victim", category="general", importance=5,
+            tags=[], emotional_valence=0.0,
+        ),
         "facade_closed": close_facade,
         "local_closed": lambda: closed_local.upsert(
             "x", category="general", importance=5, tags=[], emotional_valence=0.0

@@ -2065,3 +2065,82 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   scratch (the repo's build dirs and tool caches, the
   shared pip download cache) and built every RM-046
   venv on `/var/tmp` with its evidence there.
+
+## RM-047 — Hash-collision honesty
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/HASH_COLLISION.md` —
+  TH-08. Content-hash identity is SHA-256 on all three
+  store roads, and the collision assumption is now
+  documented (natural collision implausible; the design
+  does not stand on that alone). Every idempotent-store
+  road gained the length+content double check: a hash hit
+  is the same memory only after the stored content's
+  length and exact content (and, in Muninn, its string vs
+  JSON kind) are proven equal to the incoming values.
+  Muninn `remember`'s INSERT-OR-IGNORE fallback, Huginn
+  local `upsert`'s (hash, category) hit and its
+  free-explicit-id discrimination, and Huginn Qdrant's
+  derived-id upsert (the existing point retrieved and
+  hygiene-checked first) all refuse a different memory
+  under one hash with the one typed message —
+  `content hash collision: a different memory already
+  holds this content hash (id {id}); refusing to merge`
+  (ValidationError on the local roads, BackendError on
+  Qdrant; the existing memory/point untouched, the message
+  naming only the id). Explicit-id replace (Huginn) and
+  addressed `update` (Muninn) are not the idempotent path
+  and keep their semantics. The Qdrant derivation also
+  changed: derived ids are masked to 63 bits, fixing the
+  RM-046 discovery that roughly half of derived ids
+  exceeded the facade's `memory_id` ceiling of 2⁶³−1 and
+  could never be fetched through `HuginnMemory.get`; the
+  double check guards the truncated space that remains.
+  Muninn's hash was extracted to `_content_hash` as the
+  injection seam. Pinned by new
+  `tests/test_hash_collision.py` in both packages
+  (muninn 8 tests, huginn 12; forced collisions via the
+  injected constant hash function — the roadmap's named
+  acceptance method — different-length, same-length and
+  kind collisions refused, true duplicates / different
+  category / different path / explicit replaces
+  preserved; planted-row and planted-point shapes refused
+  without injection; derived-id ceiling proven with
+  deterministically found over-ceiling contents, one
+  round-tripping through the facade). Negation against
+  the RM-046 installed packages: muninn **4 failed /
+  4 passed**, huginn **7 failed / 5 passed** (failures
+  are exactly the new refusals and the ceiling fix;
+  passes are the preserved behaviours). RM-018 goldens
+  extended deliberately (muninn 53 CASE / 68 TEMPLATE;
+  huginn 63 CASE / 77 TEMPLATE, 64 distinct — the two
+  collision cases per package planted with real hashes,
+  plus a second `Qdrant upsert failed` template site for
+  the pre-check's wrapped retrieve failure). No schema
+  change. **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm047-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence `/var/tmp/rm047-evidence/`).
+  Full suites green in the RM-047 fresh venv on the
+  final banking tree (TMPDIR on `/var/tmp`, installs
+  from `/var/tmp` copies): muninn **288 passed**
+  (280+8), huginn **248 passed** (236+12); ruff +
+  mypy floors clean (rm042 tool venv, mypy cache on
+  `/var/tmp` after the home cache hit the quota and
+  mypy died with an internal error on the stale cache —
+  environment class, diagnosed; mypy muninn 5 files,
+  huginn 8 files). Founding tree (`~/workspace/ravens`)
+  NEEDS A SYNC for the double checks, the hash seam and
+  the 63-bit derivation (extends the standing
+  package-source sync note). TH-08 closed at the code
+  level this slice reviews; a live Qdrant round-trip
+  remains NOT PROVEN, and the register state is
+  re-checked at the RM-056 part gate, per the threat
+  model's rule. Environment, honestly: the home quota
+  (EDQUOT) was full at this tick's start and repeatedly
+  mid-tick; this keeper freed the shared chroma cache
+  (~88 MB), the regenerated shared pip cache (~2.5 GB)
+  and the shared rattler download cache (~2.8 GB), and
+  built every RM-047 venv and evidence dir on
+  `/var/tmp`.

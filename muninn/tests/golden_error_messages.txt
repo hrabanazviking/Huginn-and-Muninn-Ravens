@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (52): every raise site except the two that cannot
+# CASE lines (53): every raise site except the two that cannot
 # be triggered deterministically — "could not be prepared"
 # (needs a store whose schema script fails mid-open) and "node
 # insert reported success but returned no row id" (unreachable
@@ -62,6 +62,7 @@ CASE locked_remember | MuninnStorageError | muninn write failed during remember:
 CASE missing_main_wal | MuninnStorageError | muninn store <tmp_path>/walonly.db has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 CASE directory_store | MuninnStorageError | muninn store <tmp_path>/dir.db is a directory, not a database file; refusing to open
 CASE nonfile_store | MuninnStorageError | muninn store <tmp_path>/fifo.db is not a regular file; refusing to open
+CASE hash_collision | MuninnValidationError | content hash collision: a different memory already holds this content hash (id 1); refusing to merge
 CASE content_surrogate | MuninnValidationError | content must not contain lone surrogates
 CASE path_surrogate | MuninnValidationError | path must not contain lone surrogates
 CASE metadata_too_deep | MuninnValidationError | metadata nesting depth exceeds maximum of 100
@@ -69,7 +70,7 @@ CASE content_too_deep | MuninnValidationError | content nesting depth exceeds ma
 CASE tags_oversize | MuninnValidationError | tags size 14 bytes exceeds max_metadata_bytes (8 bytes)
 CASE strict_symlink_open | MuninnStorageError | muninn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
 CASE strict_world_writable_open | MuninnStorageError | muninn store <tmp_path>/shared/m.db has a world-writable parent directory and strict path safety is enabled; refusing to open
-# TEMPLATE lines (67 raise sites; RM-025 added the
+# TEMPLATE lines (68 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
 # RM-028 added the three path guards; RM-029 added the
@@ -86,7 +87,8 @@ CASE strict_world_writable_open | MuninnStorageError | muninn store <tmp_path>/s
 # probe's quick_check stage), and the write guard's locked
 # raise in core.py; RM-041 added the two strict path-safety
 # raise sites in _db.py's pre-flight — the symlink template
-# and the world-writable-parent template).
+# and the world-writable-parent template; RM-047 added the
+# hash-collision raise site in core.py's remember fallback).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -123,6 +125,7 @@ TEMPLATE | MuninnStorageError | muninn write failed during {}: {}
 TEMPLATE | MuninnStorageError | node insert reported success but returned no row id
 TEMPLATE | MuninnValidationError | attenuation must be in (0, 1]
 TEMPLATE | MuninnValidationError | cannot associate a memory with itself
+TEMPLATE | MuninnValidationError | content hash collision: a different memory already holds this content hash (id {}); refusing to merge
 TEMPLATE | MuninnValidationError | content must be a string or JSON-serializable value
 TEMPLATE | MuninnValidationError | content must not be None
 TEMPLATE | MuninnValidationError | content size {} bytes exceeds max_content_bytes ({} bytes)
