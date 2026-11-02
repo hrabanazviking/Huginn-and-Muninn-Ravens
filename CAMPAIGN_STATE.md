@@ -56,11 +56,42 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-037, RM-038. **Part III (Robustness) is complete** — all
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
-- Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043.
-  Part IV (Security) is under way — five of eighteen slices
-  banked.
-- Next: RM-044 in roadmap order (Part IV — Log redaction;
-  cites TH-05).
+- Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
+  RM-044. Part IV (Security) is under way — six of eighteen
+  slices banked.
+- Next: RM-045 in roadmap order (Part IV — Qdrant transport
+  safety; cites TH-06).
+- **RM-044 BANKED 2026-11-02 (keeper tick ~00:06 EST):**
+  log redaction — TH-05, record in `docs/LOG_REDACTION.md`.
+  Both configs gain `debug_log_content: bool = False`
+  (additive; plain boolean flag). Flag off (default): no
+  log record at any level, DEBUG included, carries memory
+  content — the RM-039 inspection posture is now
+  test-pinned over the store, search and heal paths. Flag
+  on: exactly the store and search paths emit content, at
+  DEBUG level only (muninn `remember`/`retrieve`; huginn
+  facade `upsert_memory`/`search`, binding whichever
+  backend serves the call); content never appears at INFO
+  or above, and the heal paths carry none at any level
+  even with the flag on (counts-only reports by design).
+  Exception strings are scoped out honestly (RM-054 /
+  TH-14; Qdrant key side RM-045 / TH-06). New
+  `tests/test_log_redaction.py` (7 tests each; huginn
+  local backend); negation against the RM-043 packages
+  **4 failed / 3 passed** per package (passes = the
+  preserved default-off behaviours). RM-019 goldens
+  gained the field. **Bifröst re-verification PASS**
+  (fresh venv `ravens-rm044-bifrost-venv` on `/var/tmp`,
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS, evidence
+  `~/workspace/.verify-tmp/rm044/`). Full suites green in
+  the RM-044 fresh venv on the final banking tree
+  (TMPDIR on `/var/tmp`): muninn **280 passed** (273+7),
+  huginn **207 passed** (200+7); ruff + mypy floors clean
+  (rm042 tool venv; mypy muninn 5 files, huginn 8 files).
+  Founding tree NEEDS A SYNC for the config field + the
+  gated DEBUG emissions (extends the standing
+  package-source sync note).
 - **RM-043 BANKED 2026-11-01 (keeper tick ~23:06 EST, same
   tick as RM-042):** backup confidentiality — TH-04, record
   in `docs/BACKUP_CONFIDENTIALITY.md`. The rolling-backup

@@ -660,6 +660,7 @@ config = MuninnConfig(db_path="~/.hermes/memory/muninn_hebbian.db")
 | `max_content_bytes` | `int` | `1048576` | Oversize ceiling (RM-027): one node's stored content, in UTF-8 bytes of the stored text; above it the write is refused with a typed error before anything is stored (see `docs/OVERSIZE_POLICY.md`) | Must be >= 1 |
 | `max_metadata_bytes` | `int` | `65536` | Oversize ceiling (RM-027): one node's metadata, in UTF-8 bytes of its serialized JSON form; same refusal discipline | Must be >= 1 |
 | `strict_path_safety` | `bool` | `False` | Path safety (RM-041, threat TH-02): when `True`, opening refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed storage error before anything is created — for locked-down deployments. Default `False` keeps the recorded behaviour (paths never symlink-resolved, parents unchecked; see `docs/PATH_SAFETY.md`) | No range check — used as a boolean flag |
+| `debug_log_content` | `bool` | `False` | Log redaction (RM-044, threat TH-05): when `True`, `remember`/`retrieve` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False`: no log record at any level carries memory content (see `docs/LOG_REDACTION.md`) | No range check — used as a boolean flag |
 
 Example — a small, fast-fading store for a test:
 

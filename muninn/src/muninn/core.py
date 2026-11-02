@@ -1247,6 +1247,12 @@ class HebbianMemory:
             self._conn.commit()
             if is_new:
                 self._apply_backpressure_locked()
+            if self.config.debug_log_content:
+                # RM-044: the ONLY road by which memory content
+                # reaches a log — this flag, at DEBUG level.
+                logger.debug(
+                    "muninn: stored memory id=%d content=%r", node_id, text
+                )
             return node_id
 
     def store(
@@ -1369,6 +1375,15 @@ class HebbianMemory:
                         node.id, node.emotional_valence, "retrieve:touch", at
                     )
                 self._conn.commit()
+        if self.config.debug_log_content:
+            # RM-044: content in logs only here, only at DEBUG,
+            # only with the flag on (see remember()).
+            logger.debug(
+                "muninn: retrieve query=%r returned %d nodes content=%r",
+                query,
+                len(rows_out),
+                [node.content for node in rows_out],
+            )
         return rows_out
 
     def get_by_path(self, path: str) -> list[MemoryNode]:

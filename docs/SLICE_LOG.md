@@ -1839,3 +1839,65 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   (EDQUOT) stayed hostile all tick — see the RM-042
   entry; this slice's scratch, venvs and logs likewise
   lived on `/var/tmp`.
+
+## RM-044 — Log redaction
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/LOG_REDACTION.md` —
+  TH-05. Before this slice the no-content-in-logs posture
+  rested on the RM-039 inspection alone: every logger call
+  site carried paths, counts, heal-count reports, the
+  Qdrant URL and exception strings, but nothing scanned
+  for a regression and no sanctioned road to content in
+  logs existed. Both configs gain
+  `debug_log_content: bool = False` (additive; a plain
+  boolean flag like `auto_backup`). With the flag off, no
+  log record at any level — DEBUG included — carries
+  memory content. With it on, exactly the store and
+  search paths emit content, at DEBUG level only: muninn
+  `remember` (stored text + id) and `retrieve` (query +
+  returned contents); huginn's facade `upsert_memory` and
+  `search`, so the rule binds whichever backend serves
+  the call. Content never appears at INFO or above, and
+  the heal paths carry no content at any level even with
+  the flag on (their reports are counts by design).
+  Exception strings stay uncontrolled here by scoping:
+  typed-error message hygiene is RM-054 (TH-14), the
+  Qdrant key/transport side RM-045 (TH-06). Pinned by
+  new `tests/test_log_redaction.py` in both packages
+  (7 tests each; huginn on the local backend): default
+  pinned off; flag-off log capture at DEBUG over the
+  store, search and heal paths (heal warning really
+  emitted, counts only) finds no secret content in any
+  record; flag-on store/search emit the content only in
+  DEBUG records; flag-on heal still emits none.
+  Negation against the RM-043 installed packages:
+  **4 failed / 3 passed** per package (the failures are
+  the flag and every flag-on behaviour; the passes are
+  the preserved default-off behaviours). RM-019
+  API-surface goldens gained the field in both packages.
+  Public config surface changed additively, so the
+  **Bifröst contract re-verification was run before
+  banking**: fresh venv (`ravens-rm044-bifrost-venv`,
+  on `/var/tmp`), bifrost at b66e98cc — its own suites
+  **25 passed**; BifrostBridge smoke PASS (store
+  mimir_id+huginn_id; search 1 merged result; recall
+  grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` armed
+  at 0 days; stats over all three backends; both raven
+  health dicts carry `sqlite_version` 3.45.1 through the
+  bridge; huginn on the local backend; live Qdrant still
+  NOT PROVEN; double close safe; evidence
+  `~/workspace/.verify-tmp/rm044/`). Full suites green
+  in a fresh venv (`ravens-rm044-venv`, on `/var/tmp`,
+  non-editable installs, TMPDIR on `/var/tmp`) on the
+  final banking tree: muninn **280 passed** (273+7),
+  huginn **207 passed** (200+7); ruff + mypy floors
+  clean (rm042 tool venv; mypy muninn 5 files, huginn
+  8 files). Founding tree (`~/workspace/ravens`) NEEDS
+  A SYNC for the config field + the gated DEBUG
+  emissions (extends the standing package-source sync
+  note). TH-05 closed by this slice; the register state
+  is re-checked at the RM-056 part gate, per the threat
+  model's rule.

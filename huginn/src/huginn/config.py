@@ -114,6 +114,16 @@ class HuginnConfig:
             backend has no local file. Like ``auto_backup`` it
             is a plain boolean flag, used as given. See
             ``docs/PATH_SAFETY.md``.
+        debug_log_content: Log redaction (RM-044): when True,
+            the facade's store and search paths may emit memory
+            content in log records at DEBUG level only — the
+            sole road by which content ever reaches a log.
+            Default False: no log record at any level carries
+            memory content; package loggers emit only paths,
+            counts, heal-count reports, the Qdrant URL and
+            exception strings (threat TH-05). Like
+            ``auto_backup`` it is a plain boolean flag, used as
+            given. See ``docs/LOG_REDACTION.md``.
     """
 
     backend: str = "auto"
@@ -130,6 +140,7 @@ class HuginnConfig:
     auto_backup: bool = True
     max_content_bytes: int = 1048576
     strict_path_safety: bool = False
+    debug_log_content: bool = False
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:

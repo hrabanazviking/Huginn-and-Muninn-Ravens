@@ -110,6 +110,15 @@ class MuninnConfig:
             symlink-resolved, no parent-permission check. Like
             ``auto_backup`` it is a plain boolean flag, used as
             given. See ``docs/PATH_SAFETY.md``.
+        debug_log_content: Log redaction (RM-044): when True,
+            the store and retrieve paths may emit memory content
+            in log records at DEBUG level only — the sole road
+            by which content ever reaches a log. Default False:
+            no log record at any level carries memory content;
+            package loggers emit only paths, counts, heal-count
+            reports and exception strings (threat TH-05). Like
+            ``auto_backup`` it is a plain boolean flag, used as
+            given. See ``docs/LOG_REDACTION.md``.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -125,6 +134,7 @@ class MuninnConfig:
     max_content_bytes: int = 1048576
     max_metadata_bytes: int = 65536
     strict_path_safety: bool = False
+    debug_log_content: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():

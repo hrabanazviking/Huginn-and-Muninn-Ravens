@@ -54,6 +54,7 @@ class MuninnConfig:
     max_content_bytes: int = 1048576
     max_metadata_bytes: int = 65536
     strict_path_safety: bool = False
+    debug_log_content: bool = False
 ```
 
 | Field | Meaning |
@@ -71,6 +72,7 @@ class MuninnConfig:
 | `max_content_bytes` | Oversize ceiling (`>= 1`, RM-027): one node's stored content, in UTF-8 bytes of the stored text. Above it, `remember`/`update` refuse with a typed validation error before any write. See `docs/OVERSIZE_POLICY.md`. |
 | `max_metadata_bytes` | Oversize ceiling (`>= 1`, RM-027): one node's metadata, in UTF-8 bytes of its serialized JSON form. Same refusal discipline as `max_content_bytes`. |
 | `strict_path_safety` | Path safety (RM-041, threat TH-02): when `True`, opening refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed `MuninnStorageError` before anything is created. Default `False` — paths are `~`-expanded, never symlink-resolved, parents unchecked (the recorded behaviour). See `docs/PATH_SAFETY.md`. |
+| `debug_log_content` | Log redaction (RM-044, threat TH-05): when `True`, `remember`/`retrieve` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False` — no log record at any level carries memory content. See `docs/LOG_REDACTION.md`. |
 
 All values are validated in `__post_init__`; an illegal value raises
 `MuninnConfigurationError` at construction, never mid-write.
@@ -639,6 +641,7 @@ class HuginnConfig:
     auto_backup: bool = True
     max_content_bytes: int = 1048576
     strict_path_safety: bool = False
+    debug_log_content: bool = False
 ```
 
 | Field | Meaning |
@@ -655,6 +658,7 @@ class HuginnConfig:
 | `busy_timeout_ms` / `backup_keep` / `auto_backup` | Same store discipline as Muninn's config. |
 | `max_content_bytes` | Oversize ceiling (`>= 1`, RM-027): one memory's content, in UTF-8 bytes. Above it, `upsert_memory` refuses with a typed validation error in the facade, before any backend is touched. Huginn memories carry no caller metadata, so there is no metadata ceiling here. See `docs/OVERSIZE_POLICY.md`. |
 | `strict_path_safety` | Path safety (RM-041, threat TH-02): when `True`, opening the **local** store refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed `HuginnStorageError` before anything is created. Default `False` — paths are `~`-expanded, never symlink-resolved, parents unchecked (the recorded behaviour). The Qdrant backend has no local file and is unaffected. See `docs/PATH_SAFETY.md`. |
+| `debug_log_content` | Log redaction (RM-044, threat TH-05): when `True`, the facade's `upsert_memory`/`search` may emit memory content in log records at DEBUG level only — the sole road by which content ever reaches a log. Default `False` — no log record at any level carries memory content. See `docs/LOG_REDACTION.md`. |
 
 All values are validated in `__post_init__`; illegal values raise
 `HuginnConfigurationError` at construction.

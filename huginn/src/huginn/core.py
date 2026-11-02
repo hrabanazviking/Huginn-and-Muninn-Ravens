@@ -478,7 +478,7 @@ class HuginnMemory:
             _check_no_lone_surrogates(tag, "tags")
         _check_tags_size(clean_tags, self.config.max_content_bytes)
         backend = self._ensure_backend()
-        return backend.upsert(
+        result = backend.upsert(
             content,
             category=clean_category,
             importance=importance,
@@ -486,6 +486,11 @@ class HuginnMemory:
             emotional_valence=emotional_valence,
             memory_id=memory_id,
         )
+        if self.config.debug_log_content:
+            # RM-044: the ONLY road by which memory content
+            # reaches a log — this flag, at DEBUG level.
+            logger.debug("huginn: stored memory id=%d content=%r", result, content)
+        return result
 
     def search(
         self,
@@ -511,12 +516,22 @@ class HuginnMemory:
                 f"min_importance must be <= 9223372036854775807, got {min_importance}"
             )
         backend = self._ensure_backend()
-        return backend.search(
+        results = backend.search(
             query_text,
             limit=limit,
             category=_check_category(category, allow_none=True),
             min_importance=min_importance,
         )
+        if self.config.debug_log_content:
+            # RM-044: content in logs only here, only at DEBUG,
+            # only with the flag on (see upsert_memory()).
+            logger.debug(
+                "huginn: search query=%r returned %d results content=%r",
+                query_text,
+                len(results),
+                [row.get("content") for row in results],
+            )
+        return results
 
     def get(self, memory_id: int) -> dict[str, Any] | None:
         """One memory by id, or None. PURE READ."""
