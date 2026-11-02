@@ -1002,7 +1002,10 @@ Scoring modes:
   overlap). Candidates come from the term postings; no full scan.
   A query with no surviving tokens returns `[]`.
 - Otherwise: per-document vectors are stored in `doc_vectors` and
-  scored by dense cosine, scanning all stored vectors.
+  scored by dense cosine, scanning the surviving candidates'
+  stored vectors (RM-062: the candidate cap and the
+  category/importance filter are applied in SQL before any
+  vector is fetched — `docs/VECTOR_SCAN.md`).
 
 Methods:
 

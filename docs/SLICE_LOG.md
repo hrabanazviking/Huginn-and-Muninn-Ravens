@@ -3185,3 +3185,92 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   NEEDS A SYNC for the RM-061 build (extends the
   standing package-source sync note). Live Qdrant +
   sentence-transformers stay NOT PROVEN.
+
+## RM-062 — Huginn vector scan
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The embedder-mode vector scan gains the
+  in-store prefilter the roadmap asked for. The old road
+  fetched EVERY stored vector's text out of SQLite
+  (`SELECT doc_id, vector FROM doc_vectors` — at 384
+  dimensions ~4.8 KB of JSON text per vector, so the
+  gate's 100k-document store, 477,544,448 bytes, moved
+  its whole vector table per search), sorted and capped
+  in Python, and only then applied the
+  category/importance filter to the document rows. All
+  three cuts now happen in SQL, in the RM-053 order —
+  cap BEFORE filter, lowest ids first: the candidate
+  total is a `COUNT(*)`, the capped ids are selected in
+  the store (`ORDER BY doc_id LIMIT ?`, cap bound), the
+  documents fetch applies the filter in SQL as it
+  already did, and only the surviving documents' vectors
+  are fetched, by id (`WHERE doc_id IN (...)`, every id
+  bound). The survivors are scored by the same linear
+  dense-cosine scan in Python — no index, no
+  approximation — and results and the RM-053
+  `last_search_stats` accounting are bit-for-bit the
+  old road's. RM-040 audit site total 57 → 59 (the old
+  full-table fetch replaced by the COUNT, the capped-id
+  select, and the pinned survivor-fetch template). Gate
+  script `huginn/scripts/vector_scan.py` seeds 10,000
+  documents through the public `upsert_memory` API
+  (store 74,694,656 bytes) and a constructed
+  100,000-document store (direct construction stated in
+  the record; the term index is intentionally empty —
+  the vector road never reads it), verifies result
+  parity against a brute-force reference computed from
+  the raw tables inside every run before quoting
+  timings, one full run per tree. Gate medians: api
+  unfiltered 12,299.3 → 6,233.0 ms, category
+  2,337.0 → 982.5 ms, importance 3,586.7 → 1,704.8 ms;
+  scale unfiltered 101,700.6 → 124,250.4 ms, category
+  9,255.2 → 20,908.3 ms, importance
+  16,361.6 → 32,315.4 ms. A controlled back-to-back
+  pair on the same seeded stores leaned the other way
+  at both scales (api unfiltered 13,934.4 → 16,790.2 ms,
+  category 1,196.5 → 2,165.7 ms, importance
+  3,011.0 → 4,387.2 ms; scale unfiltered
+  157,713.2 → 106,831.6 ms, category
+  14,982.4 → 11,487.3 ms, importance
+  28,596.6 → 21,853.7 ms) while the VM's 1-minute load
+  rose ~9 → ~16 under concurrent campaign suites — so
+  **no wall-clock win or regression is claimed either
+  way**: the searches are dominated by decoding and
+  scoring the survivors, next to which even the old
+  road's full-table transfer is a minority cost on a
+  warm tmpfs store. **Verdict, as the roadmap directed:
+  the linear scan stands at personal-store scale; no
+  ANN index is built.** The prefilter is kept on the
+  load-independent evidence — a filtered or capped
+  search's vector transfer is now proportional to its
+  survivors (statement-shape-pinned), and excluded
+  vectors are never fetched or decoded. Record at
+  `huginn/scripts/vector_scan.json` (after tree's run,
+  recorded 2026-11-02T20:42:38Z, load [5.12, 7.91,
+  7.72]); human record `docs/VECTOR_SCAN.md`;
+  BENCHMARKS.md pointer; QUERY_COST_CAPS.md,
+  HUGINN_GUIDE.md, ARCHITECTURE.md and API_REFERENCE.md
+  gained the prefilter notes. New
+  `tests/test_vector_scan.py` (7, huginn only):
+  raw-table-reference parity across limits, category,
+  importance and combined filters; the prefilter's
+  statement shape by trace callback; RM-053
+  cap-before-filter order on the vector road;
+  filtered/capped-out vectors never decoded (stored
+  text corrupted, searches still exact); RM-049
+  encrypted store searches identically; gate-script
+  shape + small run; committed record shape. Negation
+  vs the RM-061 tree: `test_vector_scan.py` **3 failed
+  / 4 passed** (parities pass on both trees),
+  `test_sql_injection.py` **2 failed**, slice-log pins
+  **2 failed** per package. No public signature, table,
+  column or index changed, so no Bifröst
+  re-verification was required by the standing rule;
+  run anyway as a precaution (the RM-059 pattern) —
+  see `CAMPAIGN_STATE.md`. Suites, ruff and mypy on
+  the final banking tree are recorded in
+  `CAMPAIGN_STATE.md`. Founding tree NEEDS A SYNC for
+  the RM-062 build (extends the standing
+  package-source sync note). Live Qdrant +
+  sentence-transformers stay NOT PROVEN.

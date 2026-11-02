@@ -494,10 +494,13 @@ Huginn labels its scores for what they are, in code and in
   reports the resolved name.
 
 With an embedder configured, the local backend stores a vector per
-document and scores by dense cosine in a linear scan over stored
-vectors — the code comments call this "the right shape for a
-personal memory store (thousands of documents); very large corpora
-belong on Qdrant". (BUILD_NOTES §3.2 describes this mode as
+document and scores by dense cosine in a linear scan over the
+surviving candidates' stored vectors — since RM-062 the candidate
+cap and the category/importance filter are applied in SQL before
+any vector is fetched, so excluded vectors are never transferred
+(`docs/VECTOR_SCAN.md`) — the code comments call this "the right
+shape for a personal memory store (thousands of documents); very
+large corpora belong on Qdrant". (BUILD_NOTES §3.2 describes this mode as
 "reranking lexical candidates by vector cosine"; the code does a
 full linear scan over stored vectors, not a rerank of lexical
 candidates. Code wins — see §11.)

@@ -158,6 +158,24 @@ and its measured mechanism, are recorded in
 `docs/CANDIDATE_PRUNING.md`. Record committed as
 `huginn/scripts/candidate_pruning.json`.
 
+## Huginn vector scan (RM-062)
+
+`huginn/scripts/vector_scan.py` seeds 10,000 documents
+through the public API and a constructed 100,000-document
+store and measures the fixed embedder-mode searches on the
+pre- and post-slice trees, verifying result parity against
+a brute-force reference inside every run before quoting
+timings. The in-store prefilter pushes the RM-053
+candidate cap and the category/importance filter into SQL
+before any vector is fetched — a filtered or capped
+search's vector transfer is now proportional to its
+survivors, statement-shape-pinned — while the survivors
+are still scored by the same linear dense-cosine scan.
+Wall-clock rows on the shared VM were load-confounded in
+both directions and are recorded as indicative only; the
+verdict and the numbers live in `docs/VECTOR_SCAN.md`.
+Record committed as `huginn/scripts/vector_scan.json`.
+
 ## Reproducible corpus (RM-020)
 
 The corpora are synthetic and formula-generated — muninn's

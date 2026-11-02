@@ -137,6 +137,10 @@ EXPECTED_FSTR_TEMPLATES = {
     # pruning bound reads (same IN placeholder discipline).
     "SELECT doc_id, SUM(tf) FROM doc_terms WHERE doc_id IN ({ph})"
     " GROUP BY doc_id",
+    # RM-062: the vector prefilter's survivor fetch — only the
+    # capped, filter-surviving documents' vectors are fetched,
+    # by id (same IN placeholder discipline).
+    "SELECT doc_id, vector FROM doc_vectors WHERE doc_id IN ({ph})",
 }
 # Every SQL-shaped f-string anywhere in the source (the
 # _candidate_docs_locked base reaches execute() via the
@@ -161,7 +165,12 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 1, "count_sql": 1}
 # template; the old road's single full-term fetch and
 # all-terms doc_freq lookup are the per-batch fetches,
 # evolved, not additions.
-EXPECTED_SITE_TOTAL = 57
+# RM-062: +2 sites net — the vector scan's in-store
+# prefilter in local_backend: the old road's one full-table
+# vector fetch is replaced by three sites (a constant
+# COUNT, a constant capped-id select with a bound LIMIT,
+# and the survivor-only vector fetch, new template above).
+EXPECTED_SITE_TOTAL = 59
 
 
 def _source_dir():

@@ -1,0 +1,125 @@
+{
+  "package": "huginn",
+  "schema": 1,
+  "kind": "vector_scan",
+  "environment": {
+    "recorded_at": "2026-11-02T20:42:38.433914+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      5.12255859375,
+      7.90869140625,
+      7.716796875
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "api_unfiltered": 6233.024902000125,
+    "api_category": 982.4853159998383,
+    "api_importance": 1704.8338700001295,
+    "scale_unfiltered": 124250.37974300039,
+    "scale_category": 20908.281036000062,
+    "scale_importance": 32315.365916000246
+  },
+  "details": {
+    "limit": 10,
+    "query": "term100 term200 term37",
+    "category": "cat3",
+    "min_importance": 9,
+    "vector_dim": 384,
+    "embedder": "hashing",
+    "api": {
+      "queries": {
+        "unfiltered": {
+          "median_ms": 6233.024902000125,
+          "stats": {
+            "candidates_total": 10000,
+            "candidates_scored": 10000,
+            "candidates_pruned": 0,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "category": {
+          "median_ms": 982.4853159998383,
+          "stats": {
+            "candidates_total": 10000,
+            "candidates_scored": 1000,
+            "candidates_pruned": 0,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "importance": {
+          "median_ms": 1704.8338700001295,
+          "stats": {
+            "candidates_total": 10000,
+            "candidates_scored": 2000,
+            "candidates_pruned": 0,
+            "cap": 10000,
+            "capped": false
+          }
+        }
+      },
+      "median_ms": 1704.8338700001295,
+      "n_docs": 10000,
+      "corpus": {
+        "version": 1,
+        "count": 10000,
+        "sha256": "84bb0fa1a85c3c29c00f59f3aeeac1e4b4f9e2089d6a4de821b396903d606689"
+      },
+      "seed": "public upsert_memory API",
+      "config_overrides": {},
+      "store_bytes": 74694656
+    },
+    "scale": {
+      "queries": {
+        "unfiltered": {
+          "median_ms": 124250.37974300039,
+          "stats": {
+            "candidates_total": 100000,
+            "candidates_scored": 100000,
+            "candidates_pruned": 0,
+            "cap": 200000,
+            "capped": false
+          }
+        },
+        "category": {
+          "median_ms": 20908.281036000062,
+          "stats": {
+            "candidates_total": 100000,
+            "candidates_scored": 10000,
+            "candidates_pruned": 0,
+            "cap": 200000,
+            "capped": false
+          }
+        },
+        "importance": {
+          "median_ms": 32315.365916000246,
+          "stats": {
+            "candidates_total": 100000,
+            "candidates_scored": 20000,
+            "candidates_pruned": 0,
+            "cap": 200000,
+            "capped": false
+          }
+        }
+      },
+      "median_ms": 32315.365916000246,
+      "n_docs": 100000,
+      "corpus": {
+        "generator": "scale_text(i): RM-061 distinct_text(i) + ' marker{i}' token",
+        "distinct_documents": 100000
+      },
+      "seed": "direct construction: documents + doc_vectors rows in one transaction (hashing embedder vectors, upsert content hashes); term index intentionally empty",
+      "config_overrides": {
+        "max_search_candidates": 200000
+      },
+      "store_bytes": 477544448
+    }
+  }
+}

@@ -59,7 +59,11 @@ vector table. One local search **scores at most**
   while the cap bit (the record says so; see below).
 * On the vector road, only surviving candidates' vectors
   are decoded at all, so a capped search does not pay the
-  uncapped decode cost either.
+  uncapped decode cost either. Since RM-062 they are also
+  the only vectors *fetched*: the cap and the
+  category/importance filter are applied in SQL before any
+  vector leaves the store (the in-store prefilter —
+  `docs/VECTOR_SCAN.md`).
 * The Qdrant backend is out of scope: there is no local
   candidate set; the server owns its query cost.
 

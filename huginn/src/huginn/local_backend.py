@@ -8,8 +8,14 @@ Scoring modes (honestly labelled):
   from the term postings; no full scans, no N+1.
 * embedder mode (``hashing`` / ``sentence-transformers``): vectors are
   stored per document and scored by dense cosine. The scan is linear
-  over stored vectors — the right shape for a personal memory store
-  (thousands of documents); very large corpora belong on Qdrant.
+  over the *surviving* candidates — the RM-062 in-store prefilter
+  applies the RM-053 candidate cap and the category/importance
+  filter in SQL before any vector is fetched, so a filtered or
+  capped search never transfers the vectors it excludes; the
+  survivors are still scored one by one — the right shape for a
+  personal memory store (thousands of documents); very large
+  corpora belong on Qdrant. Measured at 100k documents in
+  ``docs/VECTOR_SCAN.md``.
 """
 
 from __future__ import annotations
@@ -953,20 +959,58 @@ class LocalBackend:
     ) -> list[dict[str, Any]]:
         assert self._embedder is not None
         query_vec = self._embedder.embed(query_text)
-        rows = conn.execute("SELECT doc_id, vector FROM doc_vectors").fetchall()
-        # RM-053: same candidate cap as the TF-IDF road,
-        # deterministic by doc id — and only the surviving
-        # candidates' vectors are decoded at all, so a capped
-        # search never pays the uncapped decode cost either.
-        rows = sorted(rows, key=lambda r: int(r["doc_id"]))
-        candidates_total = len(rows)
-        rows = rows[: int(self.config.max_search_candidates)]
-        candidate_ids = [int(r["doc_id"]) for r in rows]
+        # RM-062 — the in-store prefilter. The old road fetched
+        # EVERY stored vector's text out of SQLite
+        # (``SELECT doc_id, vector FROM doc_vectors``), sorted
+        # and capped the rows in Python, and only then applied
+        # the category/importance filter to the document rows —
+        # so a filtered or capped search still paid the transfer
+        # of every vector in the store (at 384 dimensions each
+        # vector is ~4.8 KB of JSON text). The prefilter pushes
+        # all three cuts into SQL, in the RM-053 order — the
+        # candidate cap BEFORE the filter, lowest ids first:
+        #   1. the candidate total is a COUNT, not a fetch;
+        #   2. the capped candidate ids are selected in the
+        #      store (ORDER BY doc_id, LIMIT the cap);
+        #   3. the documents fetch (_candidate_docs_locked)
+        #      applies category/importance in SQL, as it
+        #      already did;
+        #   4. only the surviving documents' vectors are
+        #      fetched, by id — a filtered-out or capped-out
+        #      vector never leaves the store, and (as since
+        #      RM-053) is never decoded either.
+        # What does NOT change: the survivors are scored by
+        # the same linear dense-cosine scan in Python — no
+        # index, no approximation — the result list and the
+        # RM-053 accounting are exactly the old road's, and an
+        # unfiltered search under the cap still fetches and
+        # scores every vector. The gate record
+        # (docs/VECTOR_SCAN.md) measures both halves at 100k
+        # documents and records the verdict.
+        candidates_total = int(
+            conn.execute("SELECT COUNT(*) FROM doc_vectors").fetchone()[0]
+        )
+        if candidates_total == 0:
+            self._record_search_locked(0, 0)
+            return []
+        candidate_ids = [
+            int(r[0])
+            for r in conn.execute(
+                "SELECT doc_id FROM doc_vectors ORDER BY doc_id LIMIT ?",
+                (int(self.config.max_search_candidates),),
+            ).fetchall()
+        ]
         docs = self._candidate_docs_locked(conn, candidate_ids, category, min_importance)
+        if not docs:
+            self._record_search_locked(candidates_total, 0)
+            return []
+        ph = ",".join("?" * len(docs))
         vectors = {
             int(r["doc_id"]): json.loads(self._dec_value(r["vector"], "doc_vectors.vector"))
-            for r in rows
-            if int(r["doc_id"]) in docs
+            for r in conn.execute(
+                f"SELECT doc_id, vector FROM doc_vectors WHERE doc_id IN ({ph})",
+                list(docs),
+            ).fetchall()
         }
         scored = []
         candidates_scored = 0

@@ -64,13 +64,105 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060, RM-061.
-- Next: RM-062 in roadmap order (Huginn vector scan: the
-  embedder-mode scan is linear over stored vectors; add
-  an optional in-store prefilter — category/importance
-  pushed into SQL — and measure honestly at 100k docs;
-  if linear still wins at personal-store scale, record
-  that and stop).
+  RM-060, RM-061, RM-062.
+- Next: RM-063 in roadmap order (Warm caches: optional
+  bounded in-memory cache for `get_node` / document
+  `get` with explicit invalidation on writes through
+  the same object; documented as per-object only;
+  acceptance: hit-rate + staleness tests. Class: UNIT).
+- **RM-062 BANKED 2026-11-02 (keeper tick ~15:46 EST, completed
+  by the following tick after an interruption):** Huginn
+  vector scan — BENCH. The embedder-mode scan gains the
+  in-store prefilter: the old road fetched EVERY stored
+  vector's text (`SELECT doc_id, vector FROM doc_vectors`;
+  ~4.8 KB of JSON per vector at 384 dims — the gate's
+  100k store is 477,544,448 bytes and moved its whole
+  vector table per search), sorted + capped in Python,
+  and only then applied the category/importance filter
+  to the document rows. All three cuts now happen in
+  SQL in the RM-053 order (cap BEFORE filter, lowest ids
+  first): candidate total as `COUNT(*)`, capped ids
+  selected in-store (`ORDER BY doc_id LIMIT ?`, cap
+  bound), the documents fetch applying the filter in
+  SQL as it already did, and only survivors' vectors
+  fetched by id (`WHERE doc_id IN (...)`, ids bound).
+  Survivors are scored by the same linear dense-cosine
+  scan — no index, no approximation — and results +
+  RM-053 `last_search_stats` are bit-for-bit the old
+  road's. RM-040 audit site total 57 → 59. Gate script
+  `huginn/scripts/vector_scan.py` seeds 10,000 docs via
+  the public upsert API (store 74,694,656 bytes) and a
+  constructed 100,000-doc store (direct construction
+  stated in the record; term index intentionally empty),
+  parity-verified against a brute-force raw-table
+  reference inside every run, one full run per tree.
+  Gate medians: api 12,299.3 → 6,233.0 / 2,337.0 →
+  982.5 / 3,586.7 → 1,704.8 ms; scale 101,700.6 →
+  124,250.4 / 9,255.2 → 20,908.3 / 16,361.6 →
+  32,315.4 ms. A controlled back-to-back pair on the
+  same stores leaned the other way at both scales
+  (api 13,934.4 → 16,790.2 / 1,196.5 → 2,165.7 /
+  3,011.0 → 4,387.2; scale 157,713.2 → 106,831.6 /
+  14,982.4 → 11,487.3 / 28,596.6 → 21,853.7) while the
+  1-minute load rose ~9 → ~16 under concurrent campaign
+  suites — **no wall-clock win or regression claimed
+  either way** (survivor decode+score dominates; even
+  the old full-table transfer is a minority cost on a
+  warm tmpfs store). **Verdict, as the roadmap
+  directed: the linear scan stands at personal-store
+  scale; no ANN index built.** The prefilter is kept on
+  the load-independent evidence: filtered/capped
+  vector transfer is now proportional to survivors
+  (statement-shape-pinned) and excluded vectors are
+  never fetched or decoded. Record at
+  `huginn/scripts/vector_scan.json` (after run,
+  2026-11-02T20:42:38Z, load [5.12, 7.91, 7.72]); human
+  record `docs/VECTOR_SCAN.md`; BENCHMARKS pointer;
+  QUERY_COST_CAPS / HUGINN_GUIDE / ARCHITECTURE /
+  API_REFERENCE notes. New `tests/test_vector_scan.py`
+  (7, huginn only). Negation vs RM-061 tree:
+  vector-scan **3 failed / 4 passed** (parities pass on
+  both trees), sql-injection **2 failed**, slice-log
+  **2 failed** per package. No public signature, table,
+  column or index changed; **Bifröst re-verification
+  run anyway as a precaution (RM-059 pattern): PASS**
+  (fresh venv on `/var/tmp`, bifrost source from the
+  git-clean pinned b66e98cc checkout — its own suites
+  **25 passed**; BifrostBridge smoke PASS — store
+  mimir_id+huginn_id, search 1 merged result, recall
+  grew the Muninn activation log exactly +1,
+  decay/consolidate reports, `decay_wall_clock()` armed
+  at 0 days, stats over all three backends, both raven
+  health dicts carry `sqlite_version` 3.45.1, huginn
+  local via auto-fallback, double close safe; evidence
+  `/var/tmp/rm062/evidence/`). Full suites on the final
+  banking tree (non-editable installs from a full-repo
+  copy, encryption + qdrant extras, cryptography
+  50.0.2, qdrant-client 1.20.0, pytest 9.2.0): huginn
+  **322 passed** (315+7); muninn **396 passed**
+  (slice-log pin only) — muninn's first banking run
+  showed 9 failed / 387 passed, every failure
+  `database or disk is full` at WAL creation after this
+  slice's own gate stores + duplicate suite runs filled
+  the 2 GB /var/tmp tmpfs; after clearing them the
+  identical tree passed in full (the RM-039 environment
+  class). Ruff clean (whole tree); mypy clean
+  (mypy 1.20.2, muninn 7 files, huginn 9 files).
+  Banking provenance, honestly: the slice was built by
+  the previous keeper tick, which was interrupted after
+  the gate runs and test writing but before the A/B
+  pair finished and before any banking step; this tick
+  completed the A/B pair on the surviving seeded
+  stores, filled the records, ran negation + Bifröst,
+  and banked. Environment: the home-quota EDQUOT
+  closure flapped repeatedly (the 20 GB
+  `.verify-tmp` Janas worktree store is Volmarr's
+  pending decision, untouched); writes completed via
+  in-place rewrites and freeing this campaign's own
+  regenerable caches. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  NEEDS A SYNC for the RM-062 build (extends the
+  standing package-source sync note).
 - **RM-061 BANKED 2026-11-02 (keeper tick ~14:03 EST):**
   Huginn candidate generation — BENCH + UNIT. Local
   TF-IDF search gains posting-list pruning: from the

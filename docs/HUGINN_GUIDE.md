@@ -108,8 +108,12 @@ This section states plainly what each scoring mode is — and is not.
   these vectors is lexical overlap in vector form — deterministic (same
   text, same vector, on any machine, forever), stdlib-only, and still
   **not** neural. In local embedder mode, stored per-document vectors
-  are scored by dense cosine with a linear scan. On the Qdrant
-  backend, hashing is the default embedder.
+  are scored by dense cosine with a linear scan over the surviving
+  candidates — since RM-062 the candidate cap and the
+  category/importance filter are applied in SQL before any vector
+  is fetched, so a filtered search never transfers the vectors it
+  excludes (measured at 100k documents in `docs/VECTOR_SCAN.md`).
+  On the Qdrant backend, hashing is the default embedder.
 - **`sentence-transformers`** — the **only neural embedder**. It loads
   a real sentence-transformers model (default `all-MiniLM-L6-v2`) and
   scores by dense cosine over its embeddings. It requires the
