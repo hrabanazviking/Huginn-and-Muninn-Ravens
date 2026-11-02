@@ -431,6 +431,37 @@ def _is_locked_error(exc: BaseException) -> bool:
     return "locked" in text or "is busy" in text
 
 
+def _is_full_error(exc: BaseException) -> bool:
+    """Does this failure mean the disk / store is full?
+
+    Matches SQLITE_FULL (result code 13, extended-code high bits
+    ignored) and SQLite's canonical wording — the RM-054
+    classification, twin of the RM-031 locked classification:
+    the write guards name this failure with the package's own
+    fixed text instead of echoing the underlying message.
+    """
+    code = getattr(exc, "sqlite_errorcode", None)
+    if isinstance(code, int) and code & 0xFF == 13:
+        return True
+    return "disk is full" in str(exc).lower()
+
+
+def _error_kind(exc: BaseException) -> str:
+    """RM-054: the only part of an uncontrolled exception that
+    may enter a typed error's message — its class name.
+
+    The underlying exception's *text* is never interpolated:
+    SQLite can generate it from the store file itself (a
+    trigger's ``RAISE(ABORT, '…')`` message is file content,
+    proven in ``tests/test_error_message_hygiene.py``) and a
+    client library's text is equally uncontrolled. The full
+    text remains available to the caller through the exception
+    chain (every raise site uses ``from exc``); it just never
+    becomes part of a string this package formats.
+    """
+    return type(exc).__name__
+
+
 def _quick_check_ok(conn: sqlite3.Connection) -> bool:
     try:
         row = conn.execute("PRAGMA quick_check").fetchone()
@@ -815,7 +846,7 @@ def _open_store_unlocked(
                 f"(busy timeout {busy_timeout_ms} ms expired)"
             ) from exc
         raise HuginnStorageError(
-            f"huginn store {db_path} could not be prepared: {exc}"
+            f"huginn store {db_path} could not be prepared: {_error_kind(exc)}"
         ) from exc
     try:
         conn.executescript(schema_sql)
@@ -835,7 +866,9 @@ def _open_store_unlocked(
                 f"huginn store {db_path} is locked by another process "
                 f"(busy timeout {busy_timeout_ms} ms expired)"
             ) from exc
-        raise HuginnStorageError(f"huginn store {db_path} could not be prepared: {exc}") from exc
+        raise HuginnStorageError(
+            f"huginn store {db_path} could not be prepared: {_error_kind(exc)}"
+        ) from exc
 
     if created_by_this_open:
         _secure_new_store_files(db_path)

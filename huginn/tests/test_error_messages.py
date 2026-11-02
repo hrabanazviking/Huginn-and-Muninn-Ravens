@@ -15,10 +15,10 @@ be broken by a casual rewording. Two pins enforce that:
    ``src/huginn`` is re-extracted by AST (f-string values
    normalised to ``{}``) and the multiset must equal the
    golden's TEMPLATE lines. This is the pin that also covers
-   the three sites no deterministic trigger can reach (the
-   schema-preparation failure and the two RM-008 no-row-id
-   guards): any new or reworded raise site fails here until
-   the golden is updated deliberately in the same commit.
+   the two sites no deterministic trigger can reach (the two
+   RM-008 no-row-id guards): any new or reworded raise site
+   fails here until the golden is updated deliberately in
+   the same commit.
 """
 
 import ast
@@ -340,6 +340,29 @@ def _cases(tmp_path):
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
     os.chmod(shared_dir, 0o777)
+    # RM-054: stores whose own triggers make SQLite generate
+    # its error text from file content — the generic write-guard
+    # and prepare branches must name only the exception class.
+    trigwrite = HuginnMemory(
+        HuginnConfig(backend="local", local_db_path=str(tmp_path / "trigwrite.db"))
+    )
+    _tw_conn = trigwrite._ensure_backend()._conn
+    _tw_conn.execute(
+        "CREATE TRIGGER rm054_leak BEFORE INSERT ON documents"
+        " BEGIN SELECT RAISE(ABORT, 'planted trigger text'); END"
+    )
+    _tw_conn.commit()
+    trigprep_path = tmp_path / "trigprep.db"
+    _trigprep = LocalBackend(
+        HuginnConfig(backend="local", local_db_path=str(trigprep_path))
+    )
+    _tp_conn = _trigprep._conn
+    _tp_conn.execute(
+        "CREATE TRIGGER rm054_leak BEFORE INSERT ON meta"
+        " BEGIN SELECT RAISE(ABORT, 'planted trigger text'); END"
+    )
+    _tp_conn.commit()
+    _trigprep.close()
     embedder = HashingEmbedder(dim=384)
     qdrant_cfg = HuginnConfig(backend="qdrant")
     closed_qdrant = QdrantBackend(qdrant_cfg, embedder)
@@ -405,6 +428,10 @@ def _cases(tmp_path):
         "qdrant_hash_collision": lambda: colliding.upsert(
             "qdrant collision victim", category="general", importance=5,
             tags=[], emotional_valence=0.0,
+        ),
+        "write_guard_generic": lambda: trigwrite.upsert_memory("anything"),
+        "prepare_generic": lambda: LocalBackend(
+            HuginnConfig(backend="local", local_db_path=str(trigprep_path))
         ),
         "facade_closed": close_facade,
         "local_closed": lambda: closed_local.upsert(

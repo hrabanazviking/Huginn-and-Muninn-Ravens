@@ -11,8 +11,10 @@ be broken by a casual rewording. Two pins enforce that:
    ``src/muninn`` is re-extracted by AST (f-string values
    normalised to ``{}``) and the multiset must equal the
    golden's TEMPLATE lines. This is the pin that also covers
-   the two sites no deterministic trigger can reach (the
-   schema-preparation failure and the RM-008 no-row-id guard):
+   the one site no deterministic trigger can reach (the
+   RM-008 no-row-id guard; RM-054 gave the schema-preparation
+   failure a deterministic trigger — a store trigger aborting
+   the prepare-time meta insert):
    any new or reworded raise site fails here until the golden
    is updated deliberately in the same commit.
 """
@@ -204,6 +206,25 @@ def _cases(tmp_path):
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
     os.chmod(shared_dir, 0o777)
+    # RM-054: stores whose own triggers make SQLite generate
+    # its error text from file content — the generic write-guard
+    # and prepare branches must name only the exception class.
+    trigwrite = HebbianMemory(MuninnConfig(db_path=str(tmp_path / "trigwrite.db")))
+    _tw_conn = trigwrite._get_conn()
+    _tw_conn.execute(
+        "CREATE TRIGGER rm054_leak BEFORE INSERT ON nodes"
+        " BEGIN SELECT RAISE(ABORT, 'planted trigger text'); END"
+    )
+    _tw_conn.commit()
+    trigprep_path = tmp_path / "trigprep.db"
+    _trigprep = HebbianMemory(MuninnConfig(db_path=str(trigprep_path)))
+    _tp_conn = _trigprep._get_conn()
+    _tp_conn.execute(
+        "CREATE TRIGGER rm054_leak BEFORE INSERT ON meta"
+        " BEGIN SELECT RAISE(ABORT, 'planted trigger text'); END"
+    )
+    _tp_conn.commit()
+    _trigprep.close()
 
     def cfg(**overrides):
         return lambda: MuninnConfig(db_path=str(tmp_path / "m.db"), **overrides)
@@ -276,6 +297,10 @@ def _cases(tmp_path):
             MuninnConfig(
                 db_path=str(shared_dir / "m.db"), strict_path_safety=True
             )
+        ),
+        "write_guard_generic": lambda: trigwrite.remember("anything"),
+        "prepare_generic": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(trigprep_path))
         ),
         "attestation_passphrase_required": lambda: MuninnConfig(
             integrity_attestation=True

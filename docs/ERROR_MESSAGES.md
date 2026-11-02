@@ -34,18 +34,21 @@ golden in `tests/golden_error_messages.txt`:
 
 ## What the behavioural pin cannot reach
 
-Three huginn sites and two muninn sites have no deterministic
-trigger, and are covered by the template pin only — stated
-plainly, not silently skipped:
+The `"node insert reported success but returned no row id"`
+(muninn, once) and `"document insert reported success but
+returned no row id"` (huginn, twice) sites — the RM-008
+guards, unreachable by construction while SQLite honours
+its `lastrowid` contract — are covered by the template pin
+only, stated plainly, not silently skipped.
 
-- `"<pkg> store {} could not be prepared: {}"` (both
-  packages) — fires only when a store's schema script fails
-  mid-open, after the integrity probe passed.
-- `"node insert reported success but returned no row id"`
-  (muninn, once) and `"document insert reported success but
-  returned no row id"` (huginn, twice) — the RM-008 guards,
-  unreachable by construction while SQLite honours its
-  `lastrowid` contract.
+The `"<pkg> store {} could not be prepared: {}"` sites
+(both packages) were on that list until RM-054: a store
+trigger aborting the prepare-time meta insert triggers
+them deterministically, and they are CASE lines now. The
+second `{}` in that template is, since RM-054, the
+underlying exception's class name — never its text; see
+`docs/ERROR_MESSAGE_HYGIENE.md` for the hygiene rule the
+message-scan suites enforce.
 
 ## Changing a message on purpose
 

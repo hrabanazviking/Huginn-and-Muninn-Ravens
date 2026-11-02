@@ -76,7 +76,10 @@ How `auto` works, exactly (from `HuginnMemory._ensure_backend`):
    re-probe on later calls.
 5. The reason is recorded and reported: `health()` returns
    `status="degraded"` with a `fallback_reason` string of the form
-   `"qdrant unavailable: <underlying error>"`.
+   `"qdrant unavailable: <typed error>"` — the typed error's
+   message, which since RM-054 carries the underlying
+   failure's class name, never its text (see
+   `docs/ERROR_MESSAGE_HYGIENE.md`).
 
 A missing Qdrant in `auto` mode never crashes the caller. A **new**
 `HuginnMemory` object probes again for itself — the fallback is
@@ -591,7 +594,7 @@ config = HuginnConfig()   # all defaults — the Bifröst contract shape
 |---|---|---|---|---|
 | `backend` | `str` | `"auto"` | `"auto"` probes Qdrant once, lazily, and falls back to local permanently for that object on any failure (reason in `health()`). `"local"` never touches the network. `"qdrant"` is explicit — failures raise `HuginnBackendError` | Must be one of `("auto", "local", "qdrant")` |
 | `qdrant_url` | `str` | `"http://localhost:6333"` | Qdrant server URL | Must be a non-empty string with an http/https scheme and a host; plain `http` only for loopback hosts unless `allow_insecure_http=True` (RM-045) |
-| `qdrant_api_key` | `str \| None` | `None` | Optional Qdrant API key, passed only to the client constructor; never logged, excluded from the config `repr`, scrubbed from wrapped error strings (RM-045) | Must be a string or None |
+| `qdrant_api_key` | `str \| None` | `None` | Optional Qdrant API key, passed only to the client constructor; never logged, excluded from the config `repr`; wrapped error strings carry only the underlying exception's class name, never its text (RM-045, generalised by RM-054) | Must be a string or None |
 | `collection_name` | `str` | `"huginn_memories"` | Qdrant collection for memories. Created on first use if missing, with cosine distance and vector size = the embedder's dimension | Must be a non-empty string |
 | `local_db_path` | `str` | `"~/.hermes/memory/huginn_local.db"` (`DEFAULT_LOCAL_DB_PATH`) | SQLite file for the local backend. `~` is expanded (`resolved_local_path()`); the parent directory is created on open | Must be a non-empty string |
 | `embedder` | `str` | `"tfidf"` | `"tfidf"` — the local backend's native lexical TF-IDF scoring, no vectors. `"hashing"` — deterministic feature-hashing vectors (stdlib). `"sentence-transformers"` — neural embeddings, needs the `embeddings` extra. On a Qdrant backend, `"tfidf"` resolves to `"hashing"` (reported in `health()`) | Must be one of `("tfidf", "hashing", "sentence-transformers")` |
@@ -704,7 +707,10 @@ With `backend="qdrant"` there is no fallback. The first operation
 builds the backend and pings the server:
 
 - Server unreachable (or any ping failure) → `HuginnBackendError`,
-  with the URL and the underlying error in the message.
+  with the URL and the underlying error's class name in the
+  message (RM-054: client error *text* never enters a typed
+  message — it can quote credentials, payloads or paths;
+  the full text remains on the exception chain).
 - `qdrant-client` not installed → `HuginnConfigurationError` with the
   install instruction (`pip install 'huginn[qdrant]'`). This stays a
   configuration error even when raised during `ping()` — a missing
@@ -731,6 +737,18 @@ never crash the caller.
 
 And `fly()` is the other designed soft landing: backend failures come
 home as an empty flight with `error` set, instead of raising.
+
+Error messages are hygienic by rule (RM-054, see
+`docs/ERROR_MESSAGE_HYGIENE.md`): a typed error's message is
+built only from fixed text, package-computed values, the
+store path / Qdrant URL / collection name you yourself
+supplied, and — where an underlying SQLite or client failure
+is wrapped — that failure's *class name*, never its text.
+Underlying text can quote memory content, credentials or
+foreign paths, so it is never forwarded; it remains
+available on the exception chain (`__cause__`). The same
+rule covers the strings `health()` and the `auto` fallback
+reason report, since they are formatted from typed messages.
 
 ### Missing optional dependencies raise `HuginnConfigurationError`
 

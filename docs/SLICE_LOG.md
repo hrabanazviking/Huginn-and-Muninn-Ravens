@@ -2581,3 +2581,81 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   walk, the local search caps and the facade property
   (extends the standing package-source sync note).
   TH-13's register update remains RM-056's.
+
+## RM-054 — Error-message hygiene
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Typed errors never carry file contents, keys
+  or full paths beyond the store path the caller itself
+  supplied (TH-14), record in
+  `docs/ERROR_MESSAGE_HYGIENE.md`. The audit found fourteen
+  wrap sites interpolating uncontrolled exception *text*:
+  six SQLite sites (per package: the two
+  `could not be prepared` branches in `_db.py` and the
+  write guard's generic branch) and Huginn's eight Qdrant
+  wraps, which since RM-045 carried client text with only
+  the API key masked. The leak is real, not theoretical:
+  SQLite generates some error text from the store file
+  itself — a trigger's `RAISE(ABORT, '…')` message rode
+  verbatim into the typed error on both the write and open
+  roads in a probe against the RM-053 tree. The rule now:
+  a typed message is built only from fixed text,
+  package-computed values, the caller's own supplied
+  store path / Qdrant URL / collection name, and the
+  underlying exception's **class name** — never its text
+  (`_error_kind` in both `_db.py` files; the Qdrant
+  backend's `_scrub` seam kept, its contract changed).
+  The full text remains available through the exception
+  chain (`from exc` everywhere; the new suites pin the
+  planted text in `__cause__`). The write guards also gain
+  a classified disk-full branch (`_is_full_error`:
+  SQLITE_FULL code 13 or the canonical wording) emitting
+  the package's own fixed `database or disk is full`
+  text, so RM-029's shape survives without echoing.
+  Deliberate message changes, recorded per RM-018: the
+  seven Qdrant CASE lines in Huginn's golden now end in
+  the fake clients' class name (`RuntimeError`) instead
+  of their wording; RM-045's transport tests assert
+  absence of the whole client wording where they asserted
+  the `***` mask (the facade still key-scrubs the error
+  strings it reports — `health()`, fallback reason — as
+  defence in depth, and those surfaces are scan-pinned
+  too). RM-018's "cannot be triggered deterministically"
+  note for `could not be prepared` is superseded: a store
+  trigger aborting the prepare-time meta insert triggers
+  it, and both that branch and the generic write-guard
+  branch are CASE lines now (goldens 61 / 69 cases;
+  template counts corrected to the true 87 / 90, one new
+  fixed disk-full template each). New
+  `tests/test_error_message_hygiene.py` (muninn 7,
+  huginn 8): a combined planted leak (a stored memory's
+  exact content, a foreign absolute path, the Qdrant key,
+  both passphrases) placed in trigger text, client error
+  text and wrong-passphrase attempts, scanned out of
+  every typed message and Huginn's reported surfaces,
+  plus an AST pin that no raise site interpolates an
+  exception variable except through `_error_kind` /
+  `_scrub`. Negation against the RM-053 tree: muninn
+  **5 failed / 2 passed**, huginn **5 failed / 3 passed**
+  (the passes are exactly the shapes already fixed text:
+  disk-full, wrong-passphrase, Huginn's local fixed
+  shapes). Scoping stated in the record: validation
+  messages echoing a caller's own argument back to that
+  caller stay (deliberate RM-018 API); untyped third-party
+  raises are not typed errors. **Bifröst re-verification
+  PASS** (fresh venv `ravens-rm054-bifrost-venv` on
+  `/var/tmp`, bifrost at b66e98cc — its own suites
+  **25 passed**; BifrostBridge smoke PASS, evidence
+  `/var/tmp/rm054-evidence/`). Full suites green in the
+  RM-054 fresh venv on the final banking tree (TMPDIR +
+  installs on `/var/tmp`, encryption extra installed):
+  muninn **343 passed** (336+7), huginn **290 passed**
+  (282+8); ruff check clean; mypy clean in the RM-052
+  deps-free tool venv (muninn 7 files, huginn 9 files).
+  No schema change (RM-004 goldens unmoved); no public
+  signature change (RM-019 goldens unmoved); no new
+  dependency. Live Qdrant + sentence-transformers stay
+  NOT PROVEN. Founding tree NEEDS A SYNC for the
+  RM-054 build (extends the standing package-source sync
+  note). TH-14's register update remains RM-056's.

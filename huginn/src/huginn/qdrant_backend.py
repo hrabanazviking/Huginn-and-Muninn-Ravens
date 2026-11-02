@@ -22,10 +22,17 @@ a typed refusal, never a silent overwrite. See
 Transport safety (RM-045, threat TH-06): the URL's scheme rule is
 enforced at config construction (https for remote hosts, plain http
 only for loopback or with an explicit opt-in). The API key is handed
-only to the client constructor; every client exception this backend
-wraps has the configured key scrubbed out of its text first
-(:func:`scrub_api_key`), because the client's wording is not ours to
-control and a server or proxy error can quote the credential back.
+only to the client constructor.
+
+Error-message hygiene (RM-054, threat TH-14): the client's wording
+is not ours to control — a server or proxy error can quote the
+credential, a payload, or a path back — so no client exception's
+*text* ever enters a typed error's message. RM-045's key scrub
+(:func:`scrub_api_key`, still applied by the facade to the error
+strings it reports) masked the one known secret; RM-054 closes
+the general case: wrapped messages carry only the exception's
+class name, and the full text remains available through the
+exception chain (``from exc``).
 
 Payload hygiene (RM-046, threat TH-07): a point's payload keys are
 a closed set (:data:`_PAYLOAD_KEYS`) written from a fixed dict in
@@ -128,8 +135,17 @@ class QdrantBackend:
         self._closed = False
 
     def _scrub(self, exc: BaseException) -> str:
-        """RM-045: a client exception's text, key-scrubbed."""
-        return scrub_api_key(str(exc), self.config.qdrant_api_key)
+        """RM-054: what of a client exception may enter a typed
+        message — its class name, never its text (TH-14).
+
+        Named for its RM-045 predecessor, which returned the
+        exception's text with the API key masked; the scan in
+        ``tests/test_error_message_hygiene.py`` plants content,
+        foreign paths and the key itself in client error text
+        and none of it may survive, which only this shape
+        guarantees. The full text stays in the exception chain.
+        """
+        return type(exc).__name__
 
     # ─── lazy client ──────────────────────────────────────────────────
 

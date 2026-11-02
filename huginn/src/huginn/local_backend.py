@@ -34,6 +34,8 @@ from ._crypto import (
     require_cryptography,
 )
 from ._db import (
+    _error_kind,
+    _is_full_error,
     _is_locked_error,
     open_store,
     purge_forgotten_content,
@@ -141,7 +143,12 @@ def _storage_write(
     same discipline with its own message shape (RM-031): the
     guard names the contention instead of echoing SQLite's
     wording, so a caller can tell "another process has the
-    store" apart from every other storage failure.
+    store" apart from every other storage failure. A full disk
+    is classified the same way (RM-054, ``_is_full_error``) and
+    named with the package's own fixed wording; every other
+    storage failure is named by the underlying exception's
+    class only — SQLite's text is never echoed, because SQLite
+    can generate it from the store file itself (TH-14).
 
     The decorator preserves the wrapped method's return type —
     the same RM-030 repair as Muninn's twin, whose ``Any``-typed
@@ -161,8 +168,16 @@ def _storage_write(
                         f"huginn write failed during {operation}: store is locked "
                         f"by another process (busy timeout expired)"
                     ) from exc
+                if _is_full_error(exc):
+                    # RM-054: the disk-full wording is the
+                    # package's own fixed text (the RM-029 shape,
+                    # kept), never an echo of SQLite's message.
+                    raise HuginnStorageError(
+                        f"huginn write failed during {operation}: "
+                        f"database or disk is full"
+                    ) from exc
                 raise HuginnStorageError(
-                    f"huginn write failed during {operation}: {exc}"
+                    f"huginn write failed during {operation}: {_error_kind(exc)}"
                 ) from exc
 
         return wrapper

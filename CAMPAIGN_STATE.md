@@ -58,13 +58,68 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
   RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050,
-  RM-051, RM-052, RM-053. Part IV (Security) is under
-  way — fifteen of eighteen slices banked.
-- Next: RM-054 in roadmap order (Part IV —
-  error-message hygiene; cites TH-14). Typed errors
-  never carry file contents, keys or full paths beyond
-  the store path the caller itself supplied.
-  Acceptance: message-scan tests. Class: UNIT.
+  RM-051, RM-052, RM-053, RM-054. Part IV (Security) is
+  under way — sixteen of eighteen slices banked.
+- Next: RM-055 in roadmap order (Part IV — secure
+  defaults review; cites TH-15). Every config default
+  re-judged for safety (timeouts, backup counts, fallback
+  behaviour) and the judgements recorded in the guides.
+- **RM-054 BANKED 2026-11-02 (keeper tick ~06:26 EST):**
+  error-message hygiene — TH-14, record in
+  `docs/ERROR_MESSAGE_HYGIENE.md`. Fourteen wrap sites
+  interpolated uncontrolled exception *text* (six SQLite
+  sites per both packages — the two
+  `could not be prepared` branches and the write guard's
+  generic branch — plus Huginn's eight Qdrant wraps,
+  which since RM-045 carried client text key-masked
+  only). The leak is proven, not theoretical: a store
+  trigger's `RAISE(ABORT, '…')` text — file content —
+  rode verbatim into the typed error on both roads in a
+  probe against the RM-053 tree. Rule now: a typed
+  message is built only from fixed text,
+  package-computed values, the caller's own supplied
+  store path / Qdrant URL / collection name, and the
+  underlying exception's **class name** (`_error_kind`
+  in both `_db.py`; Qdrant's `_scrub` seam kept, contract
+  changed); the full text stays on the exception chain
+  only. Write guards gained a classified disk-full
+  branch (`_is_full_error`: SQLITE_FULL code 13 or the
+  canonical wording) emitting the package's own fixed
+  `database or disk is full` text — RM-029's shape kept
+  without echoing. Deliberate changes recorded per
+  RM-018: seven Qdrant CASE lines now end in
+  `RuntimeError`; RM-045 transport tests assert absence
+  of the whole client wording (facade still key-scrubs
+  reported strings as defence in depth); `could not be
+  prepared` and the generic write-guard branch gained
+  deterministic CASE triggers (goldens 61 / 69 cases;
+  template counts corrected to the true 87 / 90, one new
+  fixed disk-full template each). New
+  `tests/test_error_message_hygiene.py` (muninn 7,
+  huginn 8) incl. the combined planted-leak scan
+  (content + foreign path + Qdrant key + both
+  passphrases, in trigger text, client text and
+  wrong-passphrase attempts; Huginn's health error,
+  fallback reason and flight error also scanned) and an
+  AST pin on exception interpolation. Negation against
+  the RM-053 tree: muninn **5 failed / 2 passed**,
+  huginn **5 failed / 3 passed**. **Bifröst
+  re-verification PASS** (fresh venv
+  `ravens-rm054-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence `/var/tmp/rm054-evidence/`).
+  Full suites green in the RM-054 fresh venv on the
+  final banking tree (TMPDIR + installs on `/var/tmp`,
+  encryption extra installed): muninn **343 passed**
+  (336+7), huginn **290 passed** (282+8); ruff check
+  clean; mypy clean in the RM-052 deps-free tool venv
+  (muninn 7 files, huginn 9 files). No schema or public
+  signature change (RM-004 / RM-019 goldens unmoved);
+  no new dependency. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  NEEDS A SYNC for the RM-054 build (extends the
+  standing package-source sync note). TH-14's register
+  update remains RM-056's.
 - **RM-053 BANKED 2026-11-02 (keeper tick ~05:56 EST):**
   denial-of-service bounds — TH-13, record in
   `docs/QUERY_COST_CAPS.md`. Muninn gains

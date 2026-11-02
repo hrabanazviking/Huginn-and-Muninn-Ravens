@@ -14,13 +14,14 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (63): every raise site except the three that
-# cannot be triggered deterministically — "could not be
-# prepared" (needs a store whose schema script fails mid-open)
-# and the two "document insert reported success but returned
-# no row id" guards (unreachable by construction; RM-008).
-# All three are pinned below as TEMPLATE lines (the insert
-# guard appears twice, once per insert path).
+# CASE lines (69): every raise site except the two that
+# cannot be triggered deterministically — the "document
+# insert reported success but returned no row id" guards
+# (unreachable by construction; RM-008), pinned below as
+# TEMPLATE lines (the guard appears twice, once per insert
+# path). (RM-054: "could not be prepared" gained a
+# deterministic trigger — a store trigger that aborts the
+# prepare-time meta insert — and is a CASE line now.)
 CASE config_backend | HuginnConfigurationError | backend must be one of ('auto', 'local', 'qdrant')
 CASE config_embedder | HuginnConfigurationError | embedder must be one of ('tfidf', 'hashing', 'sentence-transformers')
 CASE config_qdrant_url | HuginnConfigurationError | qdrant_url must be a non-empty string
@@ -74,13 +75,13 @@ CASE tags_oversize | HuginnValidationError | tags size 14 bytes exceeds max_cont
 CASE qdrant_closed | HuginnBackendError | Huginn Qdrant backend is closed
 CASE qdrant_missing_extra | HuginnConfigurationError | backend='qdrant' needs the 'qdrant' extra: pip install 'huginn[qdrant]'
 CASE st_missing_extra | HuginnConfigurationError | embedder='sentence-transformers' needs the 'embeddings' extra: pip install 'huginn[embeddings]'
-CASE qdrant_unreachable | HuginnBackendError | Qdrant at http://localhost:6333 unreachable: down
-CASE qdrant_collection_create | HuginnBackendError | could not create Qdrant collection 'huginn_memories': nope
-CASE qdrant_upsert_failed | HuginnBackendError | Qdrant upsert failed: boom
-CASE qdrant_delete_failed | HuginnBackendError | Qdrant delete failed: boom
-CASE qdrant_retrieve_failed | HuginnBackendError | Qdrant retrieve failed: boom
-CASE qdrant_search_failed | HuginnBackendError | Qdrant search failed: boom
-CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: boom
+CASE qdrant_unreachable | HuginnBackendError | Qdrant at http://localhost:6333 unreachable: RuntimeError
+CASE qdrant_collection_create | HuginnBackendError | could not create Qdrant collection 'huginn_memories': RuntimeError
+CASE qdrant_upsert_failed | HuginnBackendError | Qdrant upsert failed: RuntimeError
+CASE qdrant_delete_failed | HuginnBackendError | Qdrant delete failed: RuntimeError
+CASE qdrant_retrieve_failed | HuginnBackendError | Qdrant retrieve failed: RuntimeError
+CASE qdrant_search_failed | HuginnBackendError | Qdrant search failed: RuntimeError
+CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: RuntimeError
 CASE qdrant_malformed_payload | HuginnBackendError | Qdrant point 41 has a malformed payload
 CASE qdrant_malformed_point_id | HuginnBackendError | Qdrant point has a malformed payload
 CASE strict_symlink_open | HuginnStorageError | huginn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
@@ -88,7 +89,9 @@ CASE strict_world_writable_open | HuginnStorageError | huginn store <tmp_path>/s
 CASE encryption_passphrase_required | HuginnConfigurationError | encryption_passphrase is required when store_encryption is enabled
 CASE encryption_plain_open | HuginnStorageError | huginn store <tmp_path>/enc.db is encrypted; refusing to open it without store_encryption enabled
 CASE encryption_wrong_passphrase | HuginnStorageError | huginn store <tmp_path>/enc.db is encrypted and the supplied passphrase does not unlock it; refusing to open
-# TEMPLATE lines (77 raise sites, 64 distinct — the insert
+CASE write_guard_generic | HuginnStorageError | huginn write failed during upsert: IntegrityError
+CASE prepare_generic | HuginnStorageError | huginn store <tmp_path>/trigprep.db could not be prepared: IntegrityError
+# TEMPLATE lines (90 raise sites, 73 distinct — the insert
 # guard's line is duplicated, once per insert path, and the
 # "could not be prepared" line likewise since RM-030 wrapped
 # the main connection in _db.py; RM-029 added the write-guard
@@ -115,7 +118,12 @@ CASE encryption_wrong_passphrase | HuginnStorageError | huginn store <tmp_path>/
 # check (a ValidationError) and qdrant_backend.py's derived-id
 # pre-check (a BackendError) — and a second "Qdrant upsert
 # failed" site in qdrant_backend.py, where the pre-check's
-# retrieve failure is wrapped as an upsert failure).
+# retrieve failure is wrapped as an upsert failure;
+# RM-054 added the write guard's fixed disk-full raise site
+# in local_backend.py — the generic branch's template is
+# unchanged, but it now interpolates the exception's class
+# name, never its text, and the Qdrant wrap templates likewise
+# now carry a class name where client text rode before).
 TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
 TEMPLATE | HuginnBackendError | HuginnMemory is closed
 TEMPLATE | HuginnBackendError | Qdrant at {} unreachable: {}
@@ -173,6 +181,7 @@ TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (bu
 TEMPLATE | HuginnStorageError | huginn store {} is read-only and cannot be opened for writing
 TEMPLATE | HuginnStorageError | huginn write failed during {}: store is locked by another process (busy timeout expired)
 TEMPLATE | HuginnStorageError | huginn write failed during {}: {}
+TEMPLATE | HuginnStorageError | huginn write failed during {}: database or disk is full
 TEMPLATE | HuginnValidationError | content hash collision: a different memory already holds this content hash (id {}); refusing to merge
 TEMPLATE | HuginnValidationError | content must be a non-empty string
 TEMPLATE | HuginnValidationError | content size {} bytes exceeds max_content_bytes ({} bytes)

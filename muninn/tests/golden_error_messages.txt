@@ -11,12 +11,13 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (53): every raise site except the two that cannot
-# be triggered deterministically — "could not be prepared"
-# (needs a store whose schema script fails mid-open) and "node
-# insert reported success but returned no row id" (unreachable
-# by construction; the RM-008 guard). Both are pinned below as
-# TEMPLATE lines.
+# CASE lines (61): every raise site except the one that cannot
+# be triggered deterministically — "node insert reported
+# success but returned no row id" (unreachable by
+# construction; the RM-008 guard), pinned below as a TEMPLATE
+# line. (RM-054: "could not be prepared" gained a deterministic
+# trigger — a store trigger that aborts the prepare-time meta
+# insert — and is a CASE line now.)
 CASE config_db_path | MuninnConfigurationError | db_path must be a non-empty string
 CASE config_learning_rate | MuninnConfigurationError | learning_rate must be in (0, 1]
 CASE config_decay_half_life | MuninnConfigurationError | decay_half_life_days must be > 0
@@ -76,7 +77,9 @@ CASE encryption_plain_open | MuninnStorageError | muninn store <tmp_path>/enc.db
 CASE encryption_wrong_passphrase | MuninnStorageError | muninn store <tmp_path>/enc.db is encrypted and the supplied passphrase does not unlock it; refusing to open
 CASE attestation_passphrase_required | MuninnConfigurationError | integrity_passphrase is required when integrity_attestation is enabled
 CASE attestation_plain_open | MuninnStorageError | muninn store <tmp_path>/att.db carries integrity attestation; refusing to open it without integrity_attestation enabled
-# TEMPLATE lines (68 raise sites; RM-025 added the
+CASE write_guard_generic | MuninnStorageError | muninn write failed during remember: IntegrityError
+CASE prepare_generic | MuninnStorageError | muninn store <tmp_path>/trigprep.db could not be prepared: IntegrityError
+# TEMPLATE lines (87 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
 # RM-028 added the three path guards; RM-029 added the
@@ -94,7 +97,11 @@ CASE attestation_plain_open | MuninnStorageError | muninn store <tmp_path>/att.d
 # raise in core.py; RM-041 added the two strict path-safety
 # raise sites in _db.py's pre-flight — the symlink template
 # and the world-writable-parent template; RM-047 added the
-# hash-collision raise site in core.py's remember fallback).
+# hash-collision raise site in core.py's remember fallback;
+# RM-054 added the write guard's fixed disk-full raise site
+# in core.py — the generic branch's template is unchanged,
+# but it now interpolates the exception's class name, never
+# its text).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -129,6 +136,7 @@ TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (bu
 TEMPLATE | MuninnStorageError | muninn store {} is read-only and cannot be opened for writing
 TEMPLATE | MuninnStorageError | muninn write failed during {}: store is locked by another process (busy timeout expired)
 TEMPLATE | MuninnStorageError | muninn write failed during {}: {}
+TEMPLATE | MuninnStorageError | muninn write failed during {}: database or disk is full
 TEMPLATE | MuninnStorageError | node insert reported success but returned no row id
 TEMPLATE | MuninnValidationError | attenuation must be in (0, 1]
 TEMPLATE | MuninnValidationError | cannot associate a memory with itself

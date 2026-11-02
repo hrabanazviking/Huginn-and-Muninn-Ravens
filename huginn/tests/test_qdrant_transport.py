@@ -16,10 +16,14 @@ an INFO log record. This slice pins:
   message carries neither the key nor the URL;
 * the key is excluded from the config's ``repr``, is handed
   to the client constructor (the audit's positive control),
-  and is scrubbed out of every wrapped client error — on the
+  and never rides a wrapped client error — on the
   explicit-backend raises, on ``auto``'s recorded fallback
   reason and its INFO log, and on ``health()``'s unhealthy
-  error string.
+  error string. (RM-054 supersedes this slice's original
+  mechanism — client text with the key masked — with the
+  general rule: no client text at all in a typed message,
+  only the exception's class name; the facade still scrubs
+  the strings it reports, as defence in depth.)
 
 All proof is against fake clients (a live Qdrant round-trip
 stays NOT PROVEN): the leaky fakes deliberately embed the key
@@ -256,7 +260,7 @@ def test_client_constructor_receives_url_key_and_timeout(monkeypatch):
     backend.close()
 
 
-def test_ping_error_is_scrubbed(monkeypatch):
+def test_ping_error_carries_no_client_text(monkeypatch):
     _fake_module(monkeypatch, _LeakyDownClient)
     backend = QdrantBackend(
         _cfg(qdrant_url="https://qdrant.example:6334"),
@@ -264,12 +268,15 @@ def test_ping_error_is_scrubbed(monkeypatch):
     )
     with pytest.raises(HuginnBackendError) as caught:
         backend.ping()
+    # RM-054: neither the key nor any other client wording —
+    # only the exception's class name survives the wrap.
     assert KEY not in str(caught.value)
-    assert "***" in str(caught.value)
+    assert "unauthorized" not in str(caught.value)
+    assert "RuntimeError" in str(caught.value)
     backend.close()
 
 
-def test_operation_errors_are_scrubbed():
+def test_operation_errors_carry_no_client_text():
     backend = _backend(_LeakyOpsClient())
     operations = [
         lambda: backend.upsert(
@@ -287,11 +294,12 @@ def test_operation_errors_are_scrubbed():
         with pytest.raises(HuginnBackendError) as caught:
             operation()
         assert KEY not in str(caught.value), str(caught.value)
-        assert "***" in str(caught.value)
+        assert "server echoed header" not in str(caught.value)
+        assert "RuntimeError" in str(caught.value)
     backend.close()
 
 
-def test_collection_create_error_is_scrubbed():
+def test_collection_create_error_carries_no_client_text():
     backend = _backend(_LeakyCreateClient())
     with pytest.raises(HuginnBackendError) as caught:
         backend.upsert(
@@ -299,7 +307,8 @@ def test_collection_create_error_is_scrubbed():
             emotional_valence=0.0,
         )
     assert KEY not in str(caught.value)
-    assert "***" in str(caught.value)
+    assert "create denied" not in str(caught.value)
+    assert "RuntimeError" in str(caught.value)
     backend.close()
 
 
@@ -320,7 +329,8 @@ def test_auto_fallback_reason_and_log_are_scrubbed(monkeypatch, tmp_path, caplog
         huginn.close()
     assert health["status"] == "degraded"
     assert KEY not in health["fallback_reason"]
-    assert "***" in health["fallback_reason"]
+    assert "unauthorized" not in health["fallback_reason"]
+    assert "RuntimeError" in health["fallback_reason"]
     for record in caplog.records:
         assert KEY not in record.getMessage(), record.getMessage()
 
@@ -340,4 +350,5 @@ def test_explicit_health_error_is_scrubbed(monkeypatch, tmp_path):
         huginn.close()
     assert health["status"] == "unhealthy"
     assert KEY not in health["error"]
-    assert "***" in health["error"]
+    assert "unauthorized" not in health["error"]
+    assert "RuntimeError" in health["error"]

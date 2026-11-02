@@ -772,6 +772,16 @@ with the failed call rolled back so no partial write survives; the
 store stays open and consistent afterwards (RM-029, see
 `docs/DISK_FULL.md`).
 
+Error messages are hygienic by rule (RM-054, see
+`docs/ERROR_MESSAGE_HYGIENE.md`): a typed error's message is
+built only from fixed text, package-computed values, the store
+path you yourself supplied, and — where an underlying SQLite
+failure is wrapped — that failure's *class name*, never its
+text. SQLite can generate its text from the store file itself
+(a trigger's message is file content), so the text is never
+forwarded; it remains available on the exception chain
+(`__cause__`) for callers who want it.
+
 A store whose location is read-only — a read-only filesystem, a
 read-only directory, or a store file marked read-only — is
 refused *on open* with `MuninnStorageError`
