@@ -57,13 +57,74 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044, RM-045, RM-046, RM-047, RM-048, RM-049. Part IV
-  (Security) is under way — eleven of eighteen slices banked.
-- Next: RM-050 in roadmap order (Part IV — integrity
-  attestation; cites TH-10). Optional HMAC/checksum chain
-  over `activation_log` so tampering with the log file
-  outside the API is detectable on open; acceptance is the
-  raw-SQL tamper test.
+  RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050.
+  Part IV (Security) is under way — twelve of eighteen
+  slices banked.
+- Next: RM-051 in roadmap order (Part IV — forget is
+  forgetting; cites TH-11). Audit `forget`/`delete` for
+  residual copies: WAL frames and backups can still hold
+  "deleted" content; document the truth and add a
+  `secure_forget` that rewrites + checkpoints + rotates
+  backups, with its cost stated; acceptance is the
+  forensic test searching the files for a forgotten string
+  before/after.
+- **RM-050 BANKED 2026-11-02 (keeper tick ~04:26 EST):**
+  integrity attestation — TH-10, record in
+  `docs/INTEGRITY_ATTESTATION.md`. Muninn-only slice
+  (`activation_log` exists only in Muninn; Huginn's copy
+  of the work is the slice-log pin). Optional HMAC chain
+  over `activation_log`, **stdlib only** (no new
+  dependency): config gains `integrity_attestation:
+  bool = False` + `integrity_passphrase` (repr=False;
+  missing passphrase with the flag on is a typed
+  configuration error). The chain key is PBKDF2-HMAC-SHA256
+  from the passphrase (600,000 iterations, per-store
+  16-byte salt) and is never stored — the store carries
+  salt / iterations / head / chained count as `meta` rows
+  only, so there is no schema change (RM-004 goldens
+  unmoved, contracted table untouched). Every appending
+  road chains in the row's own transaction (`activate`,
+  both `activate_batch` roads incl. the RM-035 bulk road,
+  `retrieve(touch=True)`), re-reading the stored head
+  before each advance so a rolled-back transaction never
+  leaves the in-memory chain ahead of the store.
+  Verification on open recomputes over the rows as they
+  stand and *reports*: the store opens and serves, the
+  verdict rides on `integrity_attestation_status` and
+  `health()`'s new additive `integrity_attestation` field
+  (`ok` / `tamper_detected` / `not_enabled`), failures
+  logged at ERROR, tampered rows left as found. A marked
+  store opened without the flag refuses typed before any
+  write; the judgement defers to the live connection when
+  the pre-open probe cannot read the file, and a restored
+  backup is judged by its own header. Enabling on an
+  existing store bootstraps over the rows as found.
+  Honest limits in the record: a wrong passphrase is
+  indistinguishable from tampering; the chain covers
+  `activation_log` only, not the whole store; detection,
+  not prevention or attribution; cross-process concurrent
+  writers can false-alarm, never silently pass. New
+  `tests/test_integrity_attestation.py` (13 tests);
+  negation against the RM-049 packages **12 failed / 0
+  passed / 1 skipped** (skip = the encryption-compose
+  test, no `cryptography` in the negation venv). RM-018
+  goldens extended (+2 CASE / +6 TEMPLATE; muninn 58 /
+  85); RM-019 surface golden gained the fields; RM-003
+  health key set gained the field; RM-040 audit total
+  84 → 89 (+5 constant sites). **Bifröst re-verification
+  PASS** (fresh venv `ravens-rm050-bifrost-venv` on
+  `/var/tmp`, bifrost at b66e98cc — its own suites **25
+  passed**; BifrostBridge smoke PASS, evidence
+  `/var/tmp/rm050-evidence/`). Full suites green in the
+  RM-050 fresh venv on the final banking tree (TMPDIR +
+  installs on `/var/tmp`, encryption extra installed):
+  muninn **312 passed** (299+13), huginn **259 passed**
+  (slice-log pin only); ruff + mypy floors clean (fresh
+  tool venv; mypy muninn 7 files — the new `_attest.py` —
+  huginn 9 files). TH-10's register update remains
+  RM-056's. Founding tree NEEDS A SYNC for the whole
+  attestation build (extends the standing package-source
+  sync note).
 - **RM-049 BANKED 2026-11-02 (keeper tick ~03:36 EST):**
   store encryption, build — TH-09, building RM-048's
   decision to the `docs/STORE_ENCRYPTION.md` specification

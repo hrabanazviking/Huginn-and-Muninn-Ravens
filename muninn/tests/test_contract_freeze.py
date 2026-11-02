@@ -91,6 +91,7 @@ def test_golden_result_keys(tmp_path):
         assert set(m.health()) == {
             "activations", "connections", "db_path",
             "file_permissions_warning", "integrity",
+            "integrity_attestation",
             "nodes", "recovered_from_backup", "schema_version",
             "sqlite_version", "status",
         }

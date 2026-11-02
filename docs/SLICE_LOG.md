@@ -2289,3 +2289,74 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   encrypted store when the extra is present). Founding
   tree NEEDS A SYNC for the whole encryption build
   (extends the standing package-source sync note).
+
+## RM-050 — Integrity attestation
+
+- **Class:** FAULT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Optional HMAC chain over `activation_log`
+  (TH-10), Muninn-only — `activation_log` exists only in
+  Muninn; Huginn's copy of the slice work is this entry's
+  slice-log pin. Record in `docs/INTEGRITY_ATTESTATION.md`.
+  Config (additive): `integrity_attestation: bool = False`
+  + `integrity_passphrase` (repr=False; missing passphrase
+  with the flag on is a typed configuration error).
+  **Stdlib only, no new dependency**: the chain key is
+  PBKDF2-HMAC-SHA256 from the passphrase (600,000
+  iterations, per-store 16-byte salt) and is never stored;
+  each appended log row extends an HMAC-SHA256 chain
+  (genesis over a domain constant ‖ salt; each link over
+  head ‖ memory_id ‖ activated_at ‖ repr(valence) ‖
+  source), and the store carries only salt / iterations /
+  head / chained count as `meta` rows — no schema change,
+  RM-004 goldens unmoved, the contracted table untouched.
+  Every appending road chains in the row's own transaction
+  (`activate`, both `activate_batch` roads including the
+  RM-035 bulk road, `retrieve(touch=True)`), re-reading the
+  stored head before each advance so a rolled-back
+  transaction never leaves the in-memory chain ahead of
+  the store. Verification on open recomputes the chain
+  over the rows as they stand and *reports* the verdict —
+  the store opens and serves; the result rides on
+  `HebbianMemory.integrity_attestation_status` and
+  `health()`'s new additive `integrity_attestation` field
+  (`ok` / `tamper_detected` / `not_enabled`), with a
+  failure logged at ERROR and the tampered rows left as
+  found. A marked store opened without the flag refuses
+  typed before any write (pre-open probe; the judgement
+  defers to the live connection when the probe cannot
+  read the file, and a restored backup is judged by its
+  own header — test-pinned). Enabling the flag on an
+  existing store bootstraps the chain over the rows as
+  found. Honest limits in the record: a wrong passphrase
+  is indistinguishable from tampering (both recompute to
+  a different head — the keyless chain's honest shape);
+  the chain covers `activation_log` only, not the whole
+  store; detection, not prevention or attribution;
+  cross-process concurrent writers can false-alarm, never
+  silently pass. New `tests/test_integrity_attestation.py`
+  (13 tests — the roadmap's raw-SQL tamper test plus
+  inserted/deleted-row, rewritten-head, wrong-passphrase,
+  plain-open refusal, bootstrap, both batch roads, touch,
+  encryption composition, backup-restore); negation
+  against the RM-049 packages **12 failed / 0 passed /
+  1 skipped** (the skip: the encryption-compose test, the
+  negation venv carries no `cryptography`). RM-018
+  goldens extended (+2 CASE / +6 TEMPLATE lines — muninn
+  58 CASE / 85 TEMPLATE); RM-019 surface golden gained
+  the two config fields; RM-003 health key set gained the
+  field; RM-040 audit total 84 → 89 (+5 constant sites).
+  **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm050-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  store/search/recall/decay/consolidate smoke PASS,
+  evidence `/var/tmp/rm050-evidence/`). Full suites green
+  in the RM-050 fresh venv on the final banking tree
+  (TMPDIR + installs on `/var/tmp`, encryption extra
+  installed): muninn **312 passed** (299+13), huginn
+  **259 passed** (slice-log pin only); ruff + mypy floors
+  clean (fresh tool venv on `/var/tmp`; mypy muninn 7
+  files — the new `_attest.py` — huginn 9 files). Live
+  Qdrant and sentence-transformers stay NOT PROVEN.
+  Founding tree NEEDS A SYNC for the attestation build
+  (extends the standing package-source sync note).

@@ -142,6 +142,36 @@ class MuninnConfig:
             precedent); never stored, never logged, never in an
             error string. There is no recovery: a lost
             passphrase is a lost store.
+        integrity_attestation: Integrity attestation (RM-050):
+            when True, every ``activation_log`` row Muninn
+            appends extends an HMAC-SHA256 chain whose key is
+            derived from ``integrity_passphrase`` (stdlib
+            PBKDF2; the key itself is never stored — the store
+            carries only the salt, the chain head and the
+            chained row count as ``meta`` rows, so the schema
+            is untouched), and each open verifies the chain
+            over the log as it stands: the verdict rides in
+            ``health()``'s ``integrity_attestation`` field and
+            in ``HebbianMemory.integrity_attestation_status``
+            (threat TH-10; record
+            ``docs/INTEGRITY_ATTESTATION.md``). Default False:
+            today's behaviour byte for byte. Enabling it on an
+            existing store bootstraps the chain over the rows
+            already there — attested as found, so tampering
+            from before enablement is out of scope by
+            definition. A marked store opened without the flag
+            refuses typed: an unattested open must never
+            silently serve a store whose owner asked for
+            attestation. Like ``auto_backup`` it is a plain
+            boolean flag, used as given.
+        integrity_passphrase: Integrity attestation (RM-050):
+            the passphrase the chain key is derived from,
+            required when ``integrity_attestation`` is on.
+            Excluded from the config's ``repr``; never stored,
+            never logged, never in an error string. A wrong
+            passphrase cannot be distinguished from tampering
+            — both recompute to a different head and both are
+            reported as ``tamper_detected``.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -161,6 +191,9 @@ class MuninnConfig:
     store_encryption: bool = False
     # RM-049: repr=False — the passphrase never appears in repr(config).
     encryption_passphrase: str | None = field(default=None, repr=False)
+    integrity_attestation: bool = False
+    # RM-050: repr=False — the passphrase never appears in repr(config).
+    integrity_passphrase: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
@@ -202,6 +235,14 @@ class MuninnConfig:
         if self.store_encryption and not self.encryption_passphrase:
             raise MuninnConfigurationError(
                 "encryption_passphrase is required when store_encryption is enabled"
+            )
+        if self.integrity_passphrase is not None and not isinstance(
+            self.integrity_passphrase, str
+        ):
+            raise MuninnConfigurationError("integrity_passphrase must be a string or None")
+        if self.integrity_attestation and not self.integrity_passphrase:
+            raise MuninnConfigurationError(
+                "integrity_passphrase is required when integrity_attestation is enabled"
             )
 
     def resolved_path(self) -> Path:

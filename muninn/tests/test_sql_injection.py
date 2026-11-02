@@ -162,7 +162,10 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
 # named count_sql it runs, and the encryption-header insert in
 # core (all constant SQL; the count arrives as a named constant
 # from the caller, never built from values).
-EXPECTED_SITE_TOTAL = 84
+# RM-050: +5 sites — the _attest recompute select + meta
+# select, and core's bootstrap select + header insert + the
+# per-activation head executemany (all constant SQL).
+EXPECTED_SITE_TOTAL = 89
 
 
 def _source_dir():

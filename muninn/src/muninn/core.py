@@ -48,6 +48,16 @@ from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any, TypeVar
 
+from ._attest import (
+    AttestationChain,
+    chain_head_meta,
+    meta_from_connection,
+    new_attestation_chain,
+    open_attestation_chain,
+    probe_attestation,
+    sync_chain_head,
+    verify_attestation,
+)
 from ._crypto import (
     StoreCipher,
     meta_and_count_from_connection,
@@ -657,6 +667,35 @@ class HebbianMemory:
                 f"muninn store {self._db_path} is encrypted; refusing "
                 f"to open it without store_encryption enabled"
             )
+        # RM-050: integrity attestation setup, on the same
+        # pre-read pattern — a marked store opened without the
+        # flag refuses here, before the store is touched, and a
+        # file the probe cannot read defers its judgement to
+        # the post-open check on the live connection.
+        self._attest_chain: AttestationChain | None = None
+        self._pending_attestation_meta: dict[str, str] | None = None
+        self._deferred_attestation = False
+        #: RM-050: the open-time attestation verdict —
+        #: "ok", "tamper_detected", or "not_enabled".
+        self.integrity_attestation_status: str = "not_enabled"
+        attest_probe_ok, attest_meta = probe_attestation(self._db_path)
+        if config.integrity_attestation:
+            attest_passphrase = config.integrity_passphrase or ""
+            if attest_meta is not None:
+                self._attest_chain = open_attestation_chain(
+                    attest_passphrase, attest_meta, self._db_path
+                )
+            elif attest_probe_ok or not self._db_path.exists():
+                self._attest_chain, self._pending_attestation_meta = (
+                    new_attestation_chain(attest_passphrase)
+                )
+            else:
+                self._deferred_attestation = True
+        elif attest_meta is not None:
+            raise MuninnStorageError(
+                f"muninn store {self._db_path} carries integrity attestation; "
+                f"refusing to open it without integrity_attestation enabled"
+            )
         conn, report = open_store(
             self._db_path,
             busy_timeout_ms=config.busy_timeout_ms,
@@ -698,6 +737,48 @@ class HebbianMemory:
                 raise MuninnStorageError(
                     f"muninn store {self._db_path} is encrypted; refusing "
                     f"to open it without store_encryption enabled"
+                )
+            # RM-050: attestation is established or verified
+            # inside the same open-time lock, before any
+            # activation can be written.
+            if self._pending_attestation_meta is not None:
+                self._establish_attestation_locked(self._pending_attestation_meta)
+                self._pending_attestation_meta = None
+            elif config.integrity_attestation:
+                live_meta = meta_from_connection(self._conn)
+                if live_meta is not None:
+                    # Rebuild from the live store's own header —
+                    # the open may have restored a backup whose
+                    # header is the one that counts.
+                    try:
+                        self._attest_chain = open_attestation_chain(
+                            config.integrity_passphrase or "",
+                            live_meta,
+                            self._db_path,
+                        )
+                    except MuninnStorageError:
+                        self._conn.close()
+                        self._closed = True
+                        raise
+                    self._verify_attestation_locked()
+                else:
+                    # The deferred case (the pre-read could not
+                    # settle the file) landing on an unmarked
+                    # store: take a fresh header, bootstrapped
+                    # over the rows as found.
+                    self._attest_chain, fresh_meta = new_attestation_chain(
+                        config.integrity_passphrase or ""
+                    )
+                    self._establish_attestation_locked(fresh_meta)
+            elif meta_from_connection(self._conn) is not None:
+                # RM-050 post-open re-check: the open restored a
+                # marked store the pre-read could not see. Never
+                # serve it unattested — close and refuse.
+                self._conn.close()
+                self._closed = True
+                raise MuninnStorageError(
+                    f"muninn store {self._db_path} carries integrity attestation; "
+                    f"refusing to open it without integrity_attestation enabled"
                 )
             self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
@@ -742,6 +823,79 @@ class HebbianMemory:
             self._cipher, meta = new_store_cipher(passphrase)
             self._write_encryption_meta_locked(meta)
         self._deferred_encryption = False
+
+    # ─── integrity attestation (RM-050) ───────────────────────────────
+
+    def _establish_attestation_locked(self, meta: dict[str, str]) -> None:
+        """RM-050: bootstrap the chain over the log as found (lock held).
+
+        Rows already in the store are chained in id order and
+        the header is written with the resulting head/count —
+        the store is attested from this open forward, in the
+        state this open found it.
+        """
+        chain = self._attest_chain
+        if chain is None:
+            return
+        for memory_id, at, valence, source in self._conn.execute(
+            "SELECT memory_id, activated_at, emotional_valence, source"
+            " FROM activation_log ORDER BY id"
+        ):
+            chain.advance(int(memory_id), str(at), float(valence), str(source))
+        for key, value in {**meta, **chain_head_meta(chain)}.items():
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        self._conn.commit()
+        self.integrity_attestation_status = "ok"
+
+    def _verify_attestation_locked(self) -> None:
+        """RM-050: the open-time verdict (lock held).
+
+        Detection is *reported*, never silently repaired and
+        never a refusal: the store opens, the verdict rides on
+        this object and in ``health()``, and a failure is
+        logged at ERROR — the caller's audit trail has been
+        tampered with (or the passphrase is wrong, which the
+        chain cannot tell apart, by design), and that fact is
+        the caller's to act on.
+        """
+        chain = self._attest_chain
+        if chain is None:
+            return
+        self.integrity_attestation_status = verify_attestation(self._conn, chain)
+        if self.integrity_attestation_status != "ok":
+            logger.error(
+                "muninn: integrity attestation FAILED for store %s — the "
+                "activation log does not match its HMAC chain "
+                "(tampering, or a wrong integrity_passphrase)",
+                self._db_path,
+            )
+
+    def _advance_attestation_locked(
+        self, memory_id: int, at: str, emotional_valence: float, source: str
+    ) -> None:
+        """RM-050: chain one activation row about to be inserted.
+
+        The stored head is re-read first (the authority — a
+        rolled-back transaction must not leave the in-memory
+        chain ahead of the store), then the chain advances and
+        the new head/count are written in the caller's own
+        transaction, so a log row and its chain link land or
+        roll back together.
+        """
+        chain = self._attest_chain
+        if chain is None:
+            return
+        meta = meta_from_connection(self._conn)
+        if meta is not None:
+            sync_chain_head(chain, meta, self._db_path)
+        chain.advance(memory_id, at, emotional_valence, source)
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+            tuple(chain_head_meta(chain).items()),
+        )
 
     # ─── store encryption transforms (RM-049) ─────────────────────────
 
@@ -852,6 +1006,7 @@ class HebbianMemory:
             " VALUES (?, ?, ?, ?)",
             (memory_id, at, emotional_valence, source),
         )
+        self._advance_attestation_locked(memory_id, at, emotional_valence, source)
         lr = self.config.learning_rate
         self._conn.execute(
             "INSERT INTO node_activation (memory_id, total_activations, confidence,"
@@ -1090,6 +1245,13 @@ class HebbianMemory:
             " VALUES (?, ?, ?, ?)",
             ((mid, at, emotional_valence, source) for mid in ids),
         )
+        # RM-050: the chain advances per row in id order — an
+        # O(ids) Python loop like the activation writes above,
+        # never O(pairs) — and the head lands in this same
+        # transaction.
+        if self._attest_chain is not None:
+            for mid in ids:
+                self._advance_attestation_locked(mid, at, emotional_valence, source)
         conn.executemany(
             "INSERT INTO node_activation (memory_id, total_activations, confidence,"
             " last_activated_at)"
@@ -1959,6 +2121,10 @@ class HebbianMemory:
             # warning string when an existing file is looser
             # than 0600 (opening never re-permissions it).
             "file_permissions_warning": store_permissions_warning(self._db_path),
+            # RM-050: the open-time attestation verdict —
+            # "ok" / "tamper_detected" on an attested store,
+            # "not_enabled" when the flag is off.
+            "integrity_attestation": self.integrity_attestation_status,
         }
 
     def stats(self) -> dict[str, Any]:

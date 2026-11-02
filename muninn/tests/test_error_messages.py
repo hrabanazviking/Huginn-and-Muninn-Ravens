@@ -189,6 +189,18 @@ def _cases(tmp_path):
         enc_built = True
     except Exception:
         enc_built = False
+    # RM-050: an attested store for the plain-open refusal
+    # case (stdlib-only — always built).
+    att_path = tmp_path / "att.db"
+    _att_mem = HebbianMemory(
+        MuninnConfig(
+            db_path=str(att_path),
+            integrity_attestation=True,
+            integrity_passphrase="case passphrase",
+        )
+    )
+    _att_mem.remember("chained")
+    _att_mem.close()
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
     os.chmod(shared_dir, 0o777)
@@ -263,6 +275,12 @@ def _cases(tmp_path):
             MuninnConfig(
                 db_path=str(shared_dir / "m.db"), strict_path_safety=True
             )
+        ),
+        "attestation_passphrase_required": lambda: MuninnConfig(
+            integrity_attestation=True
+        ),
+        "attestation_plain_open": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(att_path))
         ),
         "hash_collision": lambda: collide.remember("gamma incoming"),
         "content_surrogate": lambda: m.remember("bad \ud800 end"),

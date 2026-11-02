@@ -73,6 +73,8 @@ CASE strict_world_writable_open | MuninnStorageError | muninn store <tmp_path>/s
 CASE encryption_passphrase_required | MuninnConfigurationError | encryption_passphrase is required when store_encryption is enabled
 CASE encryption_plain_open | MuninnStorageError | muninn store <tmp_path>/enc.db is encrypted; refusing to open it without store_encryption enabled
 CASE encryption_wrong_passphrase | MuninnStorageError | muninn store <tmp_path>/enc.db is encrypted and the supplied passphrase does not unlock it; refusing to open
+CASE attestation_passphrase_required | MuninnConfigurationError | integrity_passphrase is required when integrity_attestation is enabled
+CASE attestation_plain_open | MuninnStorageError | muninn store <tmp_path>/att.db carries integrity attestation; refusing to open it without integrity_attestation enabled
 # TEMPLATE lines (68 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
@@ -171,3 +173,9 @@ TEMPLATE | MuninnStorageError | muninn store {} is encrypted; refusing to open i
 TEMPLATE | MuninnStorageError | muninn store {} is encrypted; refusing to open it without store_encryption enabled
 TEMPLATE | MuninnStorageError | muninn store {} is not encrypted but already holds memories; refusing to open it with store_encryption enabled
 TEMPLATE | MuninnStorageError | muninn store {} is not encrypted but already holds memories; refusing to open it with store_encryption enabled
+TEMPLATE | MuninnConfigurationError | integrity_passphrase is required when integrity_attestation is enabled
+TEMPLATE | MuninnConfigurationError | integrity_passphrase must be a string or None
+TEMPLATE | MuninnStorageError | muninn store {} carries an unreadable attestation header; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} carries an unreadable attestation header; refusing to write
+TEMPLATE | MuninnStorageError | muninn store {} carries integrity attestation; refusing to open it without integrity_attestation enabled
+TEMPLATE | MuninnStorageError | muninn store {} carries integrity attestation; refusing to open it without integrity_attestation enabled
