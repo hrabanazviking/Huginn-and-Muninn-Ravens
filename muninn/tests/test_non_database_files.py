@@ -83,7 +83,13 @@ def test_text_file_without_backup_refuses_typed(tmp_path):
     assert type(caught.value) is MuninnStorageError
     assert _digest(db) == before
     # No sidecars or backups were created by the refused open.
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["m.db"]
+    # RM-037 amendment: the one new neighbour is the zero-byte
+    # `.open-lock` coordination file — the corrupt-store road
+    # runs under the per-store coordination lock, and the lock
+    # file is left in place by design (docs/FORMAT_STABILITY.md).
+    # The RM-033 pre-flight refusals (directory, non-regular
+    # file, read-only) still create nothing at all.
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["m.db", "m.db.open-lock"]
 
 
 def test_short_text_file_without_backup_refuses_typed(tmp_path):

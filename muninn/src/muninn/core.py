@@ -48,7 +48,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any, TypeVar
 
-from ._db import _is_locked_error, open_store, take_backup
+from ._db import _is_locked_error, open_store, store_coordination_lock, take_backup
 from .config import MuninnConfig
 from .errors import MuninnStorageError, MuninnValidationError
 
@@ -606,7 +606,11 @@ class HebbianMemory:
         self.open_report = report
         #: True when the store had to be restored from a rolling backup.
         self.recovered_from_backup = report.recovered_from_backup
-        with self._lock:
+        # RM-037: the heal pass is an open-time duty — it runs
+        # under the per-store coordination lock, so it can never
+        # interleave with another opener's open, heal or backup
+        # duties on the same store file.
+        with self._lock, store_coordination_lock(self._db_path):
             self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
 

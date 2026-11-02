@@ -25,7 +25,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
-from ._db import _is_locked_error, open_store
+from ._db import _is_locked_error, open_store, store_coordination_lock
 from .config import HuginnConfig
 from .errors import HuginnStorageError, HuginnValidationError
 from .text import Embedder, cosine, dense_cosine, sparse_tfidf, term_counts, tokenize
@@ -154,7 +154,11 @@ class LocalBackend:
         self._conn = conn
         self.open_report = report
         self.recovered_from_backup = report.recovered_from_backup
-        with self._lock:
+        # RM-037: the heal pass is an open-time duty — it runs
+        # under the per-store coordination lock, so it can never
+        # interleave with another opener's open, heal or backup
+        # duties on the same store file.
+        with self._lock, store_coordination_lock(self._db_path):
             self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
 

@@ -1123,7 +1123,7 @@ The three classes:
 
 | Row | API | Class | What a repeat does |
 |---|---|---|---|
-| M-01 | construction / reopen | R | Reopening a closed store returns the same logical state, `recovered_from_backup == False` on a healthy store. |
+| M-01 | construction / reopen | R | Reopening a closed store returns the same logical state, `recovered_from_backup == False` on a healthy store. Construction is also safe concurrently: several objects may open the same store at once, in one process or across processes (RM-037, `docs/CONCURRENT_OPENERS.md`). |
 | M-02 | `close()` | I | Second and later closes are no-ops. |
 | M-03 | `backup()` | R | Re-takes the rolling backup (generations rotate, bounded by `backup_keep`); the store itself never changes; returns the newest generation's path both times. |
 | M-04 | `activate(id)` | **N** | Logs a **second** activation: the returned total and `activation_count` advance by one per call. This is the operation itself — never blind-retry. |
@@ -1157,7 +1157,7 @@ The three classes:
 
 | Row | API | Class | What a repeat does |
 |---|---|---|---|
-| H-01 | construction / reopen | R | Construction is lazy (no file until first use); reopening returns the same documents, `recovered_from_backup == False` on a healthy store. |
+| H-01 | construction / reopen | R | Construction is lazy (no file until first use); reopening returns the same documents, `recovered_from_backup == False` on a healthy store. First use is also safe concurrently: several objects may open the same local store at once, in one process or across processes (RM-037, `docs/CONCURRENT_OPENERS.md`). |
 | H-02 | `close()` | I | Second and later closes are no-ops — including closing before the lazy backend was ever built. |
 | H-03 | `upsert_memory(content, …)` (no id) | I | Same content + category returns the **same id**, one document. Upsert means *replace*: a repeat carrying new fields updates that same document in place (contrast Muninn M-10, where the first write wins). |
 | H-04 | `upsert_memory(…, memory_id=k)` | I | The explicit-id form lands on `k` every time; replacing the content under `k` twice leaves exactly the second content, once. |

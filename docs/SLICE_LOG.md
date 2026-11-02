@@ -1391,3 +1391,73 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   tags ceiling (extends the RM-008/RM-011/RM-012/RM-016/
   RM-017/RM-025/RM-026/RM-027/RM-028/RM-029/RM-030/RM-031/
   RM-032/RM-033/RM-034/RM-035 sync note).
+
+## RM-037 — Concurrent openers
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Concurrent openers are now **defined as
+  supported** and made true (record
+  `docs/CONCURRENT_OPENERS.md`). Two or more objects — same
+  process or cross-process — may hold one SQLite store at
+  once in both packages: committed writes are visible across
+  objects at once and never lose each other (SQLite
+  serializes ordinary reads/writes, WAL + busy timeout,
+  RM-031), closing one object leaves the others working,
+  and the duties that cannot interleave — creation,
+  integrity probe, restore, backup-on-open, heal, and every
+  rolling backup — are serialized per store file by a new
+  coordination lock in each package's `_db.py`
+  (`store_coordination_lock`: a process-wide re-entrant lock
+  per path plus an `flock` on the sibling
+  `<db_path>.open-lock` file; the RM-033/RM-030 pre-flights
+  still run first, unlocked, so a refused open creates
+  nothing). Negation against the RM-036 packages (disk logs
+  `~/workspace/.verify-tmp/rm037/muninn_negation.log`,
+  `huginn_negation.log`): muninn **3 failed / 5 passed**,
+  huginn **1 failed / 7 passed** — the failures are the
+  three real races the slice closes (threaded fresh-store
+  creation read as corruption in muninn; concurrent
+  `backup()` colliding on `.bak-tmp`, failing with disk
+  I/O errors and returning `None`; openers restoring a
+  corrupt store over each other in both packages), the
+  passes exactly the behaviours preserved (cross-visibility,
+  exact interleaved and cross-process write totals, close
+  independence; huginn's creation race passed pre-slice in
+  the recorded run — timing luck through the lazy facade,
+  stated in the record doc). Two test-side corrections
+  during the build (a wired pair is two directed rows; a
+  worker id collided with the seed document's id) — the
+  packages were right, the tests were wrong. Pinned by new
+  `tests/test_concurrent_openers.py` (muninn 8, huginn 8):
+  cross-visibility and exact totals, six-thread fresh-store
+  creation race, two-process exact writes, concurrent
+  backups verified by `quick_check`, stale-store
+  backup-on-open race, corrupt-store restore race, close
+  independence. Targeted suites green twice on the final
+  tree in a fresh venv (`ravens-rm037-venv`, non-editable
+  installs, TMPDIR on the workspace disk). Honest limits,
+  documented in the record: the RM-012 timestamp guard is
+  per object (cross-object timestamps may repeat or invert
+  by microseconds); a foreign raw-SQLite writer gets
+  SQLite's locking but not the coordination lock; live
+  Qdrant stays NOT PROVEN. No signature or schema change
+  (RM-003/RM-004 pins green; `<db_path>.open-lock` added to
+  the FORMAT_STABILITY file family as a transient non-store
+  file), but open/backup behaviour changed, so the
+  **Bifröst contract re-verification was run before
+  banking** — counts in `CAMPAIGN_STATE.md`. Full-suite and
+  floor counts are recorded in `CAMPAIGN_STATE.md` with this
+  entry. Founding tree NEEDS A SYNC for the coordination
+  lock (extends the RM-008/RM-011/RM-012/RM-016/RM-017/
+  RM-025/RM-026/RM-027/RM-028/RM-029/RM-030/RM-031/RM-032/
+  RM-033/RM-034/RM-035/RM-036 sync note).
+  Amendment recorded with this slice: the RM-033
+  text-file refusal tests in both packages now expect the
+  zero-byte `.open-lock` neighbour (the corruption road
+  runs under the coordination lock; the RM-033 pre-flight
+  refusals — directory, non-regular, read-only — still
+  create nothing), and `docs/NON_DATABASE_FILES.md` states
+  it. The first final-tree muninn run caught exactly this
+  (238 passed / 1 failed on the old assertion) before the
+  amendment; the re-run counts stand in CAMPAIGN_STATE.md.

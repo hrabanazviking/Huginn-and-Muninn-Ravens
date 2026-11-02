@@ -50,19 +50,38 @@ Durability contract
   non-regular file (FIFO, socket, device) raises the typed
   not-a-regular-file refusal. A plain text file is a corrupt
   store and takes the corruption road above.
+* Concurrent openers are supported (RM-037; see
+  ``docs/CONCURRENT_OPENERS.md``): two or more objects — in one
+  process or across processes — may hold the same store at
+  once. Ordinary reads and writes are serialized by SQLite
+  itself (WAL + the busy timeout, RM-031), but the open-time
+  duties (creation, integrity probe, restore, backup-on-open,
+  the heal pass) and every backup are additionally serialized
+  per store file by :func:`store_coordination_lock`, so a
+  second opener can never observe a half-created store,
+  race a restore, or collide on the shared ``.bak-tmp``
+  snapshot path.
 """
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import logging
 import os
 import shutil
 import sqlite3
+import threading
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import MuninnStorageError
+
+try:
+    import fcntl
+except ImportError:  # non-Unix platform: same-process lock only
+    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger("muninn.store")
 
@@ -77,6 +96,92 @@ class OpenReport:
     restored_backup: str | None = None
     backup_taken: bool = False
     integrity: str = "ok"
+
+
+# ─── RM-037: per-store coordination lock ─────────────────────────
+#
+# One lock per store file, held only around the duties that must
+# not interleave across openers: the open critical section
+# (creation / probe / restore / schema / backup-on-open), the
+# heal pass that follows it, and every rolling backup (all
+# backups of one store share the single ``.bak-tmp`` path and
+# the generation rotation). Ordinary reads and writes never
+# take this lock — SQLite serializes those (RM-031).
+#
+# Two layers, outermost first: a process-wide ``threading.RLock``
+# per path (serializes this process's threads; re-entrant so
+# ``open_store`` may call ``take_backup`` while holding it), and
+# — on platforms with ``fcntl`` — an ``flock`` on the sibling
+# ``<db>.open-lock`` file (serializes across processes; the
+# kernel releases it if a holder dies, so a killed opener can
+# never wedge the store). The lock file is zero bytes, is never
+# read as data, and is left in place between opens. If the lock
+# file cannot be created (a read-only location, say), the lock
+# degrades to the in-process layer and the open itself goes on
+# to raise its usual typed refusal — coordination never masks
+# the RM-030/RM-033 verdicts, which are checked before the lock
+# is taken in ``open_store``.
+
+_PATH_LOCKS: dict[str, threading.RLock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+_PATH_FLOCK_FDS: dict[str, int] = {}
+_LOCK_DEPTH = threading.local()
+
+
+def _coordination_rlock(key: str) -> threading.RLock:
+    with _PATH_LOCKS_GUARD:
+        lock = _PATH_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _PATH_LOCKS[key] = lock
+        return lock
+
+
+@contextlib.contextmanager
+def store_coordination_lock(db_path: Path) -> Iterator[None]:
+    """Hold the per-store coordination lock for ``db_path``.
+
+    Re-entrant within one thread. See the RM-037 note above for
+    what this lock is — and is not — for.
+    """
+    key = str(db_path)
+    rlock = _coordination_rlock(key)
+    rlock.acquire()
+    try:
+        depths: dict[str, int] = getattr(_LOCK_DEPTH, "depths", None) or {}
+        _LOCK_DEPTH.depths = depths
+        if depths.get(key, 0) == 0:
+            fd: int | None = None
+            try:
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                fd = os.open(
+                    str(db_path.with_name(f"{db_path.name}.open-lock")),
+                    os.O_CREAT | os.O_RDWR,
+                    0o644,
+                )
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_EX)
+            except OSError:
+                if fd is not None:
+                    os.close(fd)
+                fd = None
+            _PATH_FLOCK_FDS[key] = fd if fd is not None else -1
+        depths[key] = depths.get(key, 0) + 1
+        try:
+            yield
+        finally:
+            depths[key] -= 1
+            if depths[key] == 0:
+                del depths[key]
+                fd = _PATH_FLOCK_FDS.pop(key, -1)
+                if fd >= 0:
+                    try:
+                        if fcntl is not None:
+                            fcntl.flock(fd, fcntl.LOCK_UN)
+                    finally:
+                        os.close(fd)
+    finally:
+        rlock.release()
 
 
 def _connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:
@@ -234,6 +339,18 @@ def _sidecars(db_path: Path) -> list[Path]:
 
 
 def take_backup(db_path: Path, keep: int) -> Path | None:
+    """Rolling backup, serialized across openers (RM-037).
+
+    Every backup of one store shares the ``.bak-tmp`` snapshot
+    path and the generation rotation, so backups from different
+    objects or processes must not interleave: the whole backup
+    runs under the per-store coordination lock.
+    """
+    with store_coordination_lock(db_path):
+        return _take_backup_unlocked(db_path, keep)
+
+
+def _take_backup_unlocked(db_path: Path, keep: int) -> Path | None:
     """Rolling backup: shift generations down, snapshot the live store.
 
     Returns the newest backup path, or None when ``keep`` is 0.
@@ -312,7 +429,36 @@ def open_store(
 
     Applies the schema idempotently and returns the connection plus an
     :class:`OpenReport` describing any recovery that happened.
+
+    RM-037: the RM-033 shape and RM-030 read-only pre-flights run
+    first, unlocked — a refused open creates nothing, not even
+    the coordination lock file. The rest of the open runs under
+    the per-store coordination lock, so concurrent openers
+    (same process or cross-process) take turns: the second
+    opener of a fresh store enters only once the first has
+    fully created, probed and healed it, and a restore or a
+    backup-on-open can never race another opener's duties.
     """
+    _check_store_path_shape(db_path)
+    _check_not_readonly(db_path)
+    with store_coordination_lock(db_path):
+        return _open_store_unlocked(
+            db_path,
+            busy_timeout_ms=busy_timeout_ms,
+            backup_keep=backup_keep,
+            auto_backup=auto_backup,
+            schema_sql=schema_sql,
+        )
+
+
+def _open_store_unlocked(
+    db_path: Path,
+    *,
+    busy_timeout_ms: int,
+    backup_keep: int,
+    auto_backup: bool,
+    schema_sql: str,
+) -> tuple[sqlite3.Connection, OpenReport]:
     report = OpenReport()
     _check_store_path_shape(db_path)
     _check_not_readonly(db_path)

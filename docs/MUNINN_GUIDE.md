@@ -841,6 +841,20 @@ One shared connection per object, with every public method serialized
 by an internal re-entrant lock. Objects are safe under concurrent use
 from multiple threads.
 
+### Concurrent openers
+
+Two or more objects may hold the same store file at once — in one
+process or across processes (RM-037, `docs/CONCURRENT_OPENERS.md`).
+Committed writes through one object are visible through the others
+at once and never lose each other; ordinary reads and writes are
+serialized by SQLite (WAL + `busy_timeout_ms`, with the RM-031 typed
+contention error on expiry), while the open-time duties and every
+backup are serialized per store by a coordination lock (in-process
+lock + `flock` on the sibling `<db_path>.open-lock` file). Closing
+one object leaves the others working. One limit to know: the RM-012
+timestamp guard is per object, so timestamps from *different*
+objects may repeat or invert by microseconds.
+
 ## Quick reference
 
 | Method | Kind | Returns |

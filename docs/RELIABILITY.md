@@ -84,10 +84,19 @@ EXISTS …`), and the `meta` table is stamped with
   backend, and it is the **backend's** lock that serializes the
   backend's own operations. The facade adds no second store lock
   around `upsert` / `search` / `get` / `delete` calls.
-- There is **one writer object per store file by design**. The lock
-  protects threads sharing one object; it is not a cross-process
-  lock. Two processes opening the same file would rely on SQLite's
-  own locking plus `busy_timeout`, which is not the tested shape.
+- **Concurrent openers are supported** (RM-037): several objects —
+  in one process or across processes — may hold the same store
+  file. Each object's lock still protects only its own threads;
+  across objects, ordinary reads and writes are serialized by
+  SQLite's own locking plus `busy_timeout` (RM-031), and the
+  open-time duties (creation, probe, restore, backup-on-open,
+  heal) plus every backup are serialized per store file by the
+  coordination lock in each package's `_db.py` (in-process RLock
+  + `flock` on the sibling `.open-lock` file). Defined and
+  pinned in `docs/CONCURRENT_OPENERS.md` and
+  `tests/test_concurrent_openers.py` in both packages: exact
+  counts across objects and processes, a fresh-store creation
+  race, a corrupt-store restore race, and close independence.
 
 Race tests (exact totals, not "no crash"):
 

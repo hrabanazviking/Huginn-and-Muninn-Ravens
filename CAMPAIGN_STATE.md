@@ -52,9 +52,47 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   recorded in this file as it happened and the outcomes
   stand in the slice log entry below.
 - Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
-  RM-030, RM-031, RM-032, RM-033, RM-034, RM-035, RM-036.
-  Part III (Robustness) is under way — 12 of 14 slices banked.
-- Next: RM-037 in roadmap order (Part III — Robustness).
+  RM-030, RM-031, RM-032, RM-033, RM-034, RM-035, RM-036,
+  RM-037. Part III (Robustness) is under way — 13 of 14
+  slices banked.
+- Next: RM-038 in roadmap order (Part III — Part gate).
+- **RM-037 BANKED 2026-11-01 (keeper tick ~18:46–20:35 EST):**
+  concurrent openers defined as SUPPORTED and made true —
+  a per-store coordination lock in both packages' `_db.py`
+  (`store_coordination_lock`: process-wide RLock per path +
+  `flock` on the sibling `<db_path>.open-lock` file)
+  serializes the open-time duties (creation, probe, restore,
+  backup-on-open, heal) and every rolling backup, while
+  ordinary reads/writes stay serialized by SQLite itself
+  (RM-031). The RM-033/RM-030 pre-flights still run first,
+  unlocked. Negation against the RM-036 packages: muninn
+  **3 failed / 5 passed**, huginn **1 failed / 7 passed**
+  (the races: fresh-store creation read as corruption,
+  concurrent `backup()` colliding on `.bak-tmp` and
+  returning `None`, restore-over-restore in both). Full
+  suites green in a fresh venv (`ravens-rm037-venv`,
+  non-editable installs, TMPDIR on the workspace disk) on
+  the final banking tree: muninn **239 passed** (231+8),
+  huginn **169 passed** (161+8); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files);
+  **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm037-bifrost-venv`, bifrost at b66e98cc — its
+  own suites **25 passed**; BifrostBridge smoke PASS,
+  evidence `~/workspace/.verify-tmp/rm037/bifrost_smoke.log`).
+  One amendment inside the slice: the RM-033 text-file
+  refusal tests now expect the zero-byte `.open-lock`
+  neighbour (first final muninn run: 238 passed / 1 failed
+  on the old assertion, then amended and re-run green).
+  Environment, honestly: this tick opened with the VM's
+  Python write gate closed and the home quota then filled
+  completely (EDQUOT on every write under `~`, device still
+  showing 40G free — the aggregate of the concurrent
+  campaigns); writes reopened after this keeper deleted 34
+  of this campaign's own disposable per-slice venvs
+  (~1.4G; the rm014 tool venv, the rm036 pair, and every
+  rm0xx evidence dir were kept). All counts above are from
+  this slice's own disk logs under
+  `~/workspace/.verify-tmp/rm037/`.
 - **RM-035 BANKED 2026-11-01 (keeper ticks ~17:04–18:20 EST):**
   the slice stood built but unbanked when the first tick
   opened (bulk `activate_batch` road in `muninn/core.py`,
@@ -1636,3 +1674,75 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   tags ceiling (extends the RM-008/RM-011/RM-012/RM-016/
   RM-017/RM-025/RM-026/RM-027/RM-028/RM-029/RM-030/RM-031/
   RM-032/RM-033/RM-034/RM-035 sync note).
+- **RM-037 — Concurrent openers. BANKED 2026-11-01.
+  Class: UNIT.** Record: `docs/CONCURRENT_OPENERS.md`.
+  Defined behaviour: **supported** — two or more objects,
+  same process or cross-process, may hold one SQLite store
+  at once in both packages. Each object keeps its own
+  connection, lock and per-object state; committed writes
+  are visible across objects at once and never lose each
+  other (ordinary reads/writes serialized by SQLite, WAL +
+  busy timeout, RM-031); closing one object leaves the
+  others fully working. The duties that cannot interleave
+  (creation, integrity probe, restore, backup-on-open,
+  heal, and every rolling backup — all sharing the store
+  file, the restore copy and the single `.bak-tmp` path)
+  are serialized per store file by a new coordination lock
+  in each package's `_db.py` (`store_coordination_lock`:
+  a process-wide re-entrant lock per path, plus an `flock`
+  on the sibling `<db_path>.open-lock` file where `fcntl`
+  exists; the kernel releases a dead holder's flock). The
+  RM-033 shape and RM-030 read-only pre-flights run before
+  the lock is taken, so those refusals still create
+  nothing. Pre-slice probes (the new suites against the
+  RM-036 packages): sequential two-object use and
+  cross-process ordinary writes were already exact; the
+  races were real — six threads creating one fresh Muninn
+  store met the half-created file as corruption and
+  refused; concurrent Muninn `backup()` calls collided on
+  `.bak-tmp`, logged `backup failed: disk I/O error` and
+  returned `None`; four openers of a corrupt store
+  restored over each other in both packages. Negation
+  (disk logs `~/workspace/.verify-tmp/rm037/
+  muninn_negation.log`, `huginn_negation.log`): muninn
+  **3 failed / 5 passed**, huginn **1 failed / 7 passed**
+  (huginn's creation race passed pre-slice in the recorded
+  run — timing luck through the lazy facade). Pinned by
+  new `tests/test_concurrent_openers.py` (muninn 8,
+  huginn 8), targeted suites green twice; full suites
+  green on the final banking tree in a fresh venv
+  (`ravens-rm037-venv`, non-editable installs): muninn
+  **239 passed** (231+8), huginn **169 passed** (161+8);
+  ruff + mypy floors clean. Amendment inside the slice:
+  the RM-033 text-file refusal tests now expect the
+  zero-byte `.open-lock` neighbour (first final muninn
+  run 238 passed / 1 failed on the old assertion, then
+  amended, documented in `docs/NON_DATABASE_FILES.md`,
+  and re-run green). Honest limits in the record doc:
+  the RM-012 timestamp guard is per object (cross-object
+  timestamps may repeat or invert by microseconds); a
+  foreign raw-SQLite writer gets SQLite's locking but
+  not the coordination lock; without `fcntl` the
+  cross-process half degrades to the in-process lock.
+  No signature or schema change (RM-003/RM-004 pins
+  green; `.open-lock` added to the FORMAT_STABILITY file
+  family as a transient non-store file), but open/backup
+  behaviour changed, so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm037-bifrost-venv`), bifrost at b66e98cc —
+  its own suites **25 passed**; BifrostBridge smoke PASS
+  (store mimir_id=2 huginn_id=6; search 1 merged result;
+  recall grew the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()` through
+  the bridge armed at 0 days; stats over all three
+  backends; both raven health dicts carry `sqlite_version`
+  3.45.1; huginn degraded via auto-fallback to local —
+  live Qdrant still NOT PROVEN; double close safe;
+  evidence `~/workspace/.verify-tmp/rm037/
+  bifrost_smoke.log`). Founding tree NEEDS A SYNC for the
+  coordination lock (extends the RM-008/RM-011/RM-012/
+  RM-016/RM-017/RM-025/RM-026/RM-027/RM-028/RM-029/
+  RM-030/RM-031/RM-032/RM-033/RM-034/RM-035/RM-036 sync
+  note). Huginn's Qdrant backend holds no local file —
+  concurrent objects there are concurrent server clients;
+  this slice pins the local backend only.

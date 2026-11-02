@@ -83,6 +83,9 @@ explicitly named reinforcing read: it also activates what it returns.
   (cross-store ids) and are *not* pruned.
 - Threading: one shared connection, all methods serialized by an
   internal lock; safe under concurrent use (proven by race tests).
+  Concurrent openers — several objects on one store file, in one
+  process or across processes — are supported (RM-037,
+  `docs/CONCURRENT_OPENERS.md`).
 - `activate` is an event and is intentionally **not** idempotent;
   `remember`/`store`, `close`, `decay`, `consolidate` are safe to
   retry/re-run.

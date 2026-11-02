@@ -369,10 +369,14 @@ those projects' internals, and adopters should map the pattern of
   setup trouble — and let the app decide policy. The libraries
   never fake success, so the app never has to guess.
 - **Threading:** one object per store is safe to share across the
-  app's threads (each object serializes itself internally). Do not
-  open a second object onto the same store file in the same
-  process and expect the two to coordinate — they will not beyond
-  SQLite's own locking.
+  app's threads (each object serializes itself internally). A
+  second object onto the same store file — in the same process or
+  another one — is also supported (RM-037): committed writes are
+  visible across objects at once, SQLite serializes ordinary
+  reads and writes, and the packages' coordination lock
+  serializes the open-time duties and backups. See
+  `docs/CONCURRENT_OPENERS.md` for the full definition and its
+  limits.
 - **Backups come along for free:** each store keeps rolling,
   verified backups beside its file (`backup_keep`, default 3) and
   self-heals on open. The app's own backup story should treat the

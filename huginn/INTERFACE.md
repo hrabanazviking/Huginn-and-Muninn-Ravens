@@ -82,6 +82,9 @@ contract.)
   pruned, doc-frequencies recounted — report in the backend's
   `last_heal_report`).
 - Threading: all backends serialize internally; safe concurrently.
+  Concurrent openers — several objects on one local store file, in
+  one process or across processes — are supported (RM-037,
+  `docs/CONCURRENT_OPENERS.md`).
 
 Errors: `HuginnError` → `HuginnValidationError`,
 `HuginnConfigurationError`, `HuginnStorageError`, `HuginnBackendError`.

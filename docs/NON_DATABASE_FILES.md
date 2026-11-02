@@ -58,6 +58,13 @@ in both packages (8 tests each).
    {path} is corrupt and no rolling backup verified;
    refusing to start empty over lost memory`. A refused open
    leaves the file byte-identical and creates no sidecars.
+   (RM-037 note: the corruption road now runs under the
+   per-store coordination lock, so a refused open of an
+   existing file may leave the zero-byte `.open-lock`
+   coordination file beside it — named in
+   `docs/FORMAT_STABILITY.md`, never read as data. The
+   pre-flight refusals in rule 1 — directory, non-regular
+   file, read-only — still create nothing at all.)
 3. **An empty file is the RM-032 truncated store.** Zero
    bytes takes the same corruption road — restore a verified
    backup, else the same typed refusal — never SQLite's
