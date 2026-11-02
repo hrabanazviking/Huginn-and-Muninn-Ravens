@@ -142,6 +142,16 @@ Two more scoring facts from the code:
   otherwise derived deterministically from the content hash (the first
   16 hex digits as a big integer), so re-upserting the same memory
   targets the same point.
+- Qdrant payload hygiene (RM-046, threat TH-07): a point's payload
+  keys are a closed set (`content`, `category`, `importance`,
+  `tags`, `emotional_valence`, `content_hash`) — caller content,
+  category and tags are stored as values only and can never
+  overwrite a reserved key. On reads, a returned point must pass a
+  hygiene check (every key present, correctly typed and in range,
+  `content_hash` matching its content and category); a forged or
+  foreign point in the collection raises `HuginnBackendError`
+  naming only its point id, and extra payload keys are dropped.
+  See `docs/QDRANT_PAYLOAD.md`.
 - Pass `memory_id=` to `upsert_memory` to align Huginn's id with an
   external store (Bifröst merges backends by id).
   - Local backend detail: if the given `memory_id` already exists, the

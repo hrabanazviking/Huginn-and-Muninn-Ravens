@@ -136,6 +136,23 @@ class _DownClient:
         raise RuntimeError("down")
 
 
+class _MalformedClient:
+    """RM-046: answers ping/collection; retrieve hands back
+    points whose payload (id 41) or id itself (id 42's point)
+    fails the payload hygiene check."""
+
+    def get_collections(self):
+        return types.SimpleNamespace(collections=[])
+
+    def get_collection(self, name):
+        return types.SimpleNamespace(name=name)
+
+    def retrieve(self, collection_name, ids, with_payload=False):
+        if ids == [41]:
+            return [types.SimpleNamespace(id=41, payload={"content": "x"})]
+        return [types.SimpleNamespace(id="bogus", payload={})]
+
+
 class _NoCollectionClient:
     def get_collections(self):
         return types.SimpleNamespace(collections=[])
@@ -259,6 +276,7 @@ def _cases(tmp_path):
     boom = _qdrant_backend(_BoomClient())
     down = _qdrant_backend(_DownClient())
     no_collection = _qdrant_backend(_NoCollectionClient())
+    malformed = _qdrant_backend(_MalformedClient())
 
     def cfg(**overrides):
         return lambda: HuginnConfig(**overrides)
@@ -336,6 +354,8 @@ def _cases(tmp_path):
             "text", limit=5, category=None, min_importance=1
         ),
         "qdrant_count_failed": lambda: boom.count(),
+        "qdrant_malformed_payload": lambda: malformed.get(41),
+        "qdrant_malformed_point_id": lambda: malformed.get(42),
         "disk_full_upsert": lambda: full.upsert_memory("z" * 200_000),
         "readonly_open": lambda: LocalBackend(
             HuginnConfig(backend="local", local_db_path=str(ro_path))

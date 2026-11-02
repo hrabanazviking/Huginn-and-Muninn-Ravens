@@ -17,6 +17,20 @@ only to the client constructor; every client exception this backend
 wraps has the configured key scrubbed out of its text first
 (:func:`scrub_api_key`), because the client's wording is not ours to
 control and a server or proxy error can quote the credential back.
+
+Payload hygiene (RM-046, threat TH-07): a point's payload keys are
+a closed set (:data:`_PAYLOAD_KEYS`) written from a fixed dict in
+:meth:`QdrantBackend.upsert` — caller content, category and tags are
+values inside that dict, never keys, so no caller input can add or
+overwrite a reserved key. On the way back, a returned payload is
+trusted only after a hygiene check in
+:meth:`QdrantBackend._point_to_doc`: every closed-set key present,
+each value of its recorded type and range, and the stored
+``content_hash`` equal to the hash of the returned content and
+category. A point that fails — a hostile co-tenant's forgery, a
+tampered point, a foreign point in the collection — raises a typed
+error naming only the point id, never its payload; keys outside
+the closed set are dropped and never reach the caller.
 """
 
 from __future__ import annotations
@@ -24,6 +38,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
+import math
 import threading
 from typing import Any
 
@@ -53,6 +68,21 @@ def _content_hash(content: str, category: str) -> str:
 
 def _derived_id(content_hash: str) -> int:
     return int.from_bytes(bytes.fromhex(content_hash[:16]), "big")
+
+
+#: RM-046 (TH-07): the closed set of Qdrant payload keys, in the
+#: order :meth:`QdrantBackend.upsert` writes them. Every payload
+#: Huginn writes carries exactly these keys; every payload Huginn
+#: reads must carry them all, correctly typed, with a matching
+#: ``content_hash`` — see :meth:`QdrantBackend._point_to_doc`.
+_PAYLOAD_KEYS = (
+    "content",
+    "category",
+    "importance",
+    "tags",
+    "emotional_valence",
+    "content_hash",
+)
 
 
 class QdrantBackend:
@@ -154,6 +184,12 @@ class QdrantBackend:
             self._ensure_collection()
             client = self._ensure_client()
             models = self._models
+            # RM-046 (TH-07): the payload is this fixed dict —
+            # exactly _PAYLOAD_KEYS, in that order. Caller values
+            # (content, category, tags) are stored as values
+            # only; nothing a caller supplies is ever used as a
+            # payload key, so a reserved key cannot be added to
+            # or overwritten through this road.
             payload = {
                 "content": content,
                 "category": category,
@@ -223,14 +259,71 @@ class QdrantBackend:
             return self._point_to_doc(points[0])
 
     def _point_to_doc(self, point: Any, score: float | None = None) -> dict[str, Any]:
-        payload = getattr(point, "payload", None) or {}
+        # RM-046 (TH-07): a returned point is not trusted by
+        # shape alone. The collection is a shared surface — a
+        # hostile co-tenant (AC-4) or a tampered server can hand
+        # back a point whose payload overwrites a reserved key
+        # with a wrong-typed or forged value, and the pre-slice
+        # code coerced whatever it found (int("999") importance,
+        # a string's characters as tags, foreign content under a
+        # real memory's hash). Now the payload must pass the
+        # hygiene check: a dict carrying every closed-set key,
+        # each value of the type and range upsert writes, and a
+        # content_hash matching the returned content+category.
+        # Anything else is a typed refusal naming only the point
+        # id — never payload content. Extra keys outside the
+        # closed set are dropped: the doc below is built from
+        # the closed set only, as it always was.
+        try:
+            point_id = int(point.id)
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            raise HuginnBackendError(
+                "Qdrant point has a malformed payload"
+            ) from None
+        raw_payload = getattr(point, "payload", None)
+        payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
+        content = payload.get("content")
+        category = payload.get("category")
+        importance = payload.get("importance")
+        tags = payload.get("tags")
+        valence = payload.get("emotional_valence")
+        stored_hash = payload.get("content_hash")
+        valid = (
+            isinstance(raw_payload, dict)
+            and all(key in payload for key in _PAYLOAD_KEYS)
+            and isinstance(content, str)
+            and isinstance(category, str)
+            and isinstance(importance, int)
+            and not isinstance(importance, bool)
+            and 1 <= importance <= 10
+            and isinstance(tags, list)
+            and all(isinstance(tag, str) for tag in tags)
+            and isinstance(valence, (int, float))
+            and not isinstance(valence, bool)
+            and math.isfinite(float(valence))
+            and -1.0 <= float(valence) <= 1.0
+            and isinstance(stored_hash, str)
+            and stored_hash == _content_hash(content, category)
+            and (
+                score is None
+                or (
+                    isinstance(score, (int, float))
+                    and not isinstance(score, bool)
+                    and math.isfinite(float(score))
+                )
+            )
+        )
+        if not valid:
+            raise HuginnBackendError(
+                f"Qdrant point {point_id} has a malformed payload"
+            )
         doc = {
-            "id": int(point.id),
-            "content": payload.get("content", ""),
-            "category": payload.get("category", ""),
-            "importance": int(payload.get("importance", 5)),
-            "tags": list(payload.get("tags", [])),
-            "emotional_valence": float(payload.get("emotional_valence", 0.0)),
+            "id": point_id,
+            "content": payload["content"],
+            "category": payload["category"],
+            "importance": int(payload["importance"]),
+            "tags": list(payload["tags"]),
+            "emotional_valence": float(payload["emotional_valence"]),
         }
         if score is not None:
             doc["score"] = float(score)

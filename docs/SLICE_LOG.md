@@ -1978,3 +1978,90 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   RM-045 venv on `/var/tmp`, installing from `/var/tmp`
   package copies after an in-tree pip build hit the
   quota writing egg-info.
+
+## RM-046 — Qdrant payload hygiene
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/QDRANT_PAYLOAD.md` —
+  TH-07. Payload keys are now a pinned closed set on both
+  roads. Write: `upsert`'s payload is one fixed dict —
+  exactly the six `_PAYLOAD_KEYS` (`content`, `category`,
+  `importance`, `tags`, `emotional_valence`,
+  `content_hash`) — and caller content, category and tags
+  enter as values only, so no caller input can add or
+  overwrite a reserved key. Read: `_point_to_doc` (the one
+  road from a server point to a caller document, for both
+  `get` and `search`) now hygiene-checks every returned
+  point — integer point id; a dict payload carrying every
+  closed-set key; `content`/`category` strings;
+  `importance` a non-bool int in [1, 10]; `tags` a list of
+  strings; `emotional_valence` a finite non-bool number in
+  [-1, 1]; `content_hash` equal to the SHA-256 of the
+  returned content and category; a finite numeric score on
+  search results — and raises `HuginnBackendError`
+  (`Qdrant point {id} has a malformed payload`, or the
+  id-less shape when the id itself is malformed) instead
+  of the pre-slice coercions (`int("999")`, a tag string
+  exploding into characters, foreign content trusted
+  under any hash) or untyped `ValueError`s. The refusal
+  names only the point id, never payload content; keys
+  outside the closed set are dropped, as before. Pinned
+  by new `tests/test_qdrant_payload.py` (14 tests, fake
+  clients only, hostile points planted directly in the
+  fake store as a co-tenant would): the closed set and
+  the backend-computed hash on write, reserved-key-named
+  tags / category staying values, payload-shaped content
+  unable to forge the hash, the facade round-trip, the
+  extra-key drop, a well-formed raw point returned, and
+  the forged-hash (get + search), missing-key,
+  wrong-type/range, non-dict-payload, malformed-id and
+  forged-score refusals. Negation against the RM-045
+  installed packages: **7 failed / 7 passed** (failures
+  are exactly the new hygiene refusals; passes are the
+  preserved write-side closed set, the extra-key drop,
+  the well-formed point and the facade round-trip).
+  RM-018 goldens extended deliberately (61 CASE, 74
+  TEMPLATE sites / 62 distinct — the two new
+  malformed-payload messages, with deterministic cases
+  added in `test_error_messages.py`). No public API,
+  config or schema change, so no RM-019 surface change;
+  the **Bifröst contract re-verification was run before
+  banking** as a precaution (fresh venv
+  `ravens-rm046-bifrost-venv`, on `/var/tmp`), bifrost
+  at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id;
+  search 1 merged result; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` armed at 0 days; stats over all
+  three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1; huginn on the local backend;
+  live Qdrant still NOT PROVEN; double close safe;
+  evidence `/var/tmp/rm046-evidence/`). Full suites
+  green in a fresh venv (`ravens-rm046-venv`, on
+  `/var/tmp`, non-editable installs from `/var/tmp`
+  package copies, TMPDIR on `/var/tmp`) on the final
+  banking tree: muninn **280 passed** (no muninn code
+  change; slice-log EXPECTED pin only), huginn **236
+  passed** (222+14); ruff + mypy floors clean (rm042
+  tool venv; mypy muninn 5 files, huginn 8 files).
+  Founding tree (`~/workspace/ravens`) NEEDS A SYNC for
+  the payload hygiene check (extends the standing
+  package-source sync note). Discovery recorded for
+  RM-047 (TH-08, which already owns the Qdrant id
+  derivation): the derived point id is an unsigned
+  64-bit value, so roughly half of derived ids exceed
+  the facade's `memory_id` ceiling of 2⁶³−1 and such a
+  memory cannot be fetched through `HuginnMemory.get`
+  (it validates the id before the backend is reached);
+  found while building this slice's facade test, which
+  uses an explicit id like the RM-045 fake suite. TH-07
+  closed at the code level this slice reviews; a live
+  Qdrant round-trip remains NOT PROVEN, and the register
+  state is re-checked at the RM-056 part gate, per the
+  threat model's rule. Environment, honestly: the home
+  quota (EDQUOT) closed repeatedly during this tick;
+  this keeper freed this campaign's own regenerable
+  scratch (the repo's build dirs and tool caches, the
+  shared pip download cache) and built every RM-046
+  venv on `/var/tmp` with its evidence there.

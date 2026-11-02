@@ -991,9 +991,17 @@ characters of the SHA-256 of `category + "\x00" + content`,
 interpreted as a big-endian integer. Re-upserting the same content
 in the same category therefore targets the same point (idempotent).
 The payload stored per point: `content`, `category`, `importance`,
-`tags`, `emotional_valence`, `content_hash`. The collection is
-created on first use if missing, with cosine distance and vector
-size = the embedder's `dim`.
+`tags`, `emotional_valence`, `content_hash`. Payload hygiene
+(RM-046, threat TH-07): those six keys are a closed set — caller
+values are stored as values only and can never add or overwrite a
+key — and a returned point is trusted only after a hygiene check
+(all six keys present, correctly typed and in range, and the
+stored `content_hash` equal to the hash of the returned content
+and category); a forged, tampered or foreign point raises
+`HuginnBackendError` naming only its point id, and keys outside
+the closed set are dropped. See `docs/QDRANT_PAYLOAD.md`. The
+collection is created on first use if missing, with cosine
+distance and vector size = the embedder's `dim`.
 
 Methods (all backend failures are wrapped in `HuginnBackendError`;
 a missing `qdrant-client` raises `HuginnConfigurationError`):

@@ -57,10 +57,60 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044, RM-045. Part IV (Security) is under way — seven of
-  eighteen slices banked.
-- Next: RM-046 in roadmap order (Part IV — Qdrant payload
-  hygiene; cites TH-07).
+  RM-044, RM-045, RM-046. Part IV (Security) is under way —
+  eight of eighteen slices banked.
+- Next: RM-047 in roadmap order (Part IV — hash-collision
+  honesty; cites TH-08). RM-047 also inherits the discovery
+  recorded in the RM-046 entry below: Qdrant's derived point
+  id is unsigned 64-bit, so roughly half of derived ids
+  exceed the facade's `memory_id` ceiling of 2⁶³−1 and
+  cannot be fetched through `HuginnMemory.get`.
+- **RM-046 BANKED 2026-11-02 (keeper tick ~01:26 EST):**
+  Qdrant payload hygiene — TH-07, record in
+  `docs/QDRANT_PAYLOAD.md`. Huginn-only slice. Write road
+  pinned: `upsert`'s payload is one fixed dict carrying
+  exactly the six `_PAYLOAD_KEYS` (`content`, `category`,
+  `importance`, `tags`, `emotional_valence`,
+  `content_hash`); caller content/category/tags are values
+  only, never keys, so a reserved key cannot be added or
+  overwritten through the API (tags named `content_hash`,
+  payload-shaped content, a category named `content_hash`
+  all proven to stay values with the backend-computed
+  hash). Read road hardened: `_point_to_doc` (the one
+  point→document road for `get` + `search`) now
+  hygiene-checks every returned point — integer id, dict
+  payload with every closed-set key present, content/
+  category strings, importance a non-bool int in [1, 10],
+  tags a list of strings, valence a finite non-bool number
+  in [-1, 1], `content_hash` equal to the SHA-256 of the
+  returned content+category, finite numeric score — and
+  raises `HuginnBackendError` naming only the point id
+  (never payload content) instead of the pre-slice
+  coercions or untyped errors; extra keys are dropped, as
+  before. New `tests/test_qdrant_payload.py` (14 tests,
+  hostile points planted in the fake store as a
+  co-tenant would); negation against the RM-045 packages
+  **7 failed / 7 passed** (failures = exactly the new
+  refusals). RM-018 goldens extended (61 CASE / 74
+  TEMPLATE, 62 distinct; two new malformed-payload
+  messages with deterministic cases). **Bifröst
+  re-verification PASS** as a precaution (fresh venv
+  `ravens-rm046-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence `/var/tmp/rm046-evidence/`).
+  Full suites green in the RM-046 fresh venv on the
+  final banking tree (TMPDIR on `/var/tmp`, installs
+  from `/var/tmp` copies): muninn **280 passed** (no
+  code change; slice-log pin only), huginn **236
+  passed** (222+14); ruff + mypy floors clean (rm042
+  tool venv; mypy muninn 5 files, huginn 8 files).
+  Founding tree NEEDS A SYNC for the payload hygiene
+  check (extends the standing package-source sync note).
+  Environment, honestly: the home quota (EDQUOT) closed
+  repeatedly all tick; this keeper freed this campaign's
+  own regenerable scratch (repo build dirs + tool
+  caches, the shared pip cache) and built all RM-046
+  venvs and evidence on `/var/tmp`.
 - **RM-045 BANKED 2026-11-02 (keeper tick ~00:56 EST):**
   Qdrant transport safety — TH-06, record in
   `docs/QDRANT_TRANSPORT.md`. Huginn-only slice.
