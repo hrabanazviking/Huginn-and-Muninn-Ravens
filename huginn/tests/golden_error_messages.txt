@@ -84,6 +84,9 @@ CASE qdrant_malformed_payload | HuginnBackendError | Qdrant point 41 has a malfo
 CASE qdrant_malformed_point_id | HuginnBackendError | Qdrant point has a malformed payload
 CASE strict_symlink_open | HuginnStorageError | huginn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
 CASE strict_world_writable_open | HuginnStorageError | huginn store <tmp_path>/shared/h.db has a world-writable parent directory and strict path safety is enabled; refusing to open
+CASE encryption_passphrase_required | HuginnConfigurationError | encryption_passphrase is required when store_encryption is enabled
+CASE encryption_plain_open | HuginnStorageError | huginn store <tmp_path>/enc.db is encrypted; refusing to open it without store_encryption enabled
+CASE encryption_wrong_passphrase | HuginnStorageError | huginn store <tmp_path>/enc.db is encrypted and the supplied passphrase does not unlock it; refusing to open
 # TEMPLATE lines (77 raise sites, 64 distinct — the insert
 # guard's line is duplicated, once per insert path, and the
 # "could not be prepared" line likewise since RM-030 wrapped
@@ -189,3 +192,14 @@ TEMPLATE | HuginnValidationError | memory_id {} is free but this content already
 TEMPLATE | HuginnValidationError | min_importance must be an int
 TEMPLATE | HuginnValidationError | min_importance must be <= 9223372036854775807, got {}
 TEMPLATE | HuginnValidationError | query_text must be a string
+TEMPLATE | HuginnConfigurationError | encryption_passphrase is required when store_encryption is enabled
+TEMPLATE | HuginnConfigurationError | encryption_passphrase must be a string or None
+TEMPLATE | HuginnConfigurationError | store_encryption requires the 'cryptography' package; install huginn with its 'encryption' extra
+TEMPLATE | HuginnStorageError | huginn store {} carries an unreadable encryption header; refusing to open
+TEMPLATE | HuginnStorageError | huginn store {} is encrypted and the supplied passphrase does not unlock it; refusing to open
+TEMPLATE | HuginnStorageError | huginn store {} is encrypted and the supplied passphrase does not unlock it; refusing to open
+TEMPLATE | HuginnStorageError | huginn store {} is encrypted and the supplied passphrase does not unlock it; refusing to open
+TEMPLATE | HuginnStorageError | huginn store {} is encrypted; refusing to open it without store_encryption enabled
+TEMPLATE | HuginnStorageError | huginn store {} is encrypted; refusing to open it without store_encryption enabled
+TEMPLATE | HuginnStorageError | huginn store {} is not encrypted but already holds documents; refusing to open it with store_encryption enabled
+TEMPLATE | HuginnStorageError | huginn store {} is not encrypted but already holds documents; refusing to open it with store_encryption enabled

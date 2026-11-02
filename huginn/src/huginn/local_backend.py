@@ -25,6 +25,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
+from ._crypto import (
+    StoreCipher,
+    meta_and_count_from_connection,
+    new_store_cipher,
+    open_store_cipher,
+    probe_store,
+    require_cryptography,
+)
 from ._db import (
     _is_locked_error,
     open_store,
@@ -173,6 +181,41 @@ class LocalBackend:
         self._last_ts: datetime | None = None
         self._closed = False
         self._db_path = config.resolved_local_path()
+        # RM-049: store encryption setup and the open-time key
+        # proof run BEFORE the store is opened, on pure pre-reads,
+        # so a refused open (wrong passphrase, a plain open of a
+        # marked store, the flag switched on over an existing
+        # plain store) leaves the store byte-for-byte untouched.
+        self._cipher: StoreCipher | None = None
+        self._pending_encryption_meta: dict[str, str] | None = None
+        self._deferred_encryption = False
+        probe_ok, existing_meta, existing_rows = probe_store(
+            self._db_path, "SELECT COUNT(*) FROM documents"
+        )
+        if config.store_encryption:
+            require_cryptography()
+            passphrase = config.encryption_passphrase or ""
+            if existing_meta is not None:
+                self._cipher = open_store_cipher(passphrase, existing_meta, self._db_path)
+            elif probe_ok and existing_rows > 0:
+                raise HuginnStorageError(
+                    f"huginn store {self._db_path} is not encrypted but "
+                    f"already holds documents; refusing to open it with "
+                    f"store_encryption enabled"
+                )
+            elif probe_ok or not self._db_path.exists():
+                self._cipher, self._pending_encryption_meta = new_store_cipher(passphrase)
+            else:
+                # The file exists but the probe could not read it
+                # (a corrupt main store whose backup may restore
+                # an encrypted store): the key proof is deferred
+                # to the post-open check, on the live connection.
+                self._deferred_encryption = True
+        elif existing_meta is not None:
+            raise HuginnStorageError(
+                f"huginn store {self._db_path} is encrypted; refusing "
+                f"to open it without store_encryption enabled"
+            )
         conn, report = open_store(
             self._db_path,
             busy_timeout_ms=config.busy_timeout_ms,
@@ -189,8 +232,100 @@ class LocalBackend:
         # interleave with another opener's open, heal or backup
         # duties on the same store file.
         with self._lock, store_coordination_lock(self._db_path):
+            if self._pending_encryption_meta is not None:
+                # RM-049: a new encrypted store takes its marker
+                # and wrapped key now, inside the open-time lock,
+                # before any document can be written.
+                self._write_encryption_meta_locked(self._pending_encryption_meta)
+                self._pending_encryption_meta = None
+            elif self._deferred_encryption:
+                self._establish_deferred_cipher_locked()
+            elif (
+                meta_and_count_from_connection(
+                    self._conn, "SELECT COUNT(*) FROM documents"
+                )[0]
+                is not None
+                and self._cipher is None
+            ):
+                # RM-049 post-open re-check: the open restored a
+                # marked store (e.g. from an encrypted backup)
+                # that the pre-read could not see. Never serve it
+                # plain — close and refuse.
+                self._conn.close()
+                self._closed = True
+                raise HuginnStorageError(
+                    f"huginn store {self._db_path} is encrypted; refusing "
+                    f"to open it without store_encryption enabled"
+                )
             self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
+
+    def _write_encryption_meta_locked(self, meta: dict[str, str]) -> None:
+        """RM-049: write a new store's encryption header (lock held)."""
+        for key, value in meta.items():
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        self._conn.commit()
+
+    def _establish_deferred_cipher_locked(self) -> None:
+        """RM-049: the key proof for a store the pre-read could
+        not settle (lock held) — judged on the live connection
+        after ``open_store``'s restore road has run. A marked
+        store is unlocked (a wrong passphrase refuses, having
+        served nothing); an unmarked store holding documents is
+        the plain-store refusal; an empty unmarked store takes
+        a fresh header."""
+        passphrase = self.config.encryption_passphrase or ""
+        meta, rows = meta_and_count_from_connection(
+            self._conn, "SELECT COUNT(*) FROM documents"
+        )
+        if meta is not None:
+            try:
+                self._cipher = open_store_cipher(passphrase, meta, self._db_path)
+            except HuginnStorageError:
+                self._conn.close()
+                self._closed = True
+                raise
+        elif rows > 0:
+            self._conn.close()
+            self._closed = True
+            raise HuginnStorageError(
+                f"huginn store {self._db_path} is not encrypted but "
+                f"already holds documents; refusing to open it with "
+                f"store_encryption enabled"
+            )
+        else:
+            self._cipher, meta = new_store_cipher(passphrase)
+            self._write_encryption_meta_locked(meta)
+        self._deferred_encryption = False
+
+    # ─── store encryption transforms (RM-049) ─────────────────────────
+
+    def _enc_value(self, text: str, aad: str) -> str:
+        """Seal a stored value when encryption is on (else identity)."""
+        return self._cipher.encrypt(text, aad) if self._cipher is not None else text
+
+    def _dec_value(self, value: str, aad: str) -> str:
+        """Open a stored value when encryption is on (else identity)."""
+        return self._cipher.decrypt(value, aad) if self._cipher is not None else value
+
+    def _term_tag(self, term: str) -> str:
+        """The stored form of one index term: the term itself, or
+        — with encryption on — its keyed HMAC tag, so TF-IDF's
+        equality-only comparisons run unchanged over tags."""
+        if self._cipher is None:
+            return term
+        return self._cipher.lookup_tag(b"term\x00" + term.encode("utf-8"))
+
+    def _stored_content_hash(self, content: str, category: str, plain_hash: str) -> str:
+        """The hash the store keeps: the plain SHA-256, or — with
+        encryption on — the keyed lookup tag over exactly the
+        plain hash's input (category ‖ content, RM-047)."""
+        if self._cipher is None:
+            return plain_hash
+        return self._cipher.lookup_tag(f"{category}\x00{content}".encode())
 
     # ─── timestamp discipline (RM-012) ────────────────────────────────
 
@@ -317,7 +452,16 @@ class LocalBackend:
         memory_id: int | None = None,
     ) -> int:
         counts = term_counts(tokenize(content))
-        content_hash = _content_hash(content, category)
+        if self._cipher is not None:
+            # RM-049: the index stores keyed tags of the tokens;
+            # TF-IDF compares terms for equality only, so the
+            # scoring over tags is the plaintext computation.
+            counts = {self._term_tag(term): tf for term, tf in counts.items()}
+        content_hash = self._stored_content_hash(
+            content, category, _content_hash(content, category)
+        )
+        stored_content = self._enc_value(content, "documents.content")
+        stored_tags = self._enc_value(json.dumps(tags), "documents.tags")
         at = self._tick()
         with self._lock:
             conn = self._ensure_open()
@@ -338,8 +482,12 @@ class LocalBackend:
                     if clash is not None:
                         # RM-047: a different memory under this
                         # hash is a collision, not a clash.
+                        # RM-049: the double check compares the
+                        # DECRYPTED stored content.
                         _check_not_a_collision(
-                            clash["content"], content, int(clash["id"])
+                            self._dec_value(clash["content"], "documents.content"),
+                            content,
+                            int(clash["id"]),
                         )
                         raise HuginnValidationError(
                             f"memory_id {memory_id} is free but this content already "
@@ -356,7 +504,12 @@ class LocalBackend:
                     # only after the length+content double
                     # check — a colliding memory is refused,
                     # never silently merged by the update below.
-                    _check_not_a_collision(row["content"], content, int(row["id"]))
+                    # RM-049: the check compares DECRYPTED content.
+                    _check_not_a_collision(
+                        self._dec_value(row["content"], "documents.content"),
+                        content,
+                        int(row["id"]),
+                    )
                     target_id = int(row["id"])
             if target_id is not None:
                 self._deindex_terms_locked(target_id)
@@ -366,8 +519,8 @@ class LocalBackend:
                     " importance = ?, tags = ?, emotional_valence = ?, updated_at = ?"
                     " WHERE id = ?",
                     (
-                        content, content_hash, category, importance,
-                        json.dumps(tags), emotional_valence, at, target_id,
+                        stored_content, content_hash, category, importance,
+                        stored_tags, emotional_valence, at, target_id,
                     ),
                 )
                 doc_id = target_id
@@ -378,8 +531,8 @@ class LocalBackend:
                     "  emotional_valence, created_at, updated_at)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        memory_id, content, content_hash, category, importance,
-                        json.dumps(tags), emotional_valence, at, at,
+                        memory_id, stored_content, content_hash, category, importance,
+                        stored_tags, emotional_valence, at, at,
                     ),
                 )
                 if cur.lastrowid is None:
@@ -394,8 +547,8 @@ class LocalBackend:
                     "  emotional_valence, created_at, updated_at)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        content, content_hash, category, importance,
-                        json.dumps(tags), emotional_valence, at, at,
+                        stored_content, content_hash, category, importance,
+                        stored_tags, emotional_valence, at, at,
                     ),
                 )
                 if cur.lastrowid is None:
@@ -408,7 +561,7 @@ class LocalBackend:
                 vector = self._embedder.embed(content)
                 conn.execute(
                     "INSERT OR REPLACE INTO doc_vectors (doc_id, vector) VALUES (?, ?)",
-                    (doc_id, json.dumps(vector)),
+                    (doc_id, self._enc_value(json.dumps(vector), "doc_vectors.vector")),
                 )
             conn.commit()
             return doc_id
@@ -428,10 +581,10 @@ class LocalBackend:
     def _row_to_doc(self, row: sqlite3.Row, score: float | None = None) -> dict[str, Any]:
         doc = {
             "id": int(row["id"]),
-            "content": row["content"],
+            "content": self._dec_value(row["content"], "documents.content"),
             "category": row["category"],
             "importance": int(row["importance"]),
-            "tags": json.loads(row["tags"] or "[]"),
+            "tags": json.loads(self._dec_value(row["tags"] or "[]", "documents.tags")),
             "emotional_valence": float(row["emotional_valence"]),
         }
         if score is not None:
@@ -498,6 +651,10 @@ class LocalBackend:
         min_importance: int,
     ) -> list[dict[str, Any]]:
         q_counts = term_counts(tokenize(query_text))
+        if self._cipher is not None:
+            # RM-049: queries are transformed with the same keyed
+            # tag as the index, before any lookup.
+            q_counts = {self._term_tag(term): tf for term, tf in q_counts.items()}
         if not q_counts:
             return []
         total_docs = int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
@@ -559,7 +716,10 @@ class LocalBackend:
         rows = conn.execute("SELECT doc_id, vector FROM doc_vectors").fetchall()
         candidate_ids = [int(r["doc_id"]) for r in rows]
         docs = self._candidate_docs_locked(conn, candidate_ids, category, min_importance)
-        vectors = {int(r["doc_id"]): json.loads(r["vector"]) for r in rows}
+        vectors = {
+            int(r["doc_id"]): json.loads(self._dec_value(r["vector"], "doc_vectors.vector"))
+            for r in rows
+        }
         scored = []
         for doc_id in docs:
             score = dense_cosine(query_vec, vectors[doc_id])

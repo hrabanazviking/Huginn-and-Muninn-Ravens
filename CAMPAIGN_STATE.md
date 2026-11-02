@@ -57,16 +57,74 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
-  RM-044, RM-045, RM-046, RM-047, RM-048. Part IV
-  (Security) is under way — ten of eighteen slices banked.
-- Next: RM-049 in roadmap order (Part IV — store
-  encryption, build; cites TH-09). Implements RM-048's
-  decision (application-level envelope encryption) behind
-  the `encryption` extra and the `store_encryption`
-  config flag, to the build specification in
-  `docs/STORE_ENCRYPTION.md`; a public-surface change, so
-  the Bifröst contract re-verification is required before
-  banking.
+  RM-044, RM-045, RM-046, RM-047, RM-048, RM-049. Part IV
+  (Security) is under way — eleven of eighteen slices banked.
+- Next: RM-050 in roadmap order (Part IV — integrity
+  attestation; cites TH-10). Optional HMAC/checksum chain
+  over `activation_log` so tampering with the log file
+  outside the API is detectable on open; acceptance is the
+  raw-SQL tamper test.
+- **RM-049 BANKED 2026-11-02 (keeper tick ~03:36 EST):**
+  store encryption, build — TH-09, building RM-048's
+  decision to the `docs/STORE_ENCRYPTION.md` specification
+  (build note appended there). Both packages gained
+  `_crypto.py` (per-store random 32-byte data key,
+  PBKDF2-HMAC-SHA256 KEK at 600,000 iterations over a
+  per-store 16-byte salt, wrap + key-check as `meta` rows
+  — no schema change, RM-004 goldens unmoved), the
+  additive config pair `store_encryption: bool = False` /
+  `encryption_passphrase` (repr=False; missing passphrase
+  or missing extra with the flag on is a typed
+  configuration error), and the `encryption` extra
+  (`cryptography>=42,<51`, lazy). Values are `enc:v1:`
+  AES-256-GCM envelopes (table+column as associated data)
+  in the same TEXT columns: Muninn
+  `nodes.content`/`metadata`/`tags`; Huginn local
+  `documents.content`/`tags`, `doc_vectors.vector`, and
+  the term index (`doc_terms`/`corpus_stats`) as keyed
+  HMAC tags — TF-IDF scores test-pinned bit-for-bit equal
+  to a plain store's. Both `content_hash` columns are
+  keyed lookup tags over the RM-047 inputs; the RM-047
+  double check compares decrypted content. Contracted
+  tables stay plaintext-readable by plain sqlite3. The
+  key proof runs BEFORE `open_store` on a pure read-only
+  probe — wrong passphrase and plain opens of a marked
+  store refuse typed with the store byte-for-byte
+  untouched — and defers to the live connection after the
+  restore road when the probe cannot read the file, so
+  the corruption-recovery suites pass against encrypted
+  stores. Build behaviours beyond the spec, recorded in
+  the build note: flag-on over an existing plain store
+  holding memories/documents refuses typed; Huginn's
+  flag binds the local backend only. New
+  `tests/test_store_encryption.py` (9 tests each);
+  negation against the RM-048 packages **8 failed / 1
+  passed** per package (pass = flag-off plaintext
+  preserved). RM-018 goldens extended (+3 CASE / +11
+  TEMPLATE lines per package; muninn 56/79, huginn
+  66/88); RM-019 goldens gained the fields; RM-040 audit
+  totals 84 / 45 with `count_sql` named. **Bifröst
+  re-verification PASS** (fresh venv
+  `ravens-rm049-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence `/var/tmp/rm049-evidence/`).
+  Full suites green in the RM-049 fresh venv on the
+  final banking tree (TMPDIR + installs on `/var/tmp`):
+  muninn **299 passed** (290+9), huginn **259 passed**
+  (250+9); ruff + mypy floors clean (rm042 tool venv;
+  mypy muninn 6 files, huginn 9 files). The
+  `cryptography` extra is PROVEN in the ravens' own
+  venv from this slice (50.0.2 via the extra, exercised
+  end to end); suites now run with the extra installed.
+  TH-09: content Controlled / structure Partial when the
+  flag is on; the register update remains RM-056's.
+  Founding tree NEEDS A SYNC for the whole encryption
+  build (extends the standing package-source sync note).
+  Environment, honestly: the home quota (EDQUOT) closed
+  repeatedly this tick; this keeper freed the shared
+  Hugging Face download cache (~1.8 GB, regenerable) and
+  built all RM-049 venvs and evidence on `/var/tmp`,
+  running every suite with `PYTHONDONTWRITEBYTECODE=1`.
 - **RM-048 BANKED 2026-11-02 (keeper tick ~03:26 EST):**
   store encryption, design — TH-09, decision record in
   `docs/STORE_ENCRYPTION.md`. Design slice only: no

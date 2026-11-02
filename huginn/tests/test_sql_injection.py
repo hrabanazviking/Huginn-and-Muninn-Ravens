@@ -135,8 +135,12 @@ EXPECTED_FSTR_TEMPLATES = {
 EXPECTED_SQL_JOINED_ANYWHERE = EXPECTED_FSTR_TEMPLATES | {
     "SELECT * FROM documents WHERE id IN ({placeholders})",
 }
-EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 1}
-EXPECTED_SITE_TOTAL = 42
+EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 1, "count_sql": 1}
+# RM-049: +3 sites — the _crypto probe's meta select + the
+# named count_sql it runs, and the encryption-header insert in
+# the local backend (all constant SQL; the count arrives as a
+# named constant from the caller, never built from values).
+EXPECTED_SITE_TOTAL = 45
 
 
 def _source_dir():

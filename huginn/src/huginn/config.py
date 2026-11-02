@@ -195,6 +195,32 @@ class HuginnConfig:
             exception strings (threat TH-05). Like
             ``auto_backup`` it is a plain boolean flag, used as
             given. See ``docs/LOG_REDACTION.md``.
+        store_encryption: Store encryption (RM-049): when True,
+            the local store's content-bearing values
+            (``documents.content``, ``documents.tags``,
+            ``doc_vectors.vector``) are sealed with
+            application-level envelope encryption before they
+            reach SQL — per-store data key wrapped under
+            ``encryption_passphrase`` — the term index stores
+            keyed HMAC tags of its tokens, and ``content_hash``
+            becomes a keyed lookup tag (threat TH-09; decision
+            record ``docs/STORE_ENCRYPTION.md``). Needs the
+            ``encryption`` extra (``cryptography``). Default
+            False: today's behaviour byte for byte. Applies to
+            the local backend only; the Qdrant server owns its
+            disk. A marked (encrypted) store is encrypted for
+            its whole life: opening it without the flag refuses
+            typed, and enabling the flag on an existing plain
+            store that already holds documents refuses typed
+            rather than half-encrypting it. Like ``auto_backup``
+            it is a plain boolean flag, used as given.
+        encryption_passphrase: Store encryption (RM-049): the
+            passphrase the local store's data key is wrapped
+            under, required when ``store_encryption`` is on.
+            Excluded from the config's ``repr`` (the RM-045
+            key-hygiene precedent); never stored, never logged,
+            never in an error string. There is no recovery: a
+            lost passphrase is a lost store.
     """
 
     backend: str = "auto"
@@ -214,6 +240,9 @@ class HuginnConfig:
     strict_path_safety: bool = False
     debug_log_content: bool = False
     allow_insecure_http: bool = False
+    store_encryption: bool = False
+    # RM-049: repr=False — the passphrase never appears in repr(config).
+    encryption_passphrase: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:
@@ -246,6 +275,14 @@ class HuginnConfig:
         max_content_bytes = _coerce_int(self.max_content_bytes)
         if max_content_bytes is None or max_content_bytes < 1:
             raise HuginnConfigurationError("max_content_bytes must be >= 1")
+        if self.encryption_passphrase is not None and not isinstance(
+            self.encryption_passphrase, str
+        ):
+            raise HuginnConfigurationError("encryption_passphrase must be a string or None")
+        if self.store_encryption and not self.encryption_passphrase:
+            raise HuginnConfigurationError(
+                "encryption_passphrase is required when store_encryption is enabled"
+            )
 
     def resolved_local_path(self) -> Path:
         return Path(self.local_db_path).expanduser()

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-EXPECTED = [f"RM-{n:03d}" for n in range(1, 49)]  # RM-001..RM-048
+EXPECTED = [f"RM-{n:03d}" for n in range(1, 50)]  # RM-001..RM-049
 
 
 @pytest.fixture(scope="module")

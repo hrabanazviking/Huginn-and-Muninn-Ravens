@@ -157,8 +157,12 @@ EXPECTED_FSTR_TEMPLATES = {
 # the execute-site templates above (no SQL is built into a
 # variable through an f-string in muninn).
 EXPECTED_SQL_JOINED_ANYWHERE = EXPECTED_FSTR_TEMPLATES
-EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2}
-EXPECTED_SITE_TOTAL = 81
+EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
+# RM-049: +3 sites — the _crypto probe's meta select + the
+# named count_sql it runs, and the encryption-header insert in
+# core (all constant SQL; the count arrives as a named constant
+# from the caller, never built from values).
+EXPECTED_SITE_TOTAL = 84
 
 
 def _source_dir():

@@ -169,6 +169,26 @@ def _cases(tmp_path):
     # parent directory, both opened with strict path safety on.
     link_path = tmp_path / "link.db"
     os.symlink(tmp_path / "m.db", link_path)
+    # RM-049: an encrypted store for the wrong-passphrase and
+    # plain-open refusal cases. Built only when the encryption
+    # extra is installed (the campaign's suite env carries it);
+    # without it those cases are absent and the golden diff
+    # names them plainly.
+    enc_path = tmp_path / "enc.db"
+    enc_built = False
+    try:
+        _enc_mem = HebbianMemory(
+            MuninnConfig(
+                db_path=str(enc_path),
+                store_encryption=True,
+                encryption_passphrase="case passphrase",
+            )
+        )
+        _enc_mem.remember("sealed")
+        _enc_mem.close()
+        enc_built = True
+    except Exception:
+        enc_built = False
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
     os.chmod(shared_dir, 0o777)
@@ -250,6 +270,25 @@ def _cases(tmp_path):
         "metadata_too_deep": lambda: m.remember("ok", metadata=_deep_dict(101)),
         "content_too_deep": lambda: m.remember(_deep_list(101)),
         "tags_oversize": lambda: tight.remember("ok", tags=["abcdefghij"]),
+        **(
+            {
+                "encryption_passphrase_required": lambda: MuninnConfig(
+                    store_encryption=True
+                ),
+                "encryption_wrong_passphrase": lambda: HebbianMemory(
+                    MuninnConfig(
+                        db_path=str(enc_path),
+                        store_encryption=True,
+                        encryption_passphrase="wrong passphrase",
+                    )
+                ),
+                "encryption_plain_open": lambda: HebbianMemory(
+                    MuninnConfig(db_path=str(enc_path))
+                ),
+            }
+            if enc_built
+            else {}
+        ),
     }
     return cases, m, _holder
 

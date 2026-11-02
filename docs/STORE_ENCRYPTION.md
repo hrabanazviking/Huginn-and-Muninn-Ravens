@@ -343,3 +343,33 @@ machine (50.0.2) sits inside the chosen bound, though the
 extra itself — like the live Qdrant round-trip and the
 sentence-transformers path — is **NOT PROVEN** in the
 ravens' own venv until RM-049 installs and runs it.
+
+## Build note (RM-049, 2026-11-02)
+
+Built as specified above, in both packages: `_crypto.py`
+(per-store data key, PBKDF2-HMAC-SHA256 KEK at 600,000
+iterations, AES-256-GCM wrap + key check in `meta`,
+`enc:v1:` envelopes with table+column associated data,
+keyed HMAC lookup tags), the `store_encryption` /
+`encryption_passphrase` (repr=False) config pair, and the
+`encryption = ["cryptography>=42,<51"]` extra (Muninn's
+first). The key proof runs **before** `open_store` on a pure
+read-only probe, so the wrong-passphrase and plain-open
+refusals leave the store byte-for-byte untouched; when the
+probe cannot read the file at all (a corrupt main store),
+the proof is deferred to the live connection after the
+restore road has run — a restored encrypted backup unlocks
+with the same passphrase, and the recovery suites pass
+against encrypted stores in both packages. Two behaviours
+the specification left to the build, recorded here: the
+flag switched **on** over an existing plain store that
+already holds memories/documents refuses typed (no silent
+half-encryption, no in-place migration in this slice), and
+Huginn's flag binds the local backend only (Qdrant stays
+out of scope, per the decision). Suites from this slice
+run with the `encryption` extra installed; the extra
+itself is now PROVEN in the ravens' own venv
+(cryptography 50.0.2, installed and exercised end to end).
+TH-09 stands as the decision predicted once the flag is
+on: content **Controlled**, structure **Partial** — the
+register update itself remains RM-056's.

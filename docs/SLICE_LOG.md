@@ -2221,3 +2221,71 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   citation rule. The `cryptography` extra in the ravens'
   own venv, like a live Qdrant round-trip, remains NOT
   PROVEN until RM-049 installs and runs it.
+
+## RM-049 — Store encryption, build
+
+- **Class:** FAULT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Build of the RM-048 decision (TH-09) in both
+  packages. New `_crypto.py` per package: one random 32-byte
+  per-store data key wrapped under a PBKDF2-HMAC-SHA256 KEK
+  (stdlib; 600,000 iterations, per-store 16-byte salt), wrap +
+  salt + iterations + AES-256-GCM key-check in the existing
+  `meta` table (no schema change — RM-004 goldens unmoved);
+  content values sealed AES-256-GCM from the one bounded
+  extra `cryptography>=42,<51` (new `encryption` extra in
+  both packages, lazily imported only with the flag on) as
+  `enc:v1:` envelopes in the same TEXT columns with the
+  table+column name as GCM associated data. Config (both,
+  additive): `store_encryption: bool = False` +
+  `encryption_passphrase` (repr=False; its absence with the
+  flag on is a typed configuration error; a missing extra is
+  the same, at open, never an import crash). Open-time key
+  proof BEFORE any write, on a pure read-only probe: wrong
+  passphrase and plain (flag-off) opens of a marked store
+  refuse typed with the store byte-for-byte untouched
+  (test-pinned); when the probe cannot read the file at all
+  (corrupt main), the proof defers to the live connection
+  after the restore road — a restored encrypted backup
+  unlocks with the same passphrase. Transforms: Muninn
+  `nodes.content`/`metadata`/`tags`; Huginn local
+  `documents.content`/`tags`, `doc_vectors.vector`, and
+  `doc_terms.term`/`corpus_stats.term` as keyed HMAC tags
+  (TF-IDF is equality-only — encrypted search scores are
+  bit-for-bit the plain store's, test-pinned); both
+  `content_hash` columns become keyed lookup tags over the
+  RM-047 hash inputs, and the RM-047 double check compares
+  decrypted content. Contracted tables
+  (`activation_log`/`hebbian_connections`) stay plaintext
+  and plain-sqlite3-readable (test-pinned). Two build
+  behaviours recorded in `docs/STORE_ENCRYPTION.md`'s build
+  note: flag-on over an existing plain store holding
+  memories/documents refuses typed (no half-encryption);
+  Huginn's flag binds the local backend only. New
+  `tests/test_store_encryption.py` (9 tests each package);
+  negation against the RM-048 packages **8 failed / 1
+  passed** per package (the pass: flag-off plaintext
+  preserved). RM-018 goldens extended (+3 CASE / +7
+  TEMPLATE lines per package — counts muninn 56 CASE / 79
+  TEMPLATE, huginn 66 CASE / 88 TEMPLATE); RM-019 surface
+  goldens gained the two config fields; RM-040 audit totals
+  moved 81→84 (muninn) / 42→45 (huginn) for the probe's
+  constant sites + the header insert, `count_sql` named.
+  **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm049-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  store/search/recall/decay/consolidate smoke PASS,
+  evidence `/var/tmp/rm049-evidence/`). Full suites green
+  in the RM-049 fresh venv on the final banking tree
+  (TMPDIR + installs on `/var/tmp`, extra installed):
+  muninn **299 passed** (290+9), huginn **259 passed**
+  (250+9); ruff + mypy floors clean (rm042 tool venv;
+  mypy muninn 6 files, huginn 9 files). The `cryptography`
+  extra is PROVEN in the ravens' own venv from this slice
+  (50.0.2, installed via the extra and exercised end to
+  end); live Qdrant and sentence-transformers stay NOT
+  PROVEN. Suites from this slice run with the `encryption`
+  extra installed (the RM-018 case capture builds an
+  encrypted store when the extra is present). Founding
+  tree NEEDS A SYNC for the whole encryption build
+  (extends the standing package-source sync note).

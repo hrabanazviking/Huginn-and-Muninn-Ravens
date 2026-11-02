@@ -13,6 +13,10 @@ authors = [{ name = "Volmarr Wyrd" }]
 dependencies = []
 
 [project.optional-dependencies]
+# RM-049: AES-256-GCM for local store encryption (the stdlib has
+# no cipher; see docs/STORE_ENCRYPTION.md). Lazy: imported only
+# when store_encryption is switched on.
+encryption = ["cryptography>=42,<51"]
 qdrant = ["qdrant-client>=1.9,<2"]
 embeddings = ["sentence-transformers>=2.2,<6"]
 dev = ["pytest>=7,<9", "ruff>=0.6,<1", "mypy>=1.11,<2", "coverage>=7,<8"]

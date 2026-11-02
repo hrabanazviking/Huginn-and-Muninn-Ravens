@@ -16,7 +16,7 @@ that road.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .errors import MuninnConfigurationError
@@ -119,6 +119,29 @@ class MuninnConfig:
             reports and exception strings (threat TH-05). Like
             ``auto_backup`` it is a plain boolean flag, used as
             given. See ``docs/LOG_REDACTION.md``.
+        store_encryption: Store encryption (RM-049): when True,
+            the store's content-bearing values (``nodes.content``,
+            ``nodes.metadata``, ``nodes.tags``) are sealed with
+            application-level envelope encryption before they
+            reach SQL — per-store data key wrapped under
+            ``encryption_passphrase`` — and ``content_hash``
+            becomes a keyed lookup tag (threat TH-09; decision
+            record ``docs/STORE_ENCRYPTION.md``). Needs the
+            ``encryption`` extra (``cryptography``). Default
+            False: today's behaviour byte for byte. A marked
+            (encrypted) store is encrypted for its whole life:
+            opening it without the flag refuses typed, and
+            enabling the flag on an existing plain store that
+            already holds memories refuses typed rather than
+            half-encrypting it. Like ``auto_backup`` it is a
+            plain boolean flag, used as given.
+        encryption_passphrase: Store encryption (RM-049): the
+            passphrase the store's data key is wrapped under,
+            required when ``store_encryption`` is on. Excluded
+            from the config's ``repr`` (the RM-045 key-hygiene
+            precedent); never stored, never logged, never in an
+            error string. There is no recovery: a lost
+            passphrase is a lost store.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -135,6 +158,9 @@ class MuninnConfig:
     max_metadata_bytes: int = 65536
     strict_path_safety: bool = False
     debug_log_content: bool = False
+    store_encryption: bool = False
+    # RM-049: repr=False — the passphrase never appears in repr(config).
+    encryption_passphrase: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
@@ -169,6 +195,14 @@ class MuninnConfig:
         max_metadata_bytes = _coerce_int(self.max_metadata_bytes)
         if max_metadata_bytes is None or max_metadata_bytes < 1:
             raise MuninnConfigurationError("max_metadata_bytes must be >= 1")
+        if self.encryption_passphrase is not None and not isinstance(
+            self.encryption_passphrase, str
+        ):
+            raise MuninnConfigurationError("encryption_passphrase must be a string or None")
+        if self.store_encryption and not self.encryption_passphrase:
+            raise MuninnConfigurationError(
+                "encryption_passphrase is required when store_encryption is enabled"
+            )
 
     def resolved_path(self) -> Path:
         """The store path with ``~`` expanded (not symlink-resolved)."""

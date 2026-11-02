@@ -48,6 +48,14 @@ from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any, TypeVar
 
+from ._crypto import (
+    StoreCipher,
+    meta_and_count_from_connection,
+    new_store_cipher,
+    open_store_cipher,
+    probe_store,
+    require_cryptography,
+)
 from ._db import (
     _is_locked_error,
     open_store,
@@ -614,6 +622,41 @@ class HebbianMemory:
         self._last_ts: datetime | None = None
         self._closed = False
         self._db_path = config.resolved_path()
+        # RM-049: store encryption setup and the open-time key
+        # proof run BEFORE the store is opened, on pure pre-reads,
+        # so a refused open (wrong passphrase, a plain open of a
+        # marked store, the flag switched on over an existing
+        # plain store) leaves the store byte-for-byte untouched.
+        self._cipher: StoreCipher | None = None
+        self._pending_encryption_meta: dict[str, str] | None = None
+        self._deferred_encryption = False
+        probe_ok, existing_meta, existing_rows = probe_store(
+            self._db_path, "SELECT COUNT(*) FROM nodes"
+        )
+        if config.store_encryption:
+            require_cryptography()
+            passphrase = config.encryption_passphrase or ""
+            if existing_meta is not None:
+                self._cipher = open_store_cipher(passphrase, existing_meta, self._db_path)
+            elif probe_ok and existing_rows > 0:
+                raise MuninnStorageError(
+                    f"muninn store {self._db_path} is not encrypted but "
+                    f"already holds memories; refusing to open it with "
+                    f"store_encryption enabled"
+                )
+            elif probe_ok or not self._db_path.exists():
+                self._cipher, self._pending_encryption_meta = new_store_cipher(passphrase)
+            else:
+                # The file exists but the probe could not read it
+                # (a corrupt main store whose backup may restore
+                # an encrypted store): the key proof is deferred
+                # to the post-open check, on the live connection.
+                self._deferred_encryption = True
+        elif existing_meta is not None:
+            raise MuninnStorageError(
+                f"muninn store {self._db_path} is encrypted; refusing "
+                f"to open it without store_encryption enabled"
+            )
         conn, report = open_store(
             self._db_path,
             busy_timeout_ms=config.busy_timeout_ms,
@@ -631,8 +674,95 @@ class HebbianMemory:
         # interleave with another opener's open, heal or backup
         # duties on the same store file.
         with self._lock, store_coordination_lock(self._db_path):
+            if self._pending_encryption_meta is not None:
+                # RM-049: a new encrypted store takes its marker
+                # and wrapped key now, inside the open-time lock,
+                # before any memory can be written.
+                self._write_encryption_meta_locked(self._pending_encryption_meta)
+                self._pending_encryption_meta = None
+            elif self._deferred_encryption:
+                self._establish_deferred_cipher_locked()
+            elif (
+                meta_and_count_from_connection(
+                    self._conn, "SELECT COUNT(*) FROM nodes"
+                )[0]
+                is not None
+                and self._cipher is None
+            ):
+                # RM-049 post-open re-check: the open restored a
+                # marked store (e.g. from an encrypted backup)
+                # that the pre-read could not see. Never serve it
+                # plain — close and refuse.
+                self._conn.close()
+                self._closed = True
+                raise MuninnStorageError(
+                    f"muninn store {self._db_path} is encrypted; refusing "
+                    f"to open it without store_encryption enabled"
+                )
             self._seed_last_ts_locked()
             self.last_heal_report = self._heal_locked()
+
+    def _write_encryption_meta_locked(self, meta: dict[str, str]) -> None:
+        """RM-049: write a new store's encryption header (lock held)."""
+        for key, value in meta.items():
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        self._conn.commit()
+
+    def _establish_deferred_cipher_locked(self) -> None:
+        """RM-049: the key proof for a store the pre-read could
+        not settle (lock held) — judged on the live connection
+        after ``open_store``'s restore road has run. A marked
+        store is unlocked (a wrong passphrase refuses, having
+        served nothing); an unmarked store holding memories is
+        the plain-store refusal; an empty unmarked store takes
+        a fresh header."""
+        passphrase = self.config.encryption_passphrase or ""
+        meta, rows = meta_and_count_from_connection(
+            self._conn, "SELECT COUNT(*) FROM nodes"
+        )
+        if meta is not None:
+            try:
+                self._cipher = open_store_cipher(passphrase, meta, self._db_path)
+            except MuninnStorageError:
+                self._conn.close()
+                self._closed = True
+                raise
+        elif rows > 0:
+            self._conn.close()
+            self._closed = True
+            raise MuninnStorageError(
+                f"muninn store {self._db_path} is not encrypted but "
+                f"already holds memories; refusing to open it with "
+                f"store_encryption enabled"
+            )
+        else:
+            self._cipher, meta = new_store_cipher(passphrase)
+            self._write_encryption_meta_locked(meta)
+        self._deferred_encryption = False
+
+    # ─── store encryption transforms (RM-049) ─────────────────────────
+
+    def _enc_value(self, text: str, aad: str) -> str:
+        """Seal a stored value when encryption is on (else identity)."""
+        return self._cipher.encrypt(text, aad) if self._cipher is not None else text
+
+    def _dec_value(self, value: str, aad: str) -> str:
+        """Open a stored value when encryption is on (else identity)."""
+        return self._cipher.decrypt(value, aad) if self._cipher is not None else value
+
+    def _stored_content_hash(self, text: str, is_json: int, plain_hash: str) -> str:
+        """The hash the store keeps: the plain SHA-256, or — with
+        encryption on — the keyed lookup tag over exactly the
+        plain hash's input (kind prefix ‖ content, RM-047), so
+        the idempotent-store path compares tags in the store and
+        plaintext after decryption."""
+        if self._cipher is None:
+            return plain_hash
+        prefix = "j:" if is_json else "s:"
+        return self._cipher.lookup_tag((prefix + text).encode("utf-8"))
 
     # ─── timestamp discipline (RM-012) ────────────────────────────────
 
@@ -1216,6 +1346,7 @@ class HebbianMemory:
         clean_path = _normalize_path(path)
         clean_category = _check_no_lone_surrogates(str(category), "category")
         text, is_json, content_hash = _content_payload(content)
+        stored_hash = self._stored_content_hash(text, is_json, content_hash)
         _check_content_size(text, self.config.max_content_bytes)
         clean_tags = []
         for raw_tag in _check_tag_list(tags):
@@ -1242,8 +1373,10 @@ class HebbianMemory:
                 "  emotional_valence, tags, metadata, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    text, is_json, content_hash, clean_path, clean_category, importance,
-                    emotional_valence, json.dumps(clean_tags), meta_text, at, at,
+                    self._enc_value(text, "nodes.content"), is_json, stored_hash,
+                    clean_path, clean_category, importance,
+                    emotional_valence, self._enc_value(json.dumps(clean_tags), "nodes.tags"),
+                    self._enc_value(meta_text, "nodes.metadata"), at, at,
                 ),
             )
             if cur.rowcount == 1:
@@ -1257,7 +1390,7 @@ class HebbianMemory:
                 row = self._conn.execute(
                     "SELECT id, content, content_is_json FROM nodes"
                     " WHERE content_hash = ? AND category = ? AND path = ?",
-                    (content_hash, clean_category, clean_path),
+                    (stored_hash, clean_category, clean_path),
                 ).fetchone()
                 # RM-047 (TH-08): the hash alone does not prove
                 # identity. The idempotent hit is accepted only
@@ -1269,7 +1402,11 @@ class HebbianMemory:
                 # here with different text under one hash, and
                 # is refused loudly instead of silently merging
                 # two memories into the existing node's id.
-                stored_text = row["content"]
+                # RM-049: with encryption on, the double check
+                # compares the DECRYPTED stored content against
+                # the incoming plaintext (the store itself only
+                # ever saw the lookup tag above).
+                stored_text = self._dec_value(row["content"], "nodes.content")
                 if (
                     len(stored_text) != len(text)
                     or stored_text != text
@@ -1318,7 +1455,7 @@ class HebbianMemory:
         )
 
     def _row_to_node(self, row: sqlite3.Row) -> MemoryNode:
-        content = row["content"]
+        content = self._dec_value(row["content"], "nodes.content")
         if row["content_is_json"]:
             content = json.loads(content)
         return MemoryNode(
@@ -1328,8 +1465,8 @@ class HebbianMemory:
             memory_type=row["category"],
             importance=int(row["importance"]),
             emotional_valence=float(row["emotional_valence"]),
-            tags=json.loads(row["tags"] or "[]"),
-            metadata=json.loads(row["metadata"] or "{}"),
+            tags=json.loads(self._dec_value(row["tags"] or "[]", "nodes.tags")),
+            metadata=json.loads(self._dec_value(row["metadata"] or "{}", "nodes.metadata")),
             access_count=int(row["access_count"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
@@ -1473,9 +1610,11 @@ class HebbianMemory:
             if content is not None:
                 text, is_json, content_hash = _content_payload(content)
                 _check_content_size(text, self.config.max_content_bytes)
-                updates["content"] = text
+                updates["content"] = self._enc_value(text, "nodes.content")
                 updates["content_is_json"] = is_json
-                updates["content_hash"] = content_hash
+                updates["content_hash"] = self._stored_content_hash(
+                    text, is_json, content_hash
+                )
             if "importance" in fields:
                 updates["importance"] = _check_importance(fields["importance"])
             if "emotional_valence" in fields:
@@ -1490,7 +1629,9 @@ class HebbianMemory:
                 for tag in clean_update_tags:
                     _check_no_lone_surrogates(tag, "tags")
                 _check_tags_size(clean_update_tags, self.config.max_metadata_bytes)
-                updates["tags"] = json.dumps(clean_update_tags)
+                updates["tags"] = self._enc_value(
+                    json.dumps(clean_update_tags), "nodes.tags"
+                )
             if "metadata" in fields:
                 _check_structure_depth(fields["metadata"] or {}, "metadata")
                 _check_value_no_lone_surrogates(fields["metadata"] or {}, "metadata")
@@ -1503,7 +1644,7 @@ class HebbianMemory:
                         "metadata must be JSON-serializable"
                     ) from exc
                 _check_metadata_size(meta_text, self.config.max_metadata_bytes)
-                updates["metadata"] = meta_text
+                updates["metadata"] = self._enc_value(meta_text, "nodes.metadata")
             if "path" in fields:
                 updates["path"] = _normalize_path(fields["path"])
             if "memory_type" in fields or "category" in fields:

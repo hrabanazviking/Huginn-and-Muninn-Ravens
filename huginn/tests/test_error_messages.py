@@ -310,6 +310,33 @@ def _cases(tmp_path):
     # parent directory, both opened with strict path safety on.
     link_path = tmp_path / "link.db"
     os.symlink(tmp_path / "h.db", link_path)
+    # RM-049: an encrypted local store for the wrong-passphrase
+    # and plain-open refusal cases. Built only when the
+    # encryption extra is installed (the campaign's suite env
+    # carries it); without it those cases are absent and the
+    # golden diff names them plainly.
+    enc_path = tmp_path / "enc.db"
+    enc_built = False
+    try:
+        _enc_backend = LocalBackend(
+            HuginnConfig(
+                backend="local",
+                local_db_path=str(enc_path),
+                store_encryption=True,
+                encryption_passphrase="case passphrase",
+            )
+        )
+        _enc_backend.upsert(
+            "sealed",
+            category="general",
+            importance=5,
+            tags=[],
+            emotional_valence=0.0,
+        )
+        _enc_backend.close()
+        enc_built = True
+    except Exception:
+        enc_built = False
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
     os.chmod(shared_dir, 0o777)
@@ -446,6 +473,26 @@ def _cases(tmp_path):
         "query_surrogate": lambda: h.search("bad \ud800"),
         "tags_too_deep": lambda: h.upsert_memory("ok", tags=[_deep_list(101)]),
         "tags_oversize": lambda: tight.upsert_memory("ok", tags=["abcdefghij"]),
+        **(
+            {
+                "encryption_passphrase_required": lambda: HuginnConfig(
+                    store_encryption=True
+                ),
+                "encryption_wrong_passphrase": lambda: LocalBackend(
+                    HuginnConfig(
+                        backend="local",
+                        local_db_path=str(enc_path),
+                        store_encryption=True,
+                        encryption_passphrase="wrong passphrase",
+                    )
+                ),
+                "encryption_plain_open": lambda: LocalBackend(
+                    HuginnConfig(backend="local", local_db_path=str(enc_path))
+                ),
+            }
+            if enc_built
+            else {}
+        ),
     }
     return cases, _holder
 

@@ -70,6 +70,9 @@ CASE content_too_deep | MuninnValidationError | content nesting depth exceeds ma
 CASE tags_oversize | MuninnValidationError | tags size 14 bytes exceeds max_metadata_bytes (8 bytes)
 CASE strict_symlink_open | MuninnStorageError | muninn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
 CASE strict_world_writable_open | MuninnStorageError | muninn store <tmp_path>/shared/m.db has a world-writable parent directory and strict path safety is enabled; refusing to open
+CASE encryption_passphrase_required | MuninnConfigurationError | encryption_passphrase is required when store_encryption is enabled
+CASE encryption_plain_open | MuninnStorageError | muninn store <tmp_path>/enc.db is encrypted; refusing to open it without store_encryption enabled
+CASE encryption_wrong_passphrase | MuninnStorageError | muninn store <tmp_path>/enc.db is encrypted and the supplied passphrase does not unlock it; refusing to open
 # TEMPLATE lines (68 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
@@ -157,3 +160,14 @@ TEMPLATE | MuninnValidationError | strength must be in [0, 1]
 TEMPLATE | MuninnValidationError | threshold must be in (0, 1]
 TEMPLATE | MuninnValidationError | unknown node fields: {}
 TEMPLATE | MuninnValidationError | update would duplicate an existing node (same content, category, path)
+TEMPLATE | MuninnConfigurationError | encryption_passphrase is required when store_encryption is enabled
+TEMPLATE | MuninnConfigurationError | encryption_passphrase must be a string or None
+TEMPLATE | MuninnConfigurationError | store_encryption requires the 'cryptography' package; install muninn with its 'encryption' extra
+TEMPLATE | MuninnStorageError | muninn store {} carries an unreadable encryption header; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} is encrypted and the supplied passphrase does not unlock it; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} is encrypted and the supplied passphrase does not unlock it; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} is encrypted and the supplied passphrase does not unlock it; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} is encrypted; refusing to open it without store_encryption enabled
+TEMPLATE | MuninnStorageError | muninn store {} is encrypted; refusing to open it without store_encryption enabled
+TEMPLATE | MuninnStorageError | muninn store {} is not encrypted but already holds memories; refusing to open it with store_encryption enabled
+TEMPLATE | MuninnStorageError | muninn store {} is not encrypted but already holds memories; refusing to open it with store_encryption enabled
