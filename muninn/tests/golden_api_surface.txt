@@ -45,6 +45,7 @@ FIELD | MuninnConfig.max_content_bytes | type=int | default=1048576
 FIELD | MuninnConfig.max_metadata_bytes | type=int | default=65536
 FIELD | MuninnConfig.max_nodes | type=int | default=20000
 FIELD | MuninnConfig.prune_threshold | type=float | default=0.01
+FIELD | MuninnConfig.strict_path_safety | type=bool | default=False
 METHOD | HebbianMemory.__init__ | config:POSITIONAL_OR_KEYWORD=None;overrides:VAR_KEYWORD=<required>
 METHOD | HebbianMemory.activate | memory_id:POSITIONAL_OR_KEYWORD=<required>;emotional_valence:KEYWORD_ONLY=0.0;source:KEYWORD_ONLY='api'
 METHOD | HebbianMemory.activate_batch | memory_ids:POSITIONAL_OR_KEYWORD=<required>;emotional_valence:KEYWORD_ONLY=0.0;source:KEYWORD_ONLY='api'
@@ -104,7 +105,7 @@ METHOD | Muninn.spread_activation | seed_ids:POSITIONAL_OR_KEYWORD=<required>;de
 METHOD | Muninn.stats | 
 METHOD | Muninn.store | content:POSITIONAL_OR_KEYWORD=<required>;path:POSITIONAL_OR_KEYWORD='';memory_type:POSITIONAL_OR_KEYWORD='fact';importance:POSITIONAL_OR_KEYWORD=5;tags:POSITIONAL_OR_KEYWORD=None;metadata:POSITIONAL_OR_KEYWORD=None;emotional_valence:KEYWORD_ONLY=0.0
 METHOD | Muninn.update | node_id:POSITIONAL_OR_KEYWORD=<required>;content:POSITIONAL_OR_KEYWORD=None;fields:VAR_KEYWORD=<required>
-METHOD | MuninnConfig.__init__ | db_path:POSITIONAL_OR_KEYWORD='~/.hermes/memory/muninn_hebbian.db';learning_rate:POSITIONAL_OR_KEYWORD=0.1;decay_half_life_days:POSITIONAL_OR_KEYWORD=30.0;confidence_half_life_days:POSITIONAL_OR_KEYWORD=90.0;prune_threshold:POSITIONAL_OR_KEYWORD=0.01;consolidation_threshold:POSITIONAL_OR_KEYWORD=0.8;busy_timeout_ms:POSITIONAL_OR_KEYWORD=5000;backup_keep:POSITIONAL_OR_KEYWORD=3;auto_backup:POSITIONAL_OR_KEYWORD=True;max_nodes:POSITIONAL_OR_KEYWORD=20000;max_content_bytes:POSITIONAL_OR_KEYWORD=1048576;max_metadata_bytes:POSITIONAL_OR_KEYWORD=65536
+METHOD | MuninnConfig.__init__ | db_path:POSITIONAL_OR_KEYWORD='~/.hermes/memory/muninn_hebbian.db';learning_rate:POSITIONAL_OR_KEYWORD=0.1;decay_half_life_days:POSITIONAL_OR_KEYWORD=30.0;confidence_half_life_days:POSITIONAL_OR_KEYWORD=90.0;prune_threshold:POSITIONAL_OR_KEYWORD=0.01;consolidation_threshold:POSITIONAL_OR_KEYWORD=0.8;busy_timeout_ms:POSITIONAL_OR_KEYWORD=5000;backup_keep:POSITIONAL_OR_KEYWORD=3;auto_backup:POSITIONAL_OR_KEYWORD=True;max_nodes:POSITIONAL_OR_KEYWORD=20000;max_content_bytes:POSITIONAL_OR_KEYWORD=1048576;max_metadata_bytes:POSITIONAL_OR_KEYWORD=65536;strict_path_safety:POSITIONAL_OR_KEYWORD=False
 METHOD | MuninnConfig.resolved_path | 
 PROPERTY | MemoryNode.category
 VERSION | __version__

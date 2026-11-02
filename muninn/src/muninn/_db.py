@@ -61,6 +61,16 @@ Durability contract
   second opener can never observe a half-created store,
   race a restore, or collide on the shared ``.bak-tmp``
   snapshot path.
+* Path safety is opt-in (RM-041; see ``docs/PATH_SAFETY.md``):
+  by default a store path is ``~``-expanded and deliberately
+  **not** symlink-resolved, and no parent permission is
+  checked — the recorded behaviour. With
+  ``strict_path_safety`` on, opening refuses a store path
+  that is a symlink or has any symlinked parent component,
+  and a store whose parent directory is world-writable,
+  with a typed :class:`MuninnStorageError` — threat TH-02's
+  locked-down mode, closing the redirection road for the
+  store and its restore alike.
 """
 
 from __future__ import annotations
@@ -285,6 +295,51 @@ def _check_not_readonly(db_path: Path) -> None:
         )
 
 
+def _check_path_safety(db_path: Path, strict_path_safety: bool) -> None:
+    """RM-041 pre-flight: the opt-in strict path-safety mode.
+
+    Runs with the other pre-flights at the head of
+    ``open_store``, before any connection or lock file is
+    created, so a refused open creates nothing. With strict
+    mode off (the default) this is a no-op: paths keep the
+    recorded behaviour — ``~``-expanded, never
+    symlink-resolved, parent permissions unchecked.
+
+    With strict mode on, two shapes are refused with a typed
+    :class:`MuninnStorageError` (threat TH-02):
+
+    * **Symlink redirection** — the store path itself, or any
+      parent directory component of it, is a symlink. Every
+      existing component of the absolute path is checked with
+      ``is_symlink`` (an ``lstat`` — the links themselves are
+      judged, never followed).
+    * **World-writable parent** — the directory that holds
+      the store carries the world-writable bit
+      (``mode & 0o002``), so any local account could plant or
+      replace files in it. Only the immediate parent is
+      judged: system ancestors such as ``/tmp`` are
+      world-writable by design (sticky-bit shared space),
+      and a parent that does not exist yet is created by the
+      open itself under the process umask — the check
+      applies from the next open on.
+    """
+    if not strict_path_safety:
+        return
+    absolute = db_path.absolute()
+    for component in (absolute, *absolute.parents):
+        if component.is_symlink():
+            raise MuninnStorageError(
+                f"muninn store {db_path} is a symlink or has a symlinked "
+                f"parent and strict path safety is enabled; refusing to open"
+            )
+    parent = db_path.parent
+    if parent.is_dir() and parent.stat().st_mode & 0o002:
+        raise MuninnStorageError(
+            f"muninn store {db_path} has a world-writable parent "
+            f"directory and strict path safety is enabled; refusing to open"
+        )
+
+
 def _is_locked_error(exc: BaseException) -> bool:
     """Does this failure mean another connection holds the lock?
 
@@ -424,6 +479,7 @@ def open_store(
     backup_keep: int,
     auto_backup: bool,
     schema_sql: str,
+    strict_path_safety: bool = False,
 ) -> tuple[sqlite3.Connection, OpenReport]:
     """Open (creating if needed) a Muninn store, healing corruption first.
 
@@ -438,9 +494,12 @@ def open_store(
     opener of a fresh store enters only once the first has
     fully created, probed and healed it, and a restore or a
     backup-on-open can never race another opener's duties.
+    RM-041: the strict path-safety pre-flight joins them when
+    ``strict_path_safety`` is on.
     """
     _check_store_path_shape(db_path)
     _check_not_readonly(db_path)
+    _check_path_safety(db_path, strict_path_safety)
     with store_coordination_lock(db_path):
         return _open_store_unlocked(
             db_path,
@@ -448,6 +507,7 @@ def open_store(
             backup_keep=backup_keep,
             auto_backup=auto_backup,
             schema_sql=schema_sql,
+            strict_path_safety=strict_path_safety,
         )
 
 
@@ -458,10 +518,12 @@ def _open_store_unlocked(
     backup_keep: int,
     auto_backup: bool,
     schema_sql: str,
+    strict_path_safety: bool = False,
 ) -> tuple[sqlite3.Connection, OpenReport]:
     report = OpenReport()
     _check_store_path_shape(db_path)
     _check_not_readonly(db_path)
+    _check_path_safety(db_path, strict_path_safety)
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:

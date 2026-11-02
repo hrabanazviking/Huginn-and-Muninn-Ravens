@@ -14,7 +14,7 @@
 # file is updated deliberately in the same commit as the
 # change.
 #
-# CASE lines (47): every raise site except the three that
+# CASE lines (56): every raise site except the three that
 # cannot be triggered deterministically — "could not be
 # prepared" (needs a store whose schema script fails mid-open)
 # and the two "document insert reported success but returned
@@ -75,7 +75,9 @@ CASE qdrant_delete_failed | HuginnBackendError | Qdrant delete failed: boom
 CASE qdrant_retrieve_failed | HuginnBackendError | Qdrant retrieve failed: boom
 CASE qdrant_search_failed | HuginnBackendError | Qdrant search failed: boom
 CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: boom
-# TEMPLATE lines (58 raise sites, 47 distinct — the insert
+CASE strict_symlink_open | HuginnStorageError | huginn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
+CASE strict_world_writable_open | HuginnStorageError | huginn store <tmp_path>/shared/h.db has a world-writable parent directory and strict path safety is enabled; refusing to open
+# TEMPLATE lines (68 raise sites, 57 distinct — the insert
 # guard's line is duplicated, once per insert path, and the
 # "could not be prepared" line likewise since RM-030 wrapped
 # the main connection in _db.py; RM-029 added the write-guard
@@ -88,7 +90,9 @@ CASE qdrant_count_failed | HuginnBackendError | Qdrant count failed: boom
 # schema preparation, all carrying the one locked template,
 # listed four times below — a seventh read-only site (the
 # probe's quick_check stage), and the write guard's locked
-# raise in local_backend.py).
+# raise in local_backend.py; RM-041 added the two strict
+# path-safety raise sites in _db.py's pre-flight — the
+# symlink template and the world-writable-parent template).
 TEMPLATE | HuginnBackendError | Huginn Qdrant backend is closed
 TEMPLATE | HuginnBackendError | HuginnMemory is closed
 TEMPLATE | HuginnBackendError | Qdrant at {} unreachable: {}
@@ -128,6 +132,8 @@ TEMPLATE | HuginnStorageError | huginn store {} is corrupt and no rolling backup
 TEMPLATE | HuginnStorageError | huginn store {} has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 TEMPLATE | HuginnStorageError | huginn store {} is a directory, not a database file; refusing to open
 TEMPLATE | HuginnStorageError | huginn store {} is not a regular file; refusing to open
+TEMPLATE | HuginnStorageError | huginn store {} is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
+TEMPLATE | HuginnStorageError | huginn store {} has a world-writable parent directory and strict path safety is enabled; refusing to open
 TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | HuginnStorageError | huginn store {} is locked by another process (busy timeout {} ms expired)

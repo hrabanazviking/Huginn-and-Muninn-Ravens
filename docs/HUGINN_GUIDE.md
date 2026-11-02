@@ -572,6 +572,7 @@ config = HuginnConfig()   # all defaults — the Bifröst contract shape
 | `backup_keep` | `int` | `3` | Rolling backup generations kept beside the local store. `0` disables backups — and therefore disables corruption recovery | Must be >= 0 |
 | `auto_backup` | `bool` | `True` | Take/refresh a rolling backup of the local store on open, when it changed since the last backup | No range check — used as a boolean flag |
 | `max_content_bytes` | `int` | `1048576` | Oversize ceiling (RM-027): one memory's content, in UTF-8 bytes; above it `upsert_memory` is refused with a typed error in the facade, before any backend is touched (see `docs/OVERSIZE_POLICY.md`) | Must be >= 1 |
+| `strict_path_safety` | `bool` | `False` | Path safety (RM-041, threat TH-02): when `True`, opening the **local** store refuses a symlinked store path (the file or any parent component) and a store whose parent directory is world-writable, with a typed storage error before anything is created — for locked-down deployments. Default `False` keeps the recorded behaviour (paths never symlink-resolved, parents unchecked; see `docs/PATH_SAFETY.md`). The Qdrant backend has no local file | No range check — used as a boolean flag |
 
 Example — local store with hashing vectors:
 

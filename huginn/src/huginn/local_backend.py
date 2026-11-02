@@ -150,6 +150,7 @@ class LocalBackend:
             backup_keep=config.backup_keep,
             auto_backup=config.auto_backup,
             schema_sql=SCHEMA_SQL,
+            strict_path_safety=config.strict_path_safety,
         )
         self._conn = conn
         self.open_report = report

@@ -100,6 +100,20 @@ class HuginnConfig:
             (Huginn memories carry no caller metadata argument, so
             there is no metadata ceiling here; Muninn's config
             carries both.)
+        strict_path_safety: Path safety (RM-041): when True,
+            opening the local store refuses a symlinked store
+            path (the file itself or any parent directory
+            component) and a store whose parent directory is
+            world-writable, with a typed storage error — for
+            locked-down deployments where a planted symlink or
+            a shared parent could redirect the store (or its
+            restore) elsewhere (threat TH-02). Default False:
+            paths keep the recorded behaviour — ``~`` expanded,
+            never symlink-resolved, no parent-permission check.
+            Applies to the local backend only; the Qdrant
+            backend has no local file. Like ``auto_backup`` it
+            is a plain boolean flag, used as given. See
+            ``docs/PATH_SAFETY.md``.
     """
 
     backend: str = "auto"
@@ -115,6 +129,7 @@ class HuginnConfig:
     backup_keep: int = 3
     auto_backup: bool = True
     max_content_bytes: int = 1048576
+    strict_path_safety: bool = False
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:

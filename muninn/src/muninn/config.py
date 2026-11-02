@@ -98,6 +98,18 @@ class MuninnConfig:
             on one node's metadata, measured in UTF-8 bytes of its
             serialized JSON form. Metadata above the ceiling is
             refused the same way.
+        strict_path_safety: Path safety (RM-041): when True,
+            opening the store refuses a symlinked store path (the
+            file itself or any parent directory component) and a
+            store whose parent directory is world-writable, with
+            a typed storage error — for locked-down deployments
+            where a planted symlink or a shared parent could
+            redirect the store (or its restore) elsewhere
+            (threat TH-02). Default False: paths keep the
+            recorded behaviour — ``~`` expanded, never
+            symlink-resolved, no parent-permission check. Like
+            ``auto_backup`` it is a plain boolean flag, used as
+            given. See ``docs/PATH_SAFETY.md``.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -112,6 +124,7 @@ class MuninnConfig:
     max_nodes: int = 20000
     max_content_bytes: int = 1048576
     max_metadata_bytes: int = 65536
+    strict_path_safety: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():

@@ -149,6 +149,13 @@ def _cases(tmp_path):
     fifo_path = tmp_path / "fifo.db"
     os.mkfifo(fifo_path)
     walonly_path.unlink()
+    # RM-041: a symlinked store path and a world-writable
+    # parent directory, both opened with strict path safety on.
+    link_path = tmp_path / "link.db"
+    os.symlink(tmp_path / "m.db", link_path)
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    os.chmod(shared_dir, 0o777)
 
     def cfg(**overrides):
         return lambda: MuninnConfig(db_path=str(tmp_path / "m.db"), **overrides)
@@ -212,6 +219,14 @@ def _cases(tmp_path):
         ),
         "nonfile_store": lambda: HebbianMemory(
             MuninnConfig(db_path=str(fifo_path))
+        ),
+        "strict_symlink_open": lambda: HebbianMemory(
+            MuninnConfig(db_path=str(link_path), strict_path_safety=True)
+        ),
+        "strict_world_writable_open": lambda: HebbianMemory(
+            MuninnConfig(
+                db_path=str(shared_dir / "m.db"), strict_path_safety=True
+            )
         ),
         "content_surrogate": lambda: m.remember("bad \ud800 end"),
         "path_surrogate": lambda: m.remember("clean", path="a/\ud800"),

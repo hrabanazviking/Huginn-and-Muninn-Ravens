@@ -56,10 +56,58 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-037, RM-038. **Part III (Robustness) is complete** — all
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
-- Banked (Part IV): RM-039, RM-040. Part IV (Security) is
-  under way — two of eighteen slices banked.
-- Next: RM-041 in roadmap order (Part IV — Path safety;
-  cites TH-02).
+- Banked (Part IV): RM-039, RM-040, RM-041. Part IV
+  (Security) is under way — three of eighteen slices banked.
+- Next: RM-042 in roadmap order (Part IV — File
+  permissions; cites TH-03).
+- **RM-041 BANKED 2026-11-01 (keeper tick ~22:16 EST):**
+  path safety — TH-02's opt-in strict mode, record in
+  `docs/PATH_SAFETY.md`. Both configs gain
+  `strict_path_safety: bool = False` (additive; a plain
+  boolean flag like `auto_backup`). Default off is the
+  recorded behaviour, pinned by tests (paths
+  `~`-expanded, never symlink-resolved, parents
+  unchecked — symlinked file/parent and `0o777` parent
+  all open as before). With the flag on, a new
+  `_check_path_safety` pre-flight in each package's
+  `_db.py` (head of `open_store`, before the RM-037
+  coordination lock — a refused open creates nothing,
+  not even `.open-lock` — and again inside the locked
+  open) refuses with the typed storage error: the store
+  path or any parent component a symlink (lstat-judged,
+  never followed), or the immediate parent directory
+  world-writable (`mode & 0o002`; only the immediate
+  parent is judged — `/tmp`-class ancestors are
+  world-writable by design; a not-yet-existing parent
+  is created under the umask and judged from the next
+  open). The restore road is covered (same open, same
+  path). Huginn's flag binds the local backend only.
+  New `tests/test_path_safety.py` in both packages
+  (9 tests each); negation against the RM-040 packages
+  6 failed / 3 passed per package (passes = the
+  preserved defaults). RM-018 goldens extended (muninn
+  52 cases / 67 templates, huginn 56 / 68; stale header
+  counts corrected to the true totals); RM-019 surface
+  goldens gained the field. **Bifröst re-verification
+  PASS** (fresh venv `ravens-rm041-bifrost-venv`,
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS, evidence
+  `~/workspace/.verify-tmp/rm041/`). Full suites green
+  in the RM-041 fresh venv on the final banking tree
+  (TMPDIR on `/var/tmp`): muninn **261 passed**
+  (252+9), huginn **189 passed** (180+9); ruff + mypy
+  floors clean (rm014 venv; mypy muninn 5 files,
+  huginn 8 files). Founding tree NEEDS A SYNC for the
+  config field + pre-flight (extends the standing
+  package-source sync note). Environment, honestly:
+  the home quota (EDQUOT) closed repeatedly during
+  this tick; writes reopened after this keeper deleted
+  this campaign's own spent scratch (~1.1 GB: RM-035's
+  bench tmp, RM-015's soak stores — durable samples
+  copy stands in the goal hidden files — RM-007's
+  matrix venvs, RM-014's pytest scratch, and the
+  rm036–rm039 suite TMPDIR scratch; all evidence logs
+  kept).
 - **RM-040 BANKED 2026-11-01 (keeper tick ~21:56 EST):**
   SQL-injection audit — TH-01 closed for the SQLite
   surfaces. The slice stood built but unbanked when this
@@ -1996,3 +2044,79 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   re-verification required. Founding tree needs no sync
   for this slice; the Part II/III package-source sync
   note stands.
+- **RM-041 — Path safety. BANKED 2026-11-01. Class:
+  UNIT.** Record: `docs/PATH_SAFETY.md` — TH-02 closed
+  for callers who opt in. Both configs gain
+  `strict_path_safety: bool = False`, additive at the
+  end of each dataclass, a plain boolean flag like
+  `auto_backup` (no new config-error site). Default off
+  is the recorded behaviour and is pinned as such:
+  store paths are `~`-expanded, never symlink-resolved,
+  and parent permissions are unchecked — a symlinked
+  store file, a store under a symlinked parent, and a
+  store in a `0o777` parent all open and work exactly
+  as before (three default-mode tests per package). With
+  the flag on, `_check_path_safety` in each package's
+  `_db.py` refuses on open with the typed storage
+  error, as a pre-flight at the head of `open_store`
+  with the RM-030/RM-033 pre-flights — before the
+  RM-037 coordination lock, so a refused open creates
+  nothing, not even the `.open-lock` file — and again
+  inside the locked open: (1) the store path itself or
+  any parent directory component of its absolute path
+  is a symlink — every existing component judged by
+  `is_symlink` (lstat; links judged, never followed);
+  (2) the store's immediate parent directory is
+  world-writable (`mode & 0o002`). Two scoping
+  decisions, stated in the record: only the immediate
+  parent is judged world-writable (system ancestors
+  such as `/tmp` are world-writable by design, sticky-
+  bit shared space), and a parent that does not exist
+  yet is created by the open under the process umask
+  and judged from the next open on (a symlinked
+  not-yet-created path is still refused, because the
+  link components already exist). Strict mode refuses;
+  it never resolves or redirects the caller's path. The
+  restore road is covered, since a restore writes to
+  the same path inside the same open. Huginn's flag
+  applies to the local backend only; the Qdrant
+  backend has no local file. Pinned by new
+  `tests/test_path_safety.py` in both packages (9 tests
+  each; refusals proven against the facade for Muninn
+  and against `LocalBackend` for Huginn, whose facade
+  is lazy). Negation against the RM-040 installed
+  packages: 6 failed / 3 passed per package — the three
+  passes are exactly the preserved default-mode
+  behaviours. RM-018 goldens extended deliberately in
+  both packages: muninn **52 cases / 67 templates**,
+  huginn **56 cases / 68 templates** (the two new raise
+  sites in each `_db.py` plus their CASE triggers; the
+  goldens' stale header counts were corrected to the
+  true totals in this commit). RM-019 API-surface
+  goldens gained the field and the updated config
+  `__init__` lines. Guides + API reference updated.
+  Public config surface changed additively, so the
+  **Bifröst contract re-verification was run before
+  banking**: fresh venv (`ravens-rm041-bifrost-venv`),
+  bifrost at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id;
+  search 1 merged result; recall grew the Muninn
+  activation log exactly +1; decay/consolidate
+  reports; `decay_wall_clock()` armed at 0 days; stats
+  over all three backends; both raven health dicts
+  carry `sqlite_version` 3.45.1 through the bridge;
+  huginn degraded via auto-fallback to local —
+  qdrant-client not installed in the venv, the
+  founding condition; live Qdrant still NOT PROVEN;
+  double close safe; evidence
+  `~/workspace/.verify-tmp/rm041/`). Full suites green
+  in a fresh venv (`ravens-rm041-venv`, non-editable
+  installs, TMPDIR on `/var/tmp`): muninn **261
+  passed** (252+9), huginn **189 passed** (180+9);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). Founding tree
+  (`~/workspace/ravens`) NEEDS A SYNC for the config
+  field + the `_db.py` pre-flight (extends the
+  standing package-source sync note). TH-02's register
+  state is re-checked at the RM-056 part gate, per the
+  threat model's rule.

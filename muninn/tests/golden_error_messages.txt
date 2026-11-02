@@ -11,7 +11,7 @@
 # fails until this file is updated deliberately in the same
 # commit as the change.
 #
-# CASE lines (42): every raise site except the two that cannot
+# CASE lines (52): every raise site except the two that cannot
 # be triggered deterministically — "could not be prepared"
 # (needs a store whose schema script fails mid-open) and "node
 # insert reported success but returned no row id" (unreachable
@@ -67,7 +67,9 @@ CASE path_surrogate | MuninnValidationError | path must not contain lone surroga
 CASE metadata_too_deep | MuninnValidationError | metadata nesting depth exceeds maximum of 100
 CASE content_too_deep | MuninnValidationError | content nesting depth exceeds maximum of 100
 CASE tags_oversize | MuninnValidationError | tags size 14 bytes exceeds max_metadata_bytes (8 bytes)
-# TEMPLATE lines (55 raise sites; RM-025 added the
+CASE strict_symlink_open | MuninnStorageError | muninn store <tmp_path>/link.db is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
+CASE strict_world_writable_open | MuninnStorageError | muninn store <tmp_path>/shared/m.db has a world-writable parent directory and strict path safety is enabled; refusing to open
+# TEMPLATE lines (67 raise sites; RM-025 added the
 # memory-id ceiling, the count/tag-list/seed-list guards in
 # core.py, and update()'s metadata-serializability site;
 # RM-028 added the three path guards; RM-029 added the
@@ -82,7 +84,9 @@ CASE tags_oversize | MuninnValidationError | tags size 14 bytes exceeds max_meta
 # schema preparation, all carrying the one locked template,
 # listed four times below — a seventh read-only site (the
 # probe's quick_check stage), and the write guard's locked
-# raise in core.py).
+# raise in core.py; RM-041 added the two strict path-safety
+# raise sites in _db.py's pre-flight — the symlink template
+# and the world-writable-parent template).
 TEMPLATE | MuninnConfigurationError | backup_keep must be >= 0
 TEMPLATE | MuninnConfigurationError | busy_timeout_ms must be >= 0
 TEMPLATE | MuninnConfigurationError | confidence_half_life_days must be > 0
@@ -107,6 +111,8 @@ TEMPLATE | MuninnStorageError | muninn store {} is corrupt and no rolling backup
 TEMPLATE | MuninnStorageError | muninn store {} has a write-ahead log but no main file and no rolling backup verified; refusing to start empty over lost memory
 TEMPLATE | MuninnStorageError | muninn store {} is a directory, not a database file; refusing to open
 TEMPLATE | MuninnStorageError | muninn store {} is not a regular file; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} is a symlink or has a symlinked parent and strict path safety is enabled; refusing to open
+TEMPLATE | MuninnStorageError | muninn store {} has a world-writable parent directory and strict path safety is enabled; refusing to open
 TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)
 TEMPLATE | MuninnStorageError | muninn store {} is locked by another process (busy timeout {} ms expired)

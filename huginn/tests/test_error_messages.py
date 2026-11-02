@@ -245,6 +245,13 @@ def _cases(tmp_path):
     dir_path.mkdir()
     fifo_path = tmp_path / "fifo.db"
     os.mkfifo(fifo_path)
+    # RM-041: a symlinked store path and a world-writable
+    # parent directory, both opened with strict path safety on.
+    link_path = tmp_path / "link.db"
+    os.symlink(tmp_path / "h.db", link_path)
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    os.chmod(shared_dir, 0o777)
     embedder = HashingEmbedder(dim=384)
     qdrant_cfg = HuginnConfig(backend="qdrant")
     closed_qdrant = QdrantBackend(qdrant_cfg, embedder)
@@ -346,6 +353,20 @@ def _cases(tmp_path):
         ),
         "nonfile_store": lambda: LocalBackend(
             HuginnConfig(backend="local", local_db_path=str(fifo_path))
+        ),
+        "strict_symlink_open": lambda: LocalBackend(
+            HuginnConfig(
+                backend="local",
+                local_db_path=str(link_path),
+                strict_path_safety=True,
+            )
+        ),
+        "strict_world_writable_open": lambda: LocalBackend(
+            HuginnConfig(
+                backend="local",
+                local_db_path=str(shared_dir / "h.db"),
+                strict_path_safety=True,
+            )
         ),
         "content_surrogate": lambda: h.upsert_memory("bad \ud800 end"),
         "query_surrogate": lambda: h.search("bad \ud800"),
