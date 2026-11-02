@@ -61,6 +61,7 @@ def test_default_ceiling_and_initial_stats(tmp_path):
         assert mem.last_search_stats == {
             "candidates_total": 0,
             "candidates_scored": 0,
+            "candidates_pruned": 0,
             "cap": 10000,
             "capped": False,
         }
@@ -167,6 +168,7 @@ def test_property_is_lazy_and_returns_a_copy(tmp_path):
         assert mem.last_search_stats == {
             "candidates_total": 0,
             "candidates_scored": 0,
+            "candidates_pruned": 0,
             "cap": 2,
             "capped": False,
         }

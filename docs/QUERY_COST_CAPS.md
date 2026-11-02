@@ -79,6 +79,13 @@ both packages:
 | `cap` | The ceiling in force for the call |
 | `capped` | True when the ceiling bit |
 
+Huginn's record carries one further field since RM-061:
+`candidates_pruned` — TF-IDF candidates the posting-list
+bound proved could not reach the result limit, excused
+from full scoring with results unchanged (always 0 on
+the vector road, which does not prune). See
+`docs/CANDIDATE_PRUNING.md`.
+
 Muninn's record is `HebbianMemory.last_spread_activation_stats`
 (with `nodes_returned` in place of `candidates_scored`);
 Huginn's is the facade property

@@ -128,6 +128,15 @@ EXPECTED_FSTR_TEMPLATES = {
     "SELECT DISTINCT doc_id FROM doc_terms WHERE term IN ({placeholders})",
     "SELECT doc_id, term, tf FROM doc_terms WHERE doc_id IN ({ph})",
     "SELECT term, doc_freq FROM corpus_stats WHERE term IN ({tph})",
+    # RM-061: the posting-list read — query terms x candidate
+    # ids, both placeholder lists built from len() of a value
+    # collection, every value bound.
+    "SELECT doc_id, term, tf FROM doc_terms WHERE term IN ({tph})"
+    " AND doc_id IN ({ph})",
+    # RM-061: the per-candidate total-token aggregate the
+    # pruning bound reads (same IN placeholder discipline).
+    "SELECT doc_id, SUM(tf) FROM doc_terms WHERE doc_id IN ({ph})"
+    " GROUP BY doc_id",
 }
 # Every SQL-shaped f-string anywhere in the source (the
 # _candidate_docs_locked base reaches execute() via the
@@ -144,7 +153,15 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 1, "count_sql": 1}
 # _db.py: the secure_delete pragma read + set + three-way
 # restore, and the two wal_checkpoint(TRUNCATE) + VACUUM
 # purge stages (all constant SQL, no values at all).
-EXPECTED_SITE_TOTAL = 53
+# RM-061: +4 sites net — the candidate-pruning search road
+# in local_backend: the query-term doc_freq lookup, the
+# corpus-max doc_freq constant, the total-token aggregate
+# and the posting-list read (new templates above), and one
+# added per-batch doc_freq lookup reusing the pinned IN
+# template; the old road's single full-term fetch and
+# all-terms doc_freq lookup are the per-batch fetches,
+# evolved, not additions.
+EXPECTED_SITE_TOTAL = 57
 
 
 def _source_dir():

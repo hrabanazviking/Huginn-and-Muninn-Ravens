@@ -1,0 +1,133 @@
+{
+  "package": "huginn",
+  "schema": 1,
+  "kind": "candidate_pruning",
+  "environment": {
+    "recorded_at": "2026-11-02T18:23:17.775846+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      1.8974609375,
+      6.47412109375,
+      7.19482421875
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "results_ms": {
+    "benchmark_search": 111.4340335000179,
+    "distinct_search": 1082.4625559998822
+  },
+  "details": {
+    "limit": 10,
+    "repeat": 15,
+    "benchmark": {
+      "queries": {
+        "raven wisdom tree": {
+          "median_ms": 63.31862600018212,
+          "stats": {
+            "candidates_total": 230,
+            "candidates_scored": 128,
+            "candidates_pruned": 102,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "sword fire storm": {
+          "median_ms": 68.14093000002686,
+          "stats": {
+            "candidates_total": 230,
+            "candidates_scored": 128,
+            "candidates_pruned": 102,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "ship sea song": {
+          "median_ms": 211.1243510003078,
+          "stats": {
+            "candidates_total": 230,
+            "candidates_scored": 128,
+            "candidates_pruned": 102,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "wolf eye memory": {
+          "median_ms": 154.72713700000895,
+          "stats": {
+            "candidates_total": 230,
+            "candidates_scored": 128,
+            "candidates_pruned": 102,
+            "cap": 10000,
+            "capped": false
+          }
+        }
+      },
+      "median_ms": 111.4340335000179,
+      "filtered": {
+        "query": "raven wisdom tree",
+        "category": "cat3",
+        "median_ms": 17.633610000302724,
+        "stats": {
+          "candidates_total": 230,
+          "candidates_scored": 23,
+          "candidates_pruned": 0,
+          "cap": 10000,
+          "capped": false
+        }
+      },
+      "corpus": {
+        "version": 1,
+        "count": 5000,
+        "sha256": "3693044ba5a6490d5174b31bb86577d338be59f56b9496a05f623a864a06143f"
+      },
+      "n_docs": 5000
+    },
+    "distinct": {
+      "queries": {
+        "term100 term200 term37": {
+          "median_ms": 1082.4625559998822,
+          "stats": {
+            "candidates_total": 1129,
+            "candidates_scored": 1129,
+            "candidates_pruned": 0,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "term5 term999 term300": {
+          "median_ms": 905.1004579996516,
+          "stats": {
+            "candidates_total": 853,
+            "candidates_scored": 853,
+            "candidates_pruned": 0,
+            "cap": 10000,
+            "capped": false
+          }
+        },
+        "term248 term17 term800": {
+          "median_ms": 1193.0123680003817,
+          "stats": {
+            "candidates_total": 1168,
+            "candidates_scored": 1168,
+            "candidates_pruned": 0,
+            "cap": 10000,
+            "capped": false
+          }
+        }
+      },
+      "median_ms": 1082.4625559998822,
+      "corpus": {
+        "generator": "distinct_text(i): 20 + (i*13) % 60 tokens of term[(i*7919 + j*104729 + j*j*31 + i*j*7) % 1024]",
+        "vocab": 1024,
+        "doc_words": "20 + (i * 13) % 60",
+        "distinct_documents": 10000
+      },
+      "n_docs": 10000
+    }
+  }
+}

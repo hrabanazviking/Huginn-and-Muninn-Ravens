@@ -3103,3 +3103,85 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   build (extends the standing package-source sync
   note). Live Qdrant + sentence-transformers stay
   NOT PROVEN.
+
+## RM-061 — Huginn candidate generation
+
+- **Class:** BENCH + UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Local TF-IDF search gains posting-list
+  pruning. From the query terms' posting lists alone the
+  backend computes each candidate's exact dot product and
+  a lower bound on its full vector norm (posting sub-norm
+  plus the least the remaining terms can contribute, from
+  the corpus-minimum idf and the candidate's total token
+  count via one `SUM(tf)` aggregate), giving a true upper
+  bound on its cosine score. Candidates are fully scored
+  best-bound-first in batches of 128; once `limit` exact
+  scores stand, a remaining candidate whose bound (with a
+  `(1 + 1e-9)` safety factor) cannot beat — or
+  tie-and-outrank by the RM-011 id tie-break — the
+  limit-th score is pruned without its term set ever
+  being fetched. Pruning is EXACT: results are the
+  unpruned search's results. `last_search_stats` gains
+  `candidates_pruned` (always 0 on the vector road);
+  RM-040 audit site total 53 → 57 (the posting read, the
+  totals aggregate and the evolved per-batch shapes are
+  pinned templates). Gate script
+  `huginn/scripts/candidate_pruning.py` seeds the RM-020
+  benchmark corpus (5,000 texts dedupe to 230 stored
+  documents) and a new 10,000-document distinct corpus,
+  verifies parity against a brute-force reference inside
+  every run before quoting timings, three runs per tree.
+  Structural result (load-independent): benchmark
+  candidates **230 → 128 scored, 102 pruned** on every
+  after run; distinct candidates **pruned 0** of
+  1,129 / 853 / 1,168. Timings are indicative only and
+  honestly load-confounded (1-minute loads 1.9–14.4
+  across the nine runs on the shared VM): medians of
+  three runs, benchmark 44.4 → 102.6 ms, distinct
+  689.6 → 1,082.5 ms; an interim batch-64 after set at
+  lower load read benchmark 41.2 ms (64 scored), and a
+  controlled back-to-back pair on a 3,000-document
+  distinct store (30 searches, median) measured
+  **198.9 ms before → 301.1 ms after** — where the
+  bound prunes nothing, the new road costs ~1.5×.
+  The weakness is measured, not guessed: one
+  corpus-wide term collapses the idf floor (benchmark
+  `raven` in 230/230 documents, floor ≈ 0.002; distinct
+  `term766` in 6,990/10,000, floor 0.358 against
+  query-term idfs ~3.1–3.7), and on long documents the
+  bound norm sits far under the true norm (sampled
+  mid-ranked candidate 3.85 vs 17.54; median bound
+  0.437 vs limit-th score 0.162), so no distinct
+  candidate's bound ever clears the threshold. Batch
+  size was raised 64 → 128 during the slice's own gate
+  runs (halves the per-batch query overhead on the
+  no-prune path; the benchmark corpus still spans two
+  batches). Human record `docs/CANDIDATE_PRUNING.md`;
+  BENCHMARKS.md pointer; QUERY_COST_CAPS.md stats table
+  gained the `candidates_pruned` row. New
+  `tests/test_candidate_pruning.py` (9, huginn only):
+  raw-table-reference parity on the benchmark corpus
+  (limits 10/3, category filter) and a randomized
+  corpus (limits, category, importance floors),
+  crafted strong/weak pruning + exactness, RM-053 cap
+  composition, exact ties never pruned, vector road
+  records 0, RM-049 encrypted store prunes identically,
+  gate-script shape + small run, committed record
+  shape. Negation vs the RM-060 tree:
+  `test_candidate_pruning.py` **5 failed / 4 passed**
+  (parities pass on both trees — exactness is a
+  property of both roads), `test_query_cost_caps.py`
+  **2 failed**, `test_sql_injection.py` **2 failed**,
+  slice-log pins **2 failed** per package. Public API
+  grew additively (one stats field), so the **Bifröst
+  re-verification was run before banking** — see
+  `CAMPAIGN_STATE.md`. Suites in the RM-061 fresh venv
+  on the final banking tree: huginn **315 passed**,
+  muninn **396 passed** (counts as banked; see
+  CAMPAIGN_STATE.md for the run record). Ruff clean
+  (whole tree); mypy clean in a deps-free tool venv
+  (muninn 7 files, huginn 9 files). Founding tree
+  NEEDS A SYNC for the RM-061 build (extends the
+  standing package-source sync note). Live Qdrant +
+  sentence-transformers stay NOT PROVEN.

@@ -617,7 +617,10 @@ class HuginnMemory:
         """RM-053: the last local search's cost accounting.
 
         ``candidates_total`` (candidates the index offered),
-        ``candidates_scored``, ``cap`` (the
+        ``candidates_scored``, ``candidates_pruned`` (RM-061:
+        TF-IDF candidates the posting-list bound excused from
+        full scoring — their results are proven identical to
+        the unpruned search's), ``cap`` (the
         ``max_search_candidates`` ceiling) and ``capped``
         (whether the ceiling bit). A dedicated property,
         deliberately NOT a ``health()`` field: health
@@ -634,6 +637,7 @@ class HuginnMemory:
         return {
             "candidates_total": 0,
             "candidates_scored": 0,
+            "candidates_pruned": 0,
             "cap": int(self.config.max_search_candidates),
             "capped": False,
         }

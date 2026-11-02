@@ -64,12 +64,108 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060.
-- Next: RM-061 in roadmap order (Huginn candidate
-  generation: local TF-IDF search currently scores every
-  candidate's full term set; add posting-list pruning —
-  top-term candidate narrowing — with a recall test
-  proving result parity on the benchmark corpus).
+  RM-060, RM-061.
+- Next: RM-062 in roadmap order (Huginn vector scan: the
+  embedder-mode scan is linear over stored vectors; add
+  an optional in-store prefilter — category/importance
+  pushed into SQL — and measure honestly at 100k docs;
+  if linear still wins at personal-store scale, record
+  that and stop).
+- **RM-061 BANKED 2026-11-02 (keeper tick ~14:03 EST):**
+  Huginn candidate generation — BENCH + UNIT. Local
+  TF-IDF search gains posting-list pruning: from the
+  query terms' posting lists alone the backend computes
+  each candidate's exact dot product and a lower bound
+  on its full vector norm (posting sub-norm plus the
+  least the remaining terms can contribute — corpus-
+  minimum idf floor times the remaining token count
+  from one `SUM(tf)` aggregate), giving a true upper
+  bound on the cosine score. Candidates are fully
+  scored best-bound-first in batches of 128; once
+  `limit` exact scores stand, a candidate whose bound
+  (with a `(1 + 1e-9)` safety factor) cannot beat — or
+  tie-and-outrank by the RM-011 id tie-break — the
+  limit-th score is pruned without its term set ever
+  being fetched. Pruning is EXACT: results are the
+  unpruned search's results, proven by parity tests
+  against a brute-force reference computed from the
+  raw tables and re-verified inside the gate script on
+  every run. `last_search_stats` gains
+  `candidates_pruned` (always 0 on the vector road);
+  RM-040 audit site total 53 → 57. Gate script
+  `huginn/scripts/candidate_pruning.py` seeds the
+  RM-020 benchmark corpus (5,000 texts dedupe to 230
+  stored documents) and a new 10,000-document distinct
+  corpus, three runs per tree. Structural result
+  (load-independent): benchmark candidates **230 → 128
+  scored, 102 pruned** on every after run; distinct
+  candidates **pruned 0** of 1,129 / 853 / 1,168.
+  Timings indicative only and honestly load-confounded
+  (1-minute loads 1.9–14.4 across the runs): medians of
+  three runs, benchmark 44.4 → 102.6 ms, distinct
+  689.6 → 1,082.5 ms; a controlled back-to-back pair on
+  a 3,000-document distinct store measured 198.9 →
+  301.1 ms — where the bound prunes nothing the new
+  road costs ~1.5×, and the record says so. The
+  weakness is measured, not guessed: one corpus-wide
+  term collapses the idf floor (benchmark `raven` in
+  230/230 documents, floor ≈ 0.002; distinct `term766`
+  in 6,990/10,000, floor 0.358 against query-term idfs
+  ~3.1–3.7), and on long documents the bound norm sits
+  far under the true norm (sampled 3.85 vs 17.54), so
+  no distinct candidate's bound ever clears the
+  threshold; a tighter bound is WAND-family future
+  work, named in the record, not smuggled in. Batch
+  size raised 64 → 128 during the slice's own gate
+  runs. Record at `huginn/scripts/candidate_pruning.json`
+  (after tree's third run, recorded
+  2026-11-02T18:23:17Z, load [1.90, 6.47, 7.19]); human
+  record `docs/CANDIDATE_PRUNING.md`; BENCHMARKS.md
+  pointer; QUERY_COST_CAPS.md gained the
+  `candidates_pruned` field note. New
+  `tests/test_candidate_pruning.py` (9, huginn only).
+  Negation vs the RM-060 tree: candidate-pruning suite
+  **5 failed / 4 passed** (parities pass on both trees),
+  query-cost-caps **2 failed**, sql-injection **2
+  failed**, slice-log pins **2 failed** per package.
+  **Bifröst re-verification PASS** (public API grew
+  additively; fresh venv on `/var/tmp`, bifrost source
+  diff-identical to the pinned b66e98cc checkout — its
+  own suites **25 passed**; BifrostBridge smoke PASS —
+  store mimir_id+huginn_id, search merged results,
+  recall grew the Muninn activation log exactly +1,
+  decay/consolidate reports, `decay_wall_clock()` armed
+  at 0 days, stats over all three backends, both raven
+  health dicts carry `sqlite_version` 3.45.1, huginn
+  local via auto-fallback, double close safe; smoke ran
+  with `HOME` on `/var/tmp` scratch, the RM-060
+  adaptation; evidence `/var/tmp/rm061evidence/`).
+  Full suites green on the final banking tree
+  (non-editable installs from a full-repo copy,
+  encryption + qdrant extras, cryptography 50.0.2,
+  qdrant-client 1.20.0, pytest 9.2.0): huginn **315
+  passed** (306+9), muninn **396 passed** (unchanged;
+  slice-log pin only). Ruff clean (whole tree); mypy
+  clean in a deps-free tool venv (muninn 7 files,
+  huginn 9 files). Banking provenance, honestly: the
+  slice was built by the previous keeper tick, which
+  was interrupted after the gate runs and the banking
+  suite runs (logs at `/var/tmp/rm061-bank/`, huginn
+  315 / muninn 396 on a tree this tick diff-verified
+  byte-identical to the working tree) but before the
+  Bifröst run completed and before any commit; this
+  tick re-ran the targeted suites fresh (huginn
+  candidate-pruning + cost-caps + SQL audit + slice-log
+  **26 passed**, muninn slice-log **2 passed**), re-ran
+  ruff + mypy clean, completed the Bifröst
+  re-verification above, and banked. Environment: the
+  home-quota EDQUOT closure bit at the banking edit;
+  writes reopened after this keeper freed the shared
+  pip/uv/Hugging Face caches and the repo's lint/type
+  caches (regenerable scratch only). Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  NEEDS A SYNC for the RM-061 build (extends the
+  standing package-source sync note).
 - **RM-060 BANKED 2026-11-02 (keeper tick ~10:36 EST):**
   bulk remember — BENCH. Muninn gains
   `remember_many(items) -> list[int]`: item dicts

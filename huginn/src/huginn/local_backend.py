@@ -19,6 +19,7 @@ import functools
 import hashlib
 import json
 import logging
+import math
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -45,7 +46,7 @@ from ._db import (
 )
 from .config import HuginnConfig
 from .errors import HuginnStorageError, HuginnValidationError
-from .text import Embedder, cosine, dense_cosine, sparse_tfidf, term_counts, tokenize
+from .text import Embedder, cosine, dense_cosine, idf, sparse_tfidf, term_counts, tokenize
 
 logger = logging.getLogger("huginn.local")
 
@@ -185,6 +186,22 @@ def _storage_write(
     return decorator
 
 
+# RM-061: full term sets are fetched for pruning survivors in
+# batches of this many candidates — large enough that the
+# per-batch queries stay few, small enough that the threshold
+# check between batches stops the fetching early. The batch
+# size is part of the algorithm's determinism: the same store
+# and query always score and prune the same candidates.
+# (128, raised from the first draft's 64 during the slice's
+# own gate runs: every batch costs a term fetch plus a
+# doc_freq lookup, and on a corpus where the bound prunes
+# nothing those round trips are pure overhead — halving the
+# batch count halves that overhead while the benchmark
+# corpus's 230 candidates still span two batches, so the
+# gate record keeps showing the narrowing.)
+_PRUNE_BATCH = 128
+
+
 class LocalBackend:
     """SQLite + inverted-index retrieval store."""
 
@@ -204,10 +221,15 @@ class LocalBackend:
         #: the facade's ``last_search_stats`` property. A
         #: dedicated accessor, deliberately NOT a ``health()``
         #: field: health snapshots are pinned pure, so
-        #: per-call accounting lives here.
+        #: per-call accounting lives here. RM-061 adds
+        #: ``candidates_pruned``: TF-IDF candidates the
+        #: posting-list bound proved could not reach the
+        #: result limit, so their full term sets were never
+        #: fetched or scored (always 0 on the vector road).
         self.last_search_stats: dict[str, Any] = {
             "candidates_total": 0,
             "candidates_scored": 0,
+            "candidates_pruned": 0,
             "cap": int(config.max_search_candidates),
             "capped": False,
         }
@@ -690,7 +712,12 @@ class LocalBackend:
                 conn, query_text, limit, category, min_importance
             )
 
-    def _record_search_locked(self, candidates_total: int, candidates_scored: int) -> None:
+    def _record_search_locked(
+        self,
+        candidates_total: int,
+        candidates_scored: int,
+        candidates_pruned: int = 0,
+    ) -> None:
         """RM-053: record one search's cost accounting.
 
         The cap bit is judged on the candidates the index
@@ -698,12 +725,16 @@ class LocalBackend:
         candidates were cut records ``capped`` even when the
         category/importance filter later drops some of the
         survivors. Counts only — never content (RM-044).
+        RM-061: ``candidates_pruned`` counts the TF-IDF
+        candidates the posting-list bound excused from full
+        scoring; the vector road always records 0.
         """
         cap = int(self.config.max_search_candidates)
         capped = candidates_total > cap
         self.last_search_stats = {
             "candidates_total": int(candidates_total),
             "candidates_scored": int(candidates_scored),
+            "candidates_pruned": int(candidates_pruned),
             "cap": cap,
             "capped": capped,
         }
@@ -773,35 +804,141 @@ class LocalBackend:
         if not docs:
             self._record_search_locked(candidates_total, 0)
             return []
-        # Full term sets for the surviving candidates (needed for norms).
-        doc_ids = list(docs)
-        ph = ",".join("?" * len(doc_ids))
-        term_rows = conn.execute(
-            f"SELECT doc_id, term, tf FROM doc_terms WHERE doc_id IN ({ph})",
-            doc_ids,
-        ).fetchall()
-        per_doc: dict[int, dict[str, int]] = {}
-        all_terms = set(q_counts)
-        for doc_id, term, tf in term_rows:
-            per_doc.setdefault(int(doc_id), {})[term] = int(tf)
-            all_terms.add(term)
-        # One batched doc_freq lookup for every involved term.
-        tph = ",".join("?" * len(all_terms))
+        # RM-061 — posting-list pruning (top-term candidate
+        # narrowing). The old road fetched every surviving
+        # candidate's FULL term set and scored it. This road
+        # first bounds the candidates from the query terms'
+        # posting lists alone: for each candidate, the dot
+        # product with the query is exact from the postings
+        # (a cosine numerator only ever involves shared
+        # terms), and its full vector norm is bounded from
+        # below by the posting-only sub-vector's norm plus
+        # the least the remaining terms can contribute —
+        # every remaining token sits on a term whose idf is
+        # at least the corpus minimum, and integer term
+        # frequencies give sum(tf^2) >= sum(tf) over them,
+        # with the candidate's total token count taken from
+        # one aggregate query. So dot / (|query| * norm
+        # bound) is a true UPPER bound on the candidate's
+        # cosine score. (Cosine is
+        # scale-invariant per document, so the bound is
+        # computed on raw tf*idf weights; the per-document
+        # total the TF normalizer divides by cancels.)
+        # Candidates are then fully scored best-bound-first,
+        # in batches; once `limit` exact scores stand, any
+        # remaining candidate whose bound cannot beat — or
+        # tie-and-outrank, by the RM-011 id tie-break — the
+        # current limit-th score is pruned: its full term set
+        # is never fetched. The bound carries a (1 + 1e-9)
+        # safety factor so float summation order can never
+        # make a prunable candidate of one that could truly
+        # reach the limit. Pruning is therefore EXACT: the
+        # results are the unpruned search's results, proven
+        # by the parity tests in tests/test_candidate_pruning.py
+        # and re-verified inside the gate script on every run.
+        tph = ",".join("?" * len(q_counts))
         df = {
             r[0]: int(r[1])
             for r in conn.execute(
                 f"SELECT term, doc_freq FROM corpus_stats WHERE term IN ({tph})",
-                list(all_terms),
+                list(q_counts),
             ).fetchall()
         }
         query_vec = sparse_tfidf(q_counts, df, total_docs)
-        scored = []
-        for doc_id, counts in per_doc.items():
-            doc_vec = sparse_tfidf(counts, df, total_docs)
-            score = cosine(query_vec, doc_vec)
-            if score > 0.0:
-                scored.append((score, doc_id))
-        self._record_search_locked(candidates_total, len(per_doc))
+        query_norm = math.sqrt(sum(w * w for w in query_vec.values()))
+        term_idf = {term: idf(df.get(term, 0), total_docs) for term in q_counts}
+        # The corpus's minimum idf: idf falls as doc_freq
+        # grows, so the most frequent term sets the floor
+        # every term's weight respects.
+        max_df_row = conn.execute("SELECT MAX(doc_freq) FROM corpus_stats").fetchone()
+        idf_floor = idf(int(max_df_row[0]), total_docs) if max_df_row and max_df_row[0] else 0.0
+        doc_ids = list(docs)
+        ph = ",".join("?" * len(doc_ids))
+        totals = {
+            int(r[0]): int(r[1])
+            for r in conn.execute(
+                f"SELECT doc_id, SUM(tf) FROM doc_terms WHERE doc_id IN ({ph})"
+                " GROUP BY doc_id",
+                doc_ids,
+            ).fetchall()
+        }
+        bounds: dict[int, float] = {}
+        partial: dict[int, list[float]] = {}
+        for doc_id, term, tf in conn.execute(
+            f"SELECT doc_id, term, tf FROM doc_terms WHERE term IN ({tph})"
+            f" AND doc_id IN ({ph})",
+            [*q_counts, *doc_ids],
+        ).fetchall():
+            acc = partial.setdefault(int(doc_id), [0.0, 0.0, 0])
+            raw = int(tf) * term_idf[term]
+            acc[0] += query_vec[term] * raw
+            acc[1] += raw * raw
+            acc[2] += int(tf)
+        for doc_id, (dot, norm_sq, query_tf) in partial.items():
+            remaining = max(0, totals.get(doc_id, query_tf) - query_tf)
+            norm_bound = math.sqrt(norm_sq + remaining * idf_floor * idf_floor)
+            if dot > 0.0 and norm_bound > 0.0 and query_norm > 0.0:
+                bounds[doc_id] = min(1.0, dot / (query_norm * norm_bound))
+            else:
+                bounds[doc_id] = 0.0
+        # Best bound first; equal bounds resolve by doc id, so
+        # the walk — and therefore the scored/pruned counts —
+        # is deterministic (RM-011).
+        order = sorted(bounds.items(), key=lambda item: (-item[1], item[0]))
+        scored: list[tuple[float, int]] = []
+        candidates_scored = 0
+        idx = 0
+        while idx < len(order):
+            if scored and limit >= 1 and len(scored) >= limit:
+                kth_score, kth_id = sorted(
+                    scored, key=lambda item: (-item[0], item[1])
+                )[limit - 1]
+                bound, first_id = order[idx][1], order[idx][0]
+                scaled = bound * (1.0 + 1e-9) + 1e-12
+                if scaled < kth_score or (scaled <= kth_score and first_id > kth_id):
+                    # This candidate cannot reach the limit —
+                    # and neither can any later one: bounds are
+                    # non-increasing along the walk, and a later
+                    # candidate tying the bound has a larger id,
+                    # so it loses the tie-break too.
+                    break
+            batch = order[idx : idx + _PRUNE_BATCH]
+            idx += len(batch)
+            batch_ids = [doc_id for doc_id, _ in batch]
+            ph = ",".join("?" * len(batch_ids))
+            term_rows = conn.execute(
+                f"SELECT doc_id, term, tf FROM doc_terms WHERE doc_id IN ({ph})",
+                batch_ids,
+            ).fetchall()
+            per_doc: dict[int, dict[str, int]] = {}
+            new_terms: set[str] = set()
+            for doc_id, term, tf in term_rows:
+                per_doc.setdefault(int(doc_id), {})[term] = int(tf)
+                if term not in df:
+                    new_terms.add(term)
+            if new_terms:
+                # One batched doc_freq lookup per batch for the
+                # terms the query's own lookup did not cover.
+                tph = ",".join("?" * len(new_terms))
+                df.update(
+                    {
+                        r[0]: int(r[1])
+                        for r in conn.execute(
+                            f"SELECT term, doc_freq FROM corpus_stats WHERE term IN ({tph})",
+                            list(new_terms),
+                        ).fetchall()
+                    }
+                )
+            for doc_id, counts in per_doc.items():
+                candidates_scored += 1
+                doc_vec = sparse_tfidf(counts, df, total_docs)
+                score = cosine(query_vec, doc_vec)
+                if score > 0.0:
+                    scored.append((score, doc_id))
+        candidates_pruned = len(order) - candidates_scored
+        self._record_search_locked(
+            candidates_total, candidates_scored, candidates_pruned
+        )
         # RM-011 determinism pin: equal scores resolve by doc id.
         scored.sort(key=lambda item: (-item[0], item[1]))
         return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]

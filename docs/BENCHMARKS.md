@@ -143,6 +143,21 @@ before/after table (loop 1,603.2 ms → batch 603.9 ms,
 2.65×, load-disclosed), and honest limits — lives in
 `docs/BULK_REMEMBER.md`.
 
+## Huginn candidate generation (RM-061)
+
+`huginn/scripts/candidate_pruning.py` seeds the RM-020
+benchmark corpus and a 10,000-document distinct corpus
+and measures the fixed local searches, verifying result
+parity against a brute-force reference inside every run
+before quoting timings. Posting-list pruning is exact:
+on the benchmark corpus it scores **128 of 230
+candidates** (102 pruned); on the flat distinct corpus
+the bound prunes **0** and the new road costs ~1.5× the
+old there — both halves, the bound's idf-floor weakness
+and its measured mechanism, are recorded in
+`docs/CANDIDATE_PRUNING.md`. Record committed as
+`huginn/scripts/candidate_pruning.json`.
+
 ## Reproducible corpus (RM-020)
 
 The corpora are synthetic and formula-generated — muninn's
