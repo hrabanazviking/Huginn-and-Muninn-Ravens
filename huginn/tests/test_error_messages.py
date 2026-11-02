@@ -380,6 +380,7 @@ def _cases(tmp_path):
         "config_busy_timeout": cfg(busy_timeout_ms=-1),
         "config_backup_keep": cfg(backup_keep=-1),
         "config_max_content_bytes": cfg(max_content_bytes=0),
+        "config_max_search_candidates": cfg(max_search_candidates=0),
         "content_oversize": lambda: tight.upsert_memory("123456789"),
         "config_st_model": cfg(st_model=""),
         "config_api_key_type": cfg(qdrant_api_key=123),

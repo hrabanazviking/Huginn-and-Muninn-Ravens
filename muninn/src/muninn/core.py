@@ -634,6 +634,19 @@ class HebbianMemory:
         self._last_ts: datetime | None = None
         self._closed = False
         self._db_path = config.resolved_path()
+        #: RM-053: the last ``spread_activation`` call's cost
+        #: accounting (candidate edges examined, the ceiling,
+        #: whether it bit, nodes returned). A dedicated
+        #: attribute, deliberately NOT a ``stats()`` /
+        #: ``health()`` field: those snapshots are pinned
+        #: pure by the read-purity invariant (a read must not
+        #: change them), so per-call accounting lives here.
+        self.last_spread_activation_stats: dict[str, Any] = {
+            "candidates_examined": 0,
+            "cap": int(config.max_spread_candidates),
+            "capped": False,
+            "nodes_returned": 0,
+        }
         # RM-049: store encryption setup and the open-time key
         # proof run BEFORE the store is opened, on pure pre-reads,
         # so a refused open (wrong passphrase, a plain open of a
@@ -1445,6 +1458,18 @@ class HebbianMemory:
         Seeds start at 1.0; each hop multiplies by edge strength and
         ``attenuation``. Returns ``{memory_id: activation}`` (seeds
         included), strongest first in iteration order.
+
+        Query cost ceiling (RM-053, threat TH-13): one call
+        examines at most ``config.max_spread_candidates``
+        candidate edges (neighbour rows). When the ceiling is
+        reached the expansion stops and the call returns what
+        it has; the bite is recorded in
+        ``last_spread_activation_stats``, where ``capped``
+        is True and ``candidates_examined``
+        equals the ceiling. The walk is deterministic when the
+        cap bites — frontier nodes and neighbours are
+        considered in id order — and below the ceiling the
+        result is exactly the unbounded walk's.
         """
         if not isinstance(seed_ids, (list, tuple)):
             raise MuninnValidationError("seed_ids must be a list of ints")
@@ -1453,19 +1478,29 @@ class HebbianMemory:
         min_strength = _check_min_strength(min_strength)
         depth = max(0, min(_check_count(depth, "depth"), 10))
         limit = max(1, _check_count(limit, "limit"))
+        cap = int(self.config.max_spread_candidates)
+        examined = 0
+        capped = False
         levels: dict[int, float] = dict.fromkeys(seeds, 1.0)
         frontier = dict(levels)
         with self._lock:
             conn = self._get_conn()
             for _ in range(depth):
                 next_frontier: dict[int, float] = {}
-                for mid, level in frontier.items():
+                for mid in sorted(frontier):
+                    if capped:
+                        break
+                    level = frontier[mid]
                     rows = conn.execute(
                         "SELECT memory_b_id, strength FROM hebbian_connections"
                         " WHERE memory_a_id = ? AND strength >= ?",
                         (mid, float(min_strength)),
                     ).fetchall()
-                    for other, strength in rows:
+                    for other, strength in sorted(rows, key=lambda r: int(r[0])):
+                        if examined >= cap:
+                            capped = True
+                            break
+                        examined += 1
                         value = level * float(strength) * float(attenuation)
                         if value > next_frontier.get(other, 0.0):
                             next_frontier[other] = value
@@ -1473,12 +1508,27 @@ class HebbianMemory:
                     if value > levels.get(mid, 0.0):
                         levels[mid] = value
                 frontier = next_frontier
-                if not frontier:
+                if capped or not frontier:
                     break
         # RM-011 determinism pin: ties on activation resolve by id, so
         # iteration order never depends on query-plan row order.
         ranked = sorted(levels.items(), key=lambda kv: (-kv[1], kv[0]))
-        return dict(ranked[:limit])
+        result = dict(ranked[:limit])
+        self.last_spread_activation_stats = {
+            "candidates_examined": examined,
+            "cap": cap,
+            "capped": capped,
+            "nodes_returned": len(result),
+        }
+        if capped:
+            # Counts only — never content (RM-044 discipline).
+            logger.warning(
+                "muninn: spread_activation candidate cap bit: examined %d "
+                "candidate edges at cap %d; result is partial",
+                examined,
+                cap,
+            )
+        return result
 
     # ─── node API (ancestor semantics) ────────────────────────────────
 

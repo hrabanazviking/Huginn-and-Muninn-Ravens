@@ -183,6 +183,19 @@ class LocalBackend:
         self._last_ts: datetime | None = None
         self._closed = False
         self._db_path = config.resolved_local_path()
+        #: RM-053: the last local search's cost accounting
+        #: (candidates the index offered, candidates actually
+        #: scored, the ceiling, whether it bit) — surfaced by
+        #: the facade's ``last_search_stats`` property. A
+        #: dedicated accessor, deliberately NOT a ``health()``
+        #: field: health snapshots are pinned pure, so
+        #: per-call accounting lives here.
+        self.last_search_stats: dict[str, Any] = {
+            "candidates_total": 0,
+            "candidates_scored": 0,
+            "cap": int(config.max_search_candidates),
+            "capped": False,
+        }
         # RM-049: store encryption setup and the open-time key
         # proof run BEFORE the store is opened, on pure pre-reads,
         # so a refused open (wrong passphrase, a plain open of a
@@ -662,6 +675,31 @@ class LocalBackend:
                 conn, query_text, limit, category, min_importance
             )
 
+    def _record_search_locked(self, candidates_total: int, candidates_scored: int) -> None:
+        """RM-053: record one search's cost accounting.
+
+        The cap bit is judged on the candidates the index
+        offered *before* truncation, so a search whose
+        candidates were cut records ``capped`` even when the
+        category/importance filter later drops some of the
+        survivors. Counts only — never content (RM-044).
+        """
+        cap = int(self.config.max_search_candidates)
+        capped = candidates_total > cap
+        self.last_search_stats = {
+            "candidates_total": int(candidates_total),
+            "candidates_scored": int(candidates_scored),
+            "cap": cap,
+            "capped": capped,
+        }
+        if capped:
+            logger.warning(
+                "huginn: local search candidate cap bit: %d candidates "
+                "at cap %d; lowest-id candidates scored, result is partial",
+                candidates_total,
+                cap,
+            )
+
     def _candidate_docs_locked(
         self,
         conn: sqlite3.Connection,
@@ -696,20 +734,29 @@ class LocalBackend:
             # tag as the index, before any lookup.
             q_counts = {self._term_tag(term): tf for term, tf in q_counts.items()}
         if not q_counts:
+            self._record_search_locked(0, 0)
             return []
         total_docs = int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
         if total_docs == 0:
+            self._record_search_locked(0, 0)
             return []
         placeholders = ",".join("?" * len(q_counts))
-        candidate_ids = [
+        # RM-053: the candidate set is capped deterministically
+        # (lowest ids first) at config.max_search_candidates;
+        # the uncapped total is what _record_search_locked
+        # judges the bite by.
+        candidate_ids = sorted(
             int(r[0])
             for r in conn.execute(
                 f"SELECT DISTINCT doc_id FROM doc_terms WHERE term IN ({placeholders})",
                 list(q_counts),
             ).fetchall()
-        ]
+        )
+        candidates_total = len(candidate_ids)
+        candidate_ids = candidate_ids[: int(self.config.max_search_candidates)]
         docs = self._candidate_docs_locked(conn, candidate_ids, category, min_importance)
         if not docs:
+            self._record_search_locked(candidates_total, 0)
             return []
         # Full term sets for the surviving candidates (needed for norms).
         doc_ids = list(docs)
@@ -739,6 +786,7 @@ class LocalBackend:
             score = cosine(query_vec, doc_vec)
             if score > 0.0:
                 scored.append((score, doc_id))
+        self._record_search_locked(candidates_total, len(per_doc))
         # RM-011 determinism pin: equal scores resolve by doc id.
         scored.sort(key=lambda item: (-item[0], item[1]))
         return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]
@@ -754,17 +802,30 @@ class LocalBackend:
         assert self._embedder is not None
         query_vec = self._embedder.embed(query_text)
         rows = conn.execute("SELECT doc_id, vector FROM doc_vectors").fetchall()
+        # RM-053: same candidate cap as the TF-IDF road,
+        # deterministic by doc id — and only the surviving
+        # candidates' vectors are decoded at all, so a capped
+        # search never pays the uncapped decode cost either.
+        rows = sorted(rows, key=lambda r: int(r["doc_id"]))
+        candidates_total = len(rows)
+        rows = rows[: int(self.config.max_search_candidates)]
         candidate_ids = [int(r["doc_id"]) for r in rows]
         docs = self._candidate_docs_locked(conn, candidate_ids, category, min_importance)
         vectors = {
             int(r["doc_id"]): json.loads(self._dec_value(r["vector"], "doc_vectors.vector"))
             for r in rows
+            if int(r["doc_id"]) in docs
         }
         scored = []
+        candidates_scored = 0
         for doc_id in docs:
+            if doc_id not in vectors:
+                continue
+            candidates_scored += 1
             score = dense_cosine(query_vec, vectors[doc_id])
             if score > 0.0:
                 scored.append((score, doc_id))
+        self._record_search_locked(candidates_total, candidates_scored)
         # RM-011 determinism pin: equal scores resolve by doc id.
         scored.sort(key=lambda item: (-item[0], item[1]))
         return [self._row_to_doc(docs[doc_id], score) for score, doc_id in scored[:limit]]

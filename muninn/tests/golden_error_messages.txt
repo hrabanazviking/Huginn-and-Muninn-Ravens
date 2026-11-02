@@ -28,6 +28,7 @@ CASE config_backup_keep | MuninnConfigurationError | backup_keep must be >= 0
 CASE config_max_nodes | MuninnConfigurationError | max_nodes must be >= 1
 CASE config_max_content_bytes | MuninnConfigurationError | max_content_bytes must be >= 1
 CASE config_max_metadata_bytes | MuninnConfigurationError | max_metadata_bytes must be >= 1
+CASE config_max_spread_candidates | MuninnConfigurationError | max_spread_candidates must be >= 1
 CASE path_type | MuninnValidationError | path must be a string, got int
 CASE path_depth | MuninnValidationError | path depth 65 exceeds maximum of 64 segments
 CASE path_size | MuninnValidationError | path size 2049 bytes exceeds maximum of 2048 bytes
@@ -104,6 +105,7 @@ TEMPLATE | MuninnConfigurationError | learning_rate must be in (0, 1]
 TEMPLATE | MuninnConfigurationError | max_content_bytes must be >= 1
 TEMPLATE | MuninnConfigurationError | max_metadata_bytes must be >= 1
 TEMPLATE | MuninnConfigurationError | max_nodes must be >= 1
+TEMPLATE | MuninnConfigurationError | max_spread_candidates must be >= 1
 TEMPLATE | MuninnConfigurationError | prune_threshold must be in [0, 1)
 TEMPLATE | MuninnStorageError | HebbianMemory is closed
 TEMPLATE | MuninnStorageError | muninn store {} could not be prepared: {}

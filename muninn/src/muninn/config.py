@@ -172,6 +172,20 @@ class MuninnConfig:
             passphrase cannot be distinguished from tampering
             — both recompute to a different head and both are
             reported as ``tamper_detected``.
+        max_spread_candidates: Query cost ceiling (RM-053):
+            the maximum number of candidate edges one
+            ``spread_activation`` call may examine (threat
+            TH-13; record ``docs/QUERY_COST_CAPS.md``). A
+            candidate is one neighbour row considered during
+            the expansion; when the ceiling is reached the
+            expansion stops — deterministically, frontier
+            nodes and neighbours in id order — and the call
+            returns what it has, with the bite visible in
+            ``last_spread_activation_stats`` (``capped`` is
+            True and ``candidates_examined`` equals the
+            ceiling).
+            Below the ceiling, results are exactly what the
+            unbounded walk would return.
     """
 
     db_path: str = DEFAULT_DB_PATH
@@ -194,6 +208,7 @@ class MuninnConfig:
     integrity_attestation: bool = False
     # RM-050: repr=False — the passphrase never appears in repr(config).
     integrity_passphrase: str | None = field(default=None, repr=False)
+    max_spread_candidates: int = 100000
 
     def __post_init__(self) -> None:
         if not isinstance(self.db_path, str) or not self.db_path.strip():
@@ -244,6 +259,9 @@ class MuninnConfig:
             raise MuninnConfigurationError(
                 "integrity_passphrase is required when integrity_attestation is enabled"
             )
+        max_spread_candidates = _coerce_int(self.max_spread_candidates)
+        if max_spread_candidates is None or max_spread_candidates < 1:
+            raise MuninnConfigurationError("max_spread_candidates must be >= 1")
 
     def resolved_path(self) -> Path:
         """The store path with ``~`` expanded (not symlink-resolved)."""

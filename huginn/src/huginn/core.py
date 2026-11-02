@@ -612,6 +612,32 @@ class HuginnMemory:
         info = self.health()
         return info
 
+    @property
+    def last_search_stats(self) -> dict[str, Any]:
+        """RM-053: the last local search's cost accounting.
+
+        ``candidates_total`` (candidates the index offered),
+        ``candidates_scored``, ``cap`` (the
+        ``max_search_candidates`` ceiling) and ``capped``
+        (whether the ceiling bit). A dedicated property,
+        deliberately NOT a ``health()`` field: health
+        snapshots are pinned pure, so per-call accounting
+        lives here. Reading it never constructs the backend
+        (lazy construction is contractual): before the first
+        search — and on the Qdrant backend, whose server
+        owns its query cost — it reports the zero record
+        carrying the configured cap. Returns a copy.
+        """
+        backend = self._backend
+        if isinstance(backend, LocalBackend):
+            return dict(backend.last_search_stats)
+        return {
+            "candidates_total": 0,
+            "candidates_scored": 0,
+            "cap": int(self.config.max_search_candidates),
+            "capped": False,
+        }
+
     def close(self) -> None:
         """Close the backend if one was built. Idempotent."""
         with self._lock:

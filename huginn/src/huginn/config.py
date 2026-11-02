@@ -221,6 +221,22 @@ class HuginnConfig:
             key-hygiene precedent); never stored, never logged,
             never in an error string. There is no recovery: a
             lost passphrase is a lost store.
+        max_search_candidates: Query cost ceiling (RM-053):
+            the maximum number of candidate documents one
+            local-backend search may score (threat TH-13;
+            record ``docs/QUERY_COST_CAPS.md``). A candidate
+            is a document the index (TF-IDF terms, or the
+            vector table) offers up for a query; when more
+            candidates exist than the ceiling, the lowest-id
+            candidates are scored and the rest are not
+            considered by that call — deterministically —
+            and the bite is visible in
+            ``HuginnMemory.last_search_stats`` (``capped``
+            is True, ``candidates_total`` reports how many
+            existed). Below the ceiling, results are exactly
+            what the unbounded search would return. Applies
+            to the local backend only; the Qdrant server
+            owns its own query cost.
     """
 
     backend: str = "auto"
@@ -243,6 +259,7 @@ class HuginnConfig:
     store_encryption: bool = False
     # RM-049: repr=False — the passphrase never appears in repr(config).
     encryption_passphrase: str | None = field(default=None, repr=False)
+    max_search_candidates: int = 10000
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:
@@ -283,6 +300,9 @@ class HuginnConfig:
             raise HuginnConfigurationError(
                 "encryption_passphrase is required when store_encryption is enabled"
             )
+        max_search_candidates = _coerce_int(self.max_search_candidates)
+        if max_search_candidates is None or max_search_candidates < 1:
+            raise HuginnConfigurationError("max_search_candidates must be >= 1")
 
     def resolved_local_path(self) -> Path:
         return Path(self.local_db_path).expanduser()

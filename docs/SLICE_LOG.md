@@ -2507,3 +2507,77 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   Founding tree needs no sync for this slice (no package
   source changed); the standing package-source sync note
   stands. TH-12's register update remains RM-056's.
+
+## RM-053 — Denial-of-service bounds
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Query cost ceilings (TH-13), record in
+  `docs/QUERY_COST_CAPS.md`. The two expensive reads the
+  threat names bound their *output* before this slice but
+  not their *work*. Now: Muninn gains
+  `max_spread_candidates: int = 100000` — one
+  `spread_activation` call examines at most that many
+  candidate edges (neighbour rows), frontier nodes and
+  neighbours considered in id order so the bite is
+  deterministic; Huginn gains
+  `max_search_candidates: int = 10000` — one local search
+  scores at most that many candidate documents (lowest
+  ids first, cap applied before the category/importance
+  filter, exactly where the unbounded fetch sat; on the
+  vector road only surviving candidates' vectors are
+  decoded at all). Both ceilings are validated at
+  construction (RM-018 goldens gained the two cases).
+  When a cap bites the call returns its partial result —
+  never an error — and the bite is visible: Muninn's
+  `last_spread_activation_stats` attribute and Huginn's
+  new `last_search_stats` facade property carry the
+  counts (`candidates_examined` / `candidates_total`,
+  `candidates_scored`, `cap`, `capped`), and a WARNING
+  with counts only is logged. **Design correction made
+  in-slice:** the first draft surfaced the record inside
+  `stats()` / `health()` and failed Muninn's RM-009
+  read-purity pin (`test_idempotency` M09) — those
+  snapshots are pinned pure, so the accounting moved to
+  the dedicated accessors and the new suites pin that
+  capped calls leave both snapshots byte-identical.
+  Below the ceilings, results are exactly the unbounded
+  behaviour (ancestor spread values and full-corpus
+  search pinned unchanged). Qdrant search is out of
+  scope (the server owns its cost); Muninn `retrieve`'s
+  scan is bounded by `max_nodes` and no second ceiling
+  was added there — both stated in the record. New
+  `tests/test_query_cost_caps.py` (muninn 7, huginn 8),
+  including the BENCH acceptance: a fully connected
+  25-node graph at ceiling 200 examines exactly 200
+  candidates with `capped` True; a 12-document one-term
+  corpus at ceiling 5 scores exactly 5 of 12.
+  Negation against the RM-052 tree: muninn **7 failed /
+  0 passed**, huginn **8 failed / 0 passed** (every test
+  pins new behaviour). Public API changed additively
+  (two config fields, one facade property; RM-019
+  goldens updated), so the **Bifröst contract
+  re-verification was run before banking**: fresh venv
+  (`ravens-rm053-bifrost-venv` on `/var/tmp`), bifrost
+  at b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id+huginn_id;
+  search 1 merged result; recall grew the Muninn
+  activation log exactly +1; decay/consolidate reports;
+  `decay_wall_clock()` armed at 0 days; stats over all
+  three backends; both raven health dicts carry
+  `sqlite_version` 3.45.1; huginn on local via
+  auto-fallback — qdrant-client not installed in the
+  venv, the founding condition; double close safe;
+  evidence `/var/tmp/rm053-evidence/`). Full suites
+  green in the RM-053 fresh venv on the final banking
+  tree (TMPDIR + installs on `/var/tmp`, encryption
+  extra installed): muninn **336 passed** (329+7),
+  huginn **282 passed** (274+8); ruff check clean;
+  mypy clean in the RM-052 deps-free tool venv (muninn
+  7 files, huginn 9 files). No schema change (RM-004
+  goldens unmoved); no new dependency. Live Qdrant and
+  sentence-transformers stay NOT PROVEN. Founding tree
+  NEEDS A SYNC for the two config fields, the spread
+  walk, the local search caps and the facade property
+  (extends the standing package-source sync note).
+  TH-13's register update remains RM-056's.

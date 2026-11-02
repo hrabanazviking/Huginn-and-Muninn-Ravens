@@ -58,13 +58,61 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_III_EVIDENCE.md`.
 - Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043,
   RM-044, RM-045, RM-046, RM-047, RM-048, RM-049, RM-050,
-  RM-051, RM-052. Part IV (Security) is under way —
-  fourteen of eighteen slices banked.
-- Next: RM-053 in roadmap order (Part IV —
-  denial-of-service bounds; cites TH-13). Query cost
-  ceilings: spread_activation and local search already
-  bound their work; add explicit candidate-set caps with
-  typed/stat visibility when a cap bites. Class: BENCH.
+  RM-051, RM-052, RM-053. Part IV (Security) is under
+  way — fifteen of eighteen slices banked.
+- Next: RM-054 in roadmap order (Part IV —
+  error-message hygiene; cites TH-14). Typed errors
+  never carry file contents, keys or full paths beyond
+  the store path the caller itself supplied.
+  Acceptance: message-scan tests. Class: UNIT.
+- **RM-053 BANKED 2026-11-02 (keeper tick ~05:56 EST):**
+  denial-of-service bounds — TH-13, record in
+  `docs/QUERY_COST_CAPS.md`. Muninn gains
+  `max_spread_candidates: int = 100000` (candidate edges
+  one `spread_activation` call may examine; frontier and
+  neighbours in id order so a bite is deterministic) and
+  Huginn gains `max_search_candidates: int = 10000`
+  (candidate documents one local search may score;
+  lowest ids first; cap before the category/importance
+  filter; vector road decodes only surviving
+  candidates' vectors). A bite returns the partial
+  result — never an error — and is visible in Muninn's
+  `last_spread_activation_stats` attribute and Huginn's
+  new `last_search_stats` facade property (counts +
+  `capped`), plus a counts-only WARNING log.
+  **Design correction in-slice:** the first draft put
+  the record in `stats()`/`health()` and failed the
+  RM-009 read-purity pin (M09) — those snapshots are
+  pinned pure, so the accounting moved to the dedicated
+  accessors; the new suites pin capped calls leaving
+  both snapshots byte-identical. Below the ceilings,
+  behaviour is exactly the unbounded behaviour. Qdrant
+  search out of scope (server owns its cost); Muninn
+  `retrieve`'s scan is `max_nodes`-bounded, no second
+  ceiling — both stated in the record. New
+  `tests/test_query_cost_caps.py` (muninn 7, huginn 8)
+  incl. the BENCH acceptance (fully connected 25-node
+  graph at ceiling 200 examines exactly 200, capped;
+  12-doc one-term corpus at ceiling 5 scores 5 of 12).
+  Negation against the RM-052 tree: muninn **7 failed /
+  0 passed**, huginn **8 failed / 0 passed**. RM-018
+  goldens gained the two config cases; RM-019 goldens
+  gained the fields + the Huginn property; RM-004
+  schema goldens unmoved; no new dependency.
+  **Bifröst re-verification PASS** (fresh venv
+  `ravens-rm053-bifrost-venv` on `/var/tmp`, bifrost at
+  b66e98cc — its own suites **25 passed**; BifrostBridge
+  smoke PASS, evidence `/var/tmp/rm053-evidence/`).
+  Full suites green in the RM-053 fresh venv on the
+  final banking tree (TMPDIR + installs on `/var/tmp`,
+  encryption extra installed): muninn **336 passed**
+  (329+7), huginn **282 passed** (274+8); ruff check
+  clean; mypy clean in the RM-052 deps-free tool venv
+  (muninn 7 files, huginn 9 files). Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  NEEDS A SYNC for the RM-053 build (extends the
+  standing package-source sync note). TH-13's register
+  update remains RM-056's.
 - **RM-052 BANKED 2026-11-02 (keeper tick ~05:26 EST):**
   dependency hygiene — TH-12, record in
   `docs/DEPENDENCY_HYGIENE.md`. The inventory, now
