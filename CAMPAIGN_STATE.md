@@ -53,9 +53,34 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   stand in the slice log entry below.
 - Banked (Part III): RM-025, RM-026, RM-027, RM-028, RM-029,
   RM-030, RM-031, RM-032, RM-033, RM-034, RM-035, RM-036,
-  RM-037. Part III (Robustness) is under way — 13 of 14
-  slices banked.
-- Next: RM-038 in roadmap order (Part III — Part gate).
+  RM-037, RM-038. **Part III (Robustness) is complete** — all
+  fourteen slices banked and pushed; evidence bundle in
+  `docs/PART_III_EVIDENCE.md`.
+- Next: RM-039 in roadmap order (Part IV — Threat model).
+- **RM-038 BANKED 2026-11-01 (keeper tick ~19:36 EST):**
+  Part III gate — `docs/PART_III_EVIDENCE.md` files every
+  FAULT result (RM-029 disk-full, RM-030 read-only
+  filesystem, RM-032 partial-file states), a check-off for
+  RM-025–RM-038 with banking counts, the part's thirteen
+  Bifröst re-verifications (RM-025–RM-037, each fresh-venv,
+  bifrost suites 25 passed, bridge smoke PASS), the floors
+  standing (ruff + mypy clean; coverage floor 88; no schema
+  changed in Part III), the honesty ledger unchanged (live
+  Qdrant NOT PROVEN, sentence-transformers NOT PROVEN,
+  GitHub-hosted CI NOT PROVEN), and the debts named
+  (founding-tree sync; `schema_version` not gated until
+  RM-082/RM-132; the per-object timestamp guard's
+  cross-object limit). Pinned by new
+  `tests/test_part_iii_gate.py` in both packages (2 tests
+  each); EXPECTED pins in both `test_slice_log.py` copies
+  extended to RM-038. Full suites green in a fresh venv
+  (`ravens-rm038-venv`, non-editable installs, TMPDIR on
+  the workspace disk): muninn **241 passed** (239+2),
+  huginn **171 passed** (169+2); ruff + mypy floors clean
+  (rm014 venv; mypy muninn 5 files, huginn 8 files). No
+  package code, API, or schema change, so no Bifröst
+  re-verification required for the gate itself. Evidence
+  logs under `~/workspace/.verify-tmp/rm038/`.
 - **RM-037 BANKED 2026-11-01 (keeper tick ~18:46–20:35 EST):**
   concurrent openers defined as SUPPORTED and made true —
   a per-store coordination lock in both packages' `_db.py`
@@ -1746,3 +1771,56 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   note). Huginn's Qdrant backend holds no local file —
   concurrent objects there are concurrent server clients;
   this slice pins the local backend only.
+- **RM-038 — Part gate. BANKED 2026-11-01. Class: UNIT.**
+  Record: `docs/PART_III_EVIDENCE.md` — the Part III
+  evidence bundle. Every FAULT result is filed: RM-029
+  (disk-full: typed storage errors, the failed call's
+  transaction rolled back exactly, the store openable and
+  consistent afterwards), RM-030 (read-only filesystem:
+  loud immediate typed refusal in a pre-flight before any
+  connection, no read-only mode, no hang), RM-032
+  (partial-file states: zero-length main file, non-empty
+  WAL without its main file, and a stale `.bak-tmp` each
+  given defined, tested open behaviour). The bundle also
+  indexes the rest of the part: both fuzz suites
+  (RM-025/RM-026, recorded seeds, nineteen defects found
+  and fixed in-slice), the oversize ceilings (RM-027),
+  the path normaliser (RM-028), locked-store contention
+  (RM-031), non-database files (RM-033), the unicode
+  gauntlet (RM-034), huge-batch atomicity (RM-035, BENCH:
+  10k ids, 49,995,000 pairs / 99,990,000 directed rows in
+  1629.6 s at peak RSS 47.5 MB, all eight bench checks
+  passed), adversarial tags/metadata (RM-036), and
+  concurrent openers defined as supported (RM-037); a
+  one-line acceptance + banking-counts check-off for
+  every slice RM-025–RM-038; the part's thirteen Bifröst
+  contract re-verifications (RM-025 through RM-037 — each
+  fresh venv, bifrost at b66e98cc, its own suites 25
+  passed, BifrostBridge smoke PASS); the floors standing
+  at the gate (ruff + mypy clean at every banking,
+  coverage floor 88, schema + contract freezes green
+  throughout — no schema changed in Part III); the
+  honesty ledger carried forward unchanged (live Qdrant
+  NOT PROVEN, sentence-transformers NOT PROVEN,
+  GitHub-hosted CI NOT PROVEN); and the debts named
+  (founding-tree sync owed for all Part III package
+  sources on top of the Part II debt; `schema_version`
+  recorded-not-gated until RM-082 / RM-132; RM-012's
+  per-object timestamp guard may repeat or invert by
+  microseconds across RM-037's concurrent objects, stated
+  in the RM-037 record). Pinned by new
+  `tests/test_part_iii_gate.py` in both packages (2 tests
+  each: the bundle names every Part III slice and files
+  every FAULT result); both `test_slice_log.py` EXPECTED
+  pins extended to RM-038 in this commit. Full suites
+  green in a fresh venv (`ravens-rm038-venv`, non-editable
+  installs, TMPDIR on the workspace disk): muninn **241
+  passed** (239+2), huginn **171 passed** (169+2); ruff +
+  mypy floors clean (rm014 venv; mypy muninn 5 files,
+  huginn 8 files). No package code, public API, or schema
+  change, so no Bifröst re-verification required for the
+  gate itself. Founding tree needs no NEW sync for this
+  slice (docs + tests only); the Part III package-source
+  sync note stands. **Part III (Robustness) is complete
+  with this slice** — 14 of 14 slices banked. The road
+  continues at Part IV — Security (RM-039–RM-056).

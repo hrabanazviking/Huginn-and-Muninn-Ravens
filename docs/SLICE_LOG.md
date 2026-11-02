@@ -1461,3 +1461,47 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   it. The first final-tree muninn run caught exactly this
   (238 passed / 1 failed on the old assertion) before the
   amendment; the re-run counts stand in CAMPAIGN_STATE.md.
+
+## RM-038 — Part gate (Part III complete)
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `docs/PART_III_EVIDENCE.md` — the Part III
+  evidence bundle: every FAULT result filed (RM-029
+  disk-full, RM-030 read-only filesystem, RM-032
+  partial-file states — typed errors, exact rollback, the
+  store openable and consistent afterwards in each case),
+  the rest of the robustness evidence indexed (both fuzz
+  suites with their nineteen in-slice defect fixes, the
+  oversize / pathological-path / adversarial-shape
+  ceilings, locked-store contention and concurrent
+  openers defined as supported, non-database files and
+  the unicode gauntlet, and RM-035's BENCH result — 10k
+  ids, 49,995,000 pairs / 99,990,000 directed rows in
+  1629.6 s at peak RSS 47.5 MB, all eight bench checks
+  passed), a one-line acceptance + banking counts
+  check-off for every slice RM-025–RM-038, the part's
+  thirteen Bifröst contract re-verifications (RM-025
+  through RM-037 — each fresh-venv, bifrost suites 25
+  passed, bridge smoke PASS), the floors standing at the
+  gate (ruff/mypy clean at every banking, coverage floor
+  88, schema + contract freezes green throughout; no
+  schema changed in Part III), the honesty ledger carried
+  forward unchanged (live Qdrant NOT PROVEN,
+  sentence-transformers NOT PROVEN, GitHub-hosted CI NOT
+  PROVEN), and the debts named (founding-tree sync owed
+  for all Part III package sources; `schema_version`
+  recorded-not-gated until RM-082 / RM-132; the per-object
+  timestamp guard's cross-object limit under concurrent
+  openers, stated in the RM-037 record). The bundle is
+  pinned by new `tests/test_part_iii_gate.py` in both
+  packages (2 tests each): it must name every Part III
+  slice and file every FAULT result. Full suites green in
+  a fresh venv (`ravens-rm038-venv`, non-editable
+  installs, TMPDIR on the workspace disk): muninn
+  **241 passed** (239+2), huginn **171 passed** (169+2);
+  ruff floor clean. No package code, public API, or schema
+  change, so no Bifröst re-verification required for the
+  gate itself. **Part III (Robustness) is complete with
+  this slice** — 14 of 14 slices banked. The road
+  continues at Part IV — Security (RM-039–RM-056).
