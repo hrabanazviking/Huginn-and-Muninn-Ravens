@@ -56,10 +56,50 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-037, RM-038. **Part III (Robustness) is complete** — all
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
-- Banked (Part IV): RM-039. Part IV (Security) is under
-  way — one of eighteen slices banked.
-- Next: RM-040 in roadmap order (Part IV — SQL-injection
-  audit; cites TH-01).
+- Banked (Part IV): RM-039, RM-040. Part IV (Security) is
+  under way — two of eighteen slices banked.
+- Next: RM-041 in roadmap order (Part IV — Path safety;
+  cites TH-02).
+- **RM-040 BANKED 2026-11-01 (keeper tick ~21:56 EST):**
+  SQL-injection audit — TH-01 closed for the SQLite
+  surfaces. The slice stood built but unbanked when this
+  tick opened (audit doc, both hostile-battery test
+  files, SLICE_LOG entry + EXPECTED pins to RM-040 all
+  in the working tree, written ~20:39–20:42 EST): its
+  first full muninn run had failed en masse (42 failed /
+  176 passed / 34 errors, `muninn_final.log`) and a
+  detached wait-and-run prober (started 02:06 UTC) was
+  still waiting for the write gate. This tick diagnosed
+  the gate as the home quota (EDQUOT on every write
+  under `~` despite 39G free on disk — the aggregate of
+  the concurrent campaigns), killed the prober so it
+  could not race a re-run, and freed this campaign's own
+  disposable space (spent `ravens-rm039-venv` + RM-040's
+  bench/pytest scratch), after which writes reopened.
+  Verification re-run by this tick with TMPDIR on
+  `/var/tmp` (2G tmpfs, free): targeted battery muninn
+  **9 passed**, huginn **7 passed**; FULL suites green
+  in the RM-040 fresh venv (`ravens-rm040-venv`,
+  non-editable installs) on the final banking tree —
+  muninn **252 passed** (243+9), huginn **180 passed**
+  (173+7), exactly the counts the unbanked SLICE_LOG
+  entry claimed (logs `muninn_final2.log` /
+  `huginn_final2.log` under
+  `~/workspace/.verify-tmp/rm040/`); ruff + mypy floors
+  clean (rm014 venv; mypy muninn 5 files, huginn 8
+  files). Audit substance (from the banked entry): AST
+  inventory — muninn 81 execute sites (76 constant, 2
+  pinned f-string templates, 3 variable sites), huginn
+  42 (36 constant, 4 execute f-strings + 1
+  variable-feeding f-string, 2 variable sites); every
+  caller value bound as `?`; hostile contents stored
+  and retrieved verbatim with all tables intact;
+  negation muninn 2 failed / 7 passed, huginn 1 failed
+  / 6 passed. No package code, public API, or schema
+  change (docs + tests only), so no Bifröst
+  re-verification required. Founding tree needs no sync
+  for this slice; the Part II/III package-source sync
+  note stands.
 - **RM-039 BANKED 2026-11-01 (keeper tick ~19:56 EST):**
   threat model — `docs/THREAT_MODEL.md` reviewed against
   both codebases at the RM-038 head (78acff3): 10 assets,
@@ -1909,3 +1949,50 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   Bifröst re-verification required. Founding tree needs
   no sync for this slice (docs + tests only); the
   Part II/III package-source sync note stands.
+- **RM-040 — SQL-injection audit. BANKED 2026-11-01. Class:
+  UNIT.** Record: `docs/SQL_INJECTION_AUDIT.md` — TH-01
+  closed for the SQLite surfaces. AST inventory on the
+  RM-039 head: muninn 81 execute sites (`_db.py` 8,
+  `core.py` 73) — 76 constant (every caller value bound
+  as `?`; the rest value-free), 2 f-string templates
+  (`PRAGMA busy_timeout={int(...)}`; `UPDATE nodes SET
+  {assignments}` with keys only from the closed field
+  allow-list, values bound), 3 variable sites
+  (`executescript(schema_sql)` = static `SCHEMA_SQL`;
+  the timestamp seed loop over constant tuples;
+  `retrieve`'s constant base + constant fragments with
+  category/path/LIKE pattern all bound and the LIKE
+  pattern escaped). Huginn 42 sites (`_db.py` 8,
+  `local_backend.py` 34) — 36 constant, 4 execute-site
+  f-strings (`busy_timeout` as muninn; three
+  `IN ({placeholders})` built from `len()` only, every
+  element bound), 1 variable-feeding f-string, 2
+  variable sites (static `SCHEMA_SQL`;
+  `_candidate_docs_locked`'s bound query). No
+  `%`-formatting, concatenation, or `.format()` builds
+  SQL in either package. Proven by the hostile battery
+  in new `tests/test_sql_injection.py` in both packages
+  (muninn 9 tests, huginn 7): hostile contents /
+  categories / tags / metadata / paths stored and
+  retrieved verbatim with every table intact, injection
+  as a filter matches nothing, a hostile `update()`
+  field name is a typed refusal. The same files pin the
+  audit (site totals, exact template sets, exact
+  variable-site names), so a new SQL shape fails the
+  suite until the audit is re-run. Negation: an injected
+  f-string site in a scratch Muninn fails both audit
+  tests (2 failed / 7 passed); a concatenation site in
+  a scratch Huginn fails its classification test
+  (1 failed / 6 passed). Banking verification was
+  re-run by the ~21:56 EST keeper tick (see the Status
+  entry above for the quota diagnosis, the killed
+  wait-and-run prober, and the freed campaign space):
+  full suites green in the RM-040 fresh venv on the
+  final tree, TMPDIR on `/var/tmp` — muninn **252
+  passed** (243+9), huginn **180 passed** (173+7);
+  ruff + mypy floors clean (rm014 venv; mypy muninn 5
+  files, huginn 8 files). No package code, public API,
+  or schema change (docs + tests only), so no Bifröst
+  re-verification required. Founding tree needs no sync
+  for this slice; the Part II/III package-source sync
+  note stands.

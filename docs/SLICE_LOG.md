@@ -1579,3 +1579,58 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   tests only), so no Bifröst re-verification required.
   Founding tree needs no sync for this slice; the
   Part II/III package-source sync note stands.
+
+## RM-040 — SQL-injection audit
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `docs/SQL_INJECTION_AUDIT.md` — TH-01
+  closed for the SQLite surfaces. Every `execute` /
+  `executemany` / `executescript` site in both `src/`
+  trees inventoried from the AST on the RM-039 head and
+  classified. Audit table:
+
+  | Package | Sites | Constant SQL | Interpolated / variable (the complete set) |
+  |---|---|---|---|
+  | Muninn | 81 (`_db.py` 8, `core.py` 73) | 76 — every caller value bound as `?`; the rest value-free (static PRAGMAs, counts, heal, batch temp-table/index DDL) | `PRAGMA busy_timeout={int(busy_timeout_ms)}` (int-cast config; PRAGMAs cannot bind); `UPDATE nodes SET {assignments}` in `update()` — keys only from literal assignments behind the closed field allow-list, values bound; `executescript(schema_sql)` = static `SCHEMA_SQL`; `execute(sql)` ×2 — the timestamp seed loop (tuple of constants) and `retrieve` (constant base + constant fragments, category/path/LIKE pattern all bound, LIKE pattern escaped) |
+  | Huginn | 42 (`_db.py` 8, `local_backend.py` 34) | 36 — every caller value bound as `?`; the rest value-free | `PRAGMA busy_timeout={int(...)}` as Muninn; three `IN ({placeholders})` f-strings built from `len()` only, every element bound; `executescript(schema_sql)` = static `SCHEMA_SQL`; `execute(sql, params)` in `_candidate_docs_locked` (the `IN` f-string base + constant filter fragments, values bound) |
+
+  No other shape exists: no `%`-formatting, no string
+  concatenation and no `.format()` builds SQL in either
+  package (the one scripts-side SQL user,
+  `huge_batch_bench.py`, is 4 constant sites, values
+  bound). Proven by the hostile battery in new
+  `tests/test_sql_injection.py` in both packages
+  (muninn 9 tests, huginn 7 tests): 12 / 11 hostile
+  contents (quotes, `'; DROP TABLE …; --`, `DELETE …
+  WHERE 1=1`, `UNION SELECT`, comment markers, backslash
+  escapes, newline-split payloads, curly-quote/fullwidth
+  look-alikes, RTL-override prefix) stored and retrieved
+  verbatim with every table intact; hostile category /
+  tags / metadata / path values round-trip verbatim;
+  injection as a filter matches nothing (`' OR '1'='1`
+  is a literal, never a tautology); Muninn's LIKE path
+  filter treats `%` literally; a hostile `update()` value
+  is stored verbatim while a hostile field *name* is a
+  typed refusal; Huginn's placeholders exercised at
+  50-term width. The same files pin the audit itself
+  (site totals, exact f-string template sets, exact
+  variable-site names/counts, and every SQL-shaped
+  f-string anywhere in each source tree), so a new SQL
+  shape fails the suite until the audit is re-run.
+  Negation: a scratch tree with an injected f-string
+  site in Muninn fails both audit tests (2 failed / 7
+  passed); a scratch tree with a concatenation site in
+  Huginn fails its classification test (1 failed / 6
+  passed); the battery passes on both scratch trees.
+  Full suites green in a fresh venv
+  (`ravens-rm040-venv`, non-editable installs, TMPDIR on
+  the workspace disk): muninn **252 passed** (243+9),
+  huginn **180 passed** (173+7); ruff + mypy floors
+  clean (rm014 venv; mypy muninn 5 files, huginn 8
+  files). No package code, public API, or schema change
+  (docs + tests only), so no Bifröst re-verification
+  required. Founding tree needs no sync for this slice;
+  the Part II/III package-source sync note stands.
+  TH-01's register state is re-checked at the RM-056
+  part gate, per the threat model's rule.
