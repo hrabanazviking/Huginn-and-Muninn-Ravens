@@ -1789,3 +1789,53 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   `huginn_id` — was diagnosed as that environment
   class, not a package defect; with HOME on `/var/tmp`
   the smoke passes in full).
+
+## RM-043 — Backup confidentiality
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** Record: `docs/BACKUP_CONFIDENTIALITY.md` —
+  TH-04. A rolling backup is a full copy of memory, but
+  the snapshot was created by SQLite under the process
+  umask, so an owner-only (RM-042) store's backup could
+  land at `0o644` or worse. In each package's
+  `_take_backup_unlocked`, the snapshot (`.bak-tmp`) is
+  now chmodded to the store file's own mode the moment
+  it is written and closed — before verification and
+  rotation — via the new `_inherit_store_permissions`
+  helper (best-effort: a refused chmod is logged, never
+  raised). Every backup road goes through that one
+  function (explicit `backup()`, auto-backup on open,
+  maintenance backups). Inheritance is exact in both
+  directions: a `0o600` store's backups are `0o600`
+  under any umask (umask `0` included); a deliberately
+  loosened store's backups inherit exactly that mode
+  (inheritance, not a forced mode); a rotated generation
+  keeps the mode it was taken with. Pinned by new
+  `tests/test_backup_confidentiality.py` (muninn 5
+  tests, huginn 4, POSIX-only; huginn exercised through
+  the auto-backup-on-open road and `huginn._db`'s
+  `take_backup`). Negation against the RM-042 installed
+  packages: muninn **4 failed / 1 passed**, huginn
+  **4 failed / 0 passed** — the one muninn pass is the
+  backup-on-open road at `0o640`, where SQLite's Unix
+  VFS already copied the store's mode on its own; the
+  slice makes inheritance explicit and universal
+  instead of road-dependent. No public API or schema
+  changed, so no Bifröst re-verification was required
+  (the RM-040 precedent). Full suites green in a fresh
+  venv (`ravens-rm043-venv`, on `/var/tmp`,
+  non-editable installs from `/var/tmp` package copies,
+  TMPDIR + PYTHONDONTWRITEBYTECODE on `/var/tmp`):
+  muninn **273 passed** (268+5), huginn **200 passed**
+  (196+4); ruff + mypy floors clean (rm042
+  tool venv; mypy muninn 5 files, huginn 8 files).
+  Founding tree (`~/workspace/ravens`) NEEDS A SYNC for
+  the `_db.py` backup helper (extends the standing
+  package-source sync note). TH-04 closed on top of
+  RM-042's TH-03 creation side; the register state is
+  re-checked at the RM-056 part gate, per the threat
+  model's rule. Environment, honestly: the home quota
+  (EDQUOT) stayed hostile all tick — see the RM-042
+  entry; this slice's scratch, venvs and logs likewise
+  lived on `/var/tmp`.

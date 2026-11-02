@@ -82,6 +82,13 @@ Durability contract
   it: a looser existing file is instead reported by
   ``health()`` in its ``file_permissions_warning`` field.
   Rolling backups are RM-043's slice, not this one.
+* Backup confidentiality (RM-043; see
+  ``docs/BACKUP_CONFIDENTIALITY.md``): a rolling backup is a
+  full copy of memory, so the snapshot inherits the store
+  file's own permissions at the moment it is taken (threat
+  TH-04) — an owner-only store's backups are owner-only, and
+  a deliberately loosened store's backups inherit exactly
+  that looseness (inheritance, not a forced mode).
 """
 
 from __future__ import annotations
@@ -460,6 +467,26 @@ def _sidecars(db_path: Path) -> list[Path]:
     return [Path(str(db_path) + "-wal"), Path(str(db_path) + "-shm")]
 
 
+def _inherit_store_permissions(db_path: Path, backup_path: Path) -> None:
+    """RM-043: a backup inherits the store file's permissions.
+
+    Best-effort like the RM-042 chmod: a refused chmod is
+    logged, never raised — a backup that cannot be
+    re-permissioned is still a valid backup, and the
+    rotation must not fail over a hardening step.
+    """
+    try:
+        mode = db_path.stat().st_mode & 0o7777
+    except OSError:
+        return
+    try:
+        os.chmod(backup_path, mode)
+    except OSError as exc:
+        logger.warning(
+            "muninn: could not set backup permissions on %s: %s", backup_path, exc
+        )
+
+
 def take_backup(db_path: Path, keep: int) -> Path | None:
     """Rolling backup, serialized across openers (RM-037).
 
@@ -493,6 +520,10 @@ def _take_backup_unlocked(db_path: Path, keep: int) -> Path | None:
                 dst.close()
         finally:
             src.close()
+        # RM-043: the snapshot is a full copy of memory — it
+        # inherits the store's permissions before it is
+        # verified and rotated into place.
+        _inherit_store_permissions(db_path, tmp)
         probe = sqlite3.connect(str(tmp))
         try:
             if not _quick_check_ok(probe):

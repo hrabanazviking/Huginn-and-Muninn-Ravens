@@ -56,10 +56,35 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   RM-037, RM-038. **Part III (Robustness) is complete** — all
   fourteen slices banked and pushed; evidence bundle in
   `docs/PART_III_EVIDENCE.md`.
-- Banked (Part IV): RM-039, RM-040, RM-041, RM-042. Part IV
-  (Security) is under way — four of eighteen slices banked.
-- Next: RM-043 in roadmap order (Part IV — Backup
-  confidentiality; cites TH-04).
+- Banked (Part IV): RM-039, RM-040, RM-041, RM-042, RM-043.
+  Part IV (Security) is under way — five of eighteen slices
+  banked.
+- Next: RM-044 in roadmap order (Part IV — Log redaction;
+  cites TH-05).
+- **RM-043 BANKED 2026-11-01 (keeper tick ~23:06 EST, same
+  tick as RM-042):** backup confidentiality — TH-04, record
+  in `docs/BACKUP_CONFIDENTIALITY.md`. The rolling-backup
+  snapshot in both packages' `_take_backup_unlocked` now
+  inherits the store file's own mode at the moment it is
+  taken (new `_inherit_store_permissions`, best-effort —
+  logged, never raised), before verification and rotation:
+  a `0o600` store's backups are `0o600` under any umask, a
+  deliberately loosened store's backups inherit exactly
+  that mode, and a rotated generation keeps the mode it
+  was taken with. New `tests/test_backup_confidentiality.py`
+  (muninn 5 tests, huginn 4, POSIX-only); negation against
+  the RM-042 packages muninn **4 failed / 1 passed** (the
+  pass: backup-on-open at `0o640`, where SQLite's Unix VFS
+  already copied the mode on its own), huginn **4 failed /
+  0 passed**. No public API or schema change, so no
+  Bifröst re-verification required (RM-040 precedent).
+  Full suites green in the RM-043 fresh venv on the final
+  banking tree (TMPDIR on `/var/tmp`): muninn **273
+  passed** (268+5), huginn **200 passed** (196+4); ruff +
+  mypy floors clean (rm042 tool venv; mypy muninn 5 files,
+  huginn 8 files). Founding tree NEEDS A SYNC for the
+  backup helper (extends the standing package-source sync
+  note).
 - **RM-042 BANKED 2026-11-01 (keeper tick ~23:06 EST):**
   file permissions — TH-03's creation side, record in
   `docs/FILE_PERMISSIONS.md`. A store file an open creates
