@@ -1,0 +1,60 @@
+{
+  "slice": "RM-065",
+  "generated_at": "2026-11-03T00:06:58.413360+00:00",
+  "environment": {
+    "recorded_at": "2026-11-03T00:06:58.413410+00:00",
+    "machine": "x86_64",
+    "system": "Linux",
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "node": "htch-runtime",
+    "cpu_count": 4,
+    "load_avg": [
+      5.9013671875,
+      5.30615234375,
+      4.31591796875
+    ],
+    "python_version": "3.12.3",
+    "sqlite_version": "3.45.1"
+  },
+  "store": {
+    "documents": 100000,
+    "store_bytes": 46391296,
+    "seed": "direct construction: documents rows in one transaction into a store created by a real open; term index and doc_vectors intentionally empty (backup cost is byte-proportional; ms_per_mb carries the number)"
+  },
+  "snapshot": {
+    "times_ms": [
+      133.7,
+      196.8,
+      197.2
+    ],
+    "median_ms": 196.8,
+    "backup_bytes": 46391296,
+    "verified_quick_check_and_documents": true,
+    "ms_per_mb": 4.24
+  },
+  "open": {
+    "unchanged_median_ms": 196.8,
+    "unchanged_times_ms": [
+      195.9,
+      205.0,
+      196.8
+    ],
+    "unchanged_took_backup": [
+      false,
+      false,
+      false
+    ],
+    "changed_median_ms": 313.1,
+    "changed_times_ms": [
+      322.6,
+      313.1,
+      308.8
+    ],
+    "changed_took_backup": [
+      true,
+      true,
+      true
+    ],
+    "backup_share_ms": 116.3
+  }
+}

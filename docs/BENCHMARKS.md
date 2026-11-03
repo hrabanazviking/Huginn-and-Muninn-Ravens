@@ -146,6 +146,26 @@ costs ~25% wall-clock at this scale; what it buys is
 bounded transactions and progress, not speed) — lives in
 `docs/MAINTENANCE_SCALE.md`.
 
+## Backup cost (RM-065)
+
+`muninn/scripts/backup_cost.py` and
+`huginn/scripts/backup_cost.py` measure the rolling-backup
+roads at 100k scale (Muninn: the RM-058 uniform store,
+100,000 edges, 19,972,096 bytes; Huginn: 100,000 documents,
+46,391,296 bytes): a snapshot is a full backup-API copy +
+quick_check at **4.74 / 4.24 ms per MB**, backup-on-open
+already skips an unchanged store, and the one proven waste
+— an open that takes a backup followed immediately by a
+maintenance pass re-snapshotting identical content — costs
+one snapshot in a narrow window. Records committed as
+`muninn/scripts/backup_cost.json` and
+`huginn/scripts/backup_cost.json`; the human record — the
+verdict (**no incremental or copy-on-write strategy built;
+the numbers do not demand one**), the projected ~2.2 s
+snapshot at RM-062's 477 MB vector-store scale, and the
+sound checkpoint-then-mtime design for the day the trigger
+is met — lives in `docs/BACKUP_COST.md`.
+
 ## Muninn bulk remember (RM-060)
 
 `muninn/scripts/bulk_remember.py` ingests 10,000 distinct

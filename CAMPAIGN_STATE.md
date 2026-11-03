@@ -64,12 +64,105 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060, RM-061, RM-062, RM-063, RM-064.
-- Next: RM-065 in roadmap order (Backup cost:
-  backup-on-open and pre-maintenance snapshots measured
-  at 100k scale; add incremental or copy-on-write
-  strategies only if the numbers demand it. Class:
-  BENCH).
+  RM-060, RM-061, RM-062, RM-063, RM-064, RM-065.
+- Next: RM-066 in roadmap order (Connection pragmas
+  study: `cache_size`, `mmap_size`, `temp_store`
+  measured per package; defaults changed only on
+  evidence, recorded per pragma. Class: BENCH).
+- **RM-065 BANKED 2026-11-02 (keeper tick ~18:36 EST):**
+  Backup cost — BENCH. New gate scripts
+  `muninn/scripts/backup_cost.py` and
+  `huginn/scripts/backup_cost.py` measure the
+  rolling-backup roads at 100k scale. Muninn seed: the
+  RM-058 uniform store (5,000 nodes, 100,000 directed
+  edges, 19,972,096 bytes) built once via the public
+  API, checkpointed, byte-copied fresh per measurement;
+  Huginn seed: 100,000 documents by direct construction
+  (46,391,296 bytes; term index and `doc_vectors`
+  intentionally empty — backup cost is
+  byte-proportional and the rate is the carrier, stated
+  in the record). A snapshot (SQLite backup-API full
+  copy + permission inheritance + `quick_check` +
+  generation rotation) costs a median **94.7 ms**
+  (Muninn) / **196.8 ms** (Huginn) — **4.74 / 4.24 ms
+  per MB**, the twin machinery agreeing a snapshot
+  costs what its bytes cost; verified (quick_check +
+  row counts) on every run before quoting.
+  Backup-on-open wastes nothing: unchanged store took
+  a backup **0 of 3** opens in both packages (backup
+  hash stood still), changed store **3 of 3**; open
+  backup share +46.3 ms (Muninn) / +116.3 ms (Huginn).
+  Pre-maintenance share: decay(10d) **+91.1 ms**,
+  consolidate **+120.4 ms** (medians with vs without
+  `auto_backup`) — one snapshot each, as expected. The
+  one proven waste is the **double pay**: open-with-
+  backup → immediate decay re-snapshots content proven
+  row-for-row identical (nodes, edges, confidences) to
+  the open's backup — one redundant snapshot (~95 ms
+  here; ~2.0–2.3 s projected by the rate at RM-062's
+  477,544,448-byte vector store) in the narrow
+  open → maintain, untouched window. **Verdict, as the
+  roadmap directed: the numbers do NOT demand an
+  incremental or copy-on-write strategy at
+  personal-store scale, and none is built** — the
+  machinery it would replace is the durability core
+  pinned by RM-037/RM-043/RM-049/RM-051, and a
+  page-incremental or reflink redesign of generation
+  rotation buys back ~0.1–0.2 s in the common case.
+  The record (`docs/BACKUP_COST.md`) names the
+  reopening trigger (~500 MB stores routine, or the
+  open → maintain pattern becoming a hot road) and the
+  sound fix design: `wal_checkpoint(TRUNCATE)` BEFORE
+  any mtime comparison, never mtime alone (in WAL mode
+  committed writes can sit in the `-wal` while the
+  main file's mtime stands still — a naive skip is a
+  durability bug). Records at
+  `muninn/scripts/backup_cost.json` (2026-11-03T00:06:49Z,
+  load [6.16, 5.33, 4.31]) and
+  `huginn/scripts/backup_cost.json` (2026-11-03T00:06:58Z,
+  load [5.90, 5.31, 4.32]); BENCHMARKS.md pointer. New
+  `tests/test_backup_cost.py` (4 per package: gate
+  shape, small-run behaviour incl. took-backup flags,
+  committed-record shape, verdict pin);
+  `test_slice_log.py` EXPECTED to RM-065 in both.
+  Negation vs the RM-064 tree: **6 failed / 0 passed
+  per package** (4 backup-cost + 2 slice-log, failures
+  exactly on the missing gate/record/doc/entry). No
+  package code, public API, schema, or SQL changed,
+  so no Bifröst re-verification was required (the
+  RM-057 pattern). Full suites green on the final
+  banking tree (non-editable installs from a full-repo
+  copy on `/var/tmp`, encryption + qdrant extras,
+  cryptography 50.0.2, qdrant-client 1.20.0, pytest
+  9.2.0): muninn **430 passed** (426+4), huginn **339
+  passed** (335+4). Ruff clean (both packages; the one
+  repo-root `scripts/soak.py` BLE001 finding is
+  pre-existing and untouched); mypy 1.20.2 clean
+  (muninn 7 files, huginn 9 files). Slice-internal
+  repairs: the gate scripts' first full Muninn run
+  filled the 2 GB /var/tmp tmpfs with its own
+  measurement copies (the RM-039 environment class) —
+  the scripts now discard each measurement directory
+  after use; a ruff B023 in both gate scripts (lambda
+  binding a loop variable) was fixed and both full
+  gates re-run, so the committed records come from the
+  final script text. Banking provenance: the
+  home-quota EDQUOT closure was still shut for the
+  whole tick, so as RM-063/RM-064 did, this slice was
+  built, verified, committed and pushed from a
+  full-repo copy on `/var/tmp` struck from the clean
+  RM-064 banking copy (`/var/tmp/rm064/repo`, at
+  origin/main 7b920b9). The home tree at
+  `~/workspace/ravens-repo/` still holds RM-063's
+  uncommitted partial changes on top of RM-062 —
+  reconciling it to origin/main (fetch, verify the
+  six-file diff against the banked RM-063 commit
+  bac392f, reset) is still owed and remains blocked
+  only by the quota. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding tree
+  needs no sync for this slice (no package source
+  changed); the standing package-source sync note
+  stands.
 - **RM-064 BANKED 2026-11-02 (keeper tick ~17:36 EST):**
   Decay/consolidate at scale -- BENCH. Muninn's two
   maintenance passes are no longer full-store

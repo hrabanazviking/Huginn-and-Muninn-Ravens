@@ -3444,3 +3444,76 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   the RM-064 build (extends the standing package-source
   sync note). Live Qdrant + sentence-transformers stay
   NOT PROVEN.
+
+## RM-065 — Backup cost
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The rolling-backup roads measured at
+  100k scale in both packages. New gate scripts
+  `muninn/scripts/backup_cost.py` and
+  `huginn/scripts/backup_cost.py`: the Muninn seed is
+  the RM-058 uniform store (5,000 nodes, 100,000
+  directed edges, 19,972,096 bytes) built once via the
+  public API and byte-copied fresh for every
+  measurement; the Huginn seed is 100,000 documents by
+  direct construction (46,391,296 bytes; term index
+  and `doc_vectors` intentionally empty — backup cost
+  is byte-proportional and the rate is the carrier,
+  stated in the record). A snapshot — SQLite
+  backup-API full copy + permission inheritance +
+  `quick_check` + generation rotation — costs a
+  median **94.7 ms** at the Muninn store and
+  **196.8 ms** at the Huginn store: **4.74 and
+  4.24 ms per MB**, the twin machinery agreeing that a
+  snapshot costs what its bytes cost. Verified on
+  every run (quick_check + row counts) before any
+  time was quoted. Backup-on-open already wastes
+  nothing: an unchanged store took a backup **0 of
+  3** opens in both packages (the backup file's hash
+  stood still), a changed store **3 of 3**. The
+  pre-maintenance snapshot's share reads +91.1 ms
+  on `decay(10d)` and +120.4 ms on `consolidate()`
+  (medians with vs without `auto_backup`) — one
+  snapshot each, as expected. The one
+  proven waste is the **double pay**: an open that
+  takes a backup followed immediately by `decay`
+  re-snapshots content proven row-for-row identical
+  (nodes, edges, confidences) to the open's backup —
+  one redundant snapshot (~95 ms here; ~2.0–2.3 s
+  projected by the rate at RM-062's 477,544,448-byte
+  vector store) in the narrow open → maintain,
+  untouched window. **Verdict, as the roadmap
+  directed: the numbers do NOT demand an incremental
+  or copy-on-write strategy at personal-store scale,
+  and none is built** — the machinery it would
+  replace is the durability core pinned by RM-037 /
+  RM-043 / RM-049 / RM-051, and a page-incremental or
+  reflink redesign of generation rotation buys back
+  a tenth of a second in the common case. The record
+  names the reopening trigger (~500 MB stores
+  becoming routine, or the open → maintain pattern
+  becoming a hot road) and the sound fix design —
+  `wal_checkpoint(TRUNCATE)` *before* any mtime
+  comparison, never mtime alone, because in WAL mode
+  committed writes can sit in the `-wal` while the
+  main file's mtime stands still. Records at
+  `muninn/scripts/backup_cost.json` (2026-11-03T00:06:49Z,
+  load [6.16, 5.33, 4.31]) and
+  `huginn/scripts/backup_cost.json` (2026-11-03T00:06:58Z,
+  load [5.90, 5.31, 4.32]); human record
+  `docs/BACKUP_COST.md`; BENCHMARKS.md pointer. New
+  `tests/test_backup_cost.py` (4 per package: gate
+  shape, small-run behaviour incl. the took-backup
+  flags, committed-record shape, verdict pin);
+  `test_slice_log.py` EXPECTED extended to RM-065 in
+  both. Negation vs the RM-064 tree is recorded in
+  `CAMPAIGN_STATE.md`. No package code, public API,
+  schema, or SQL changed, so no Bifröst
+  re-verification was required (the RM-057 pattern).
+  Suites, ruff and mypy on the final banking tree are
+  recorded in `CAMPAIGN_STATE.md`. Founding tree
+  needs no sync for this slice (no package source
+  changed); the standing package-source sync note
+  stands. Live Qdrant + sentence-transformers stay
+  NOT PROVEN.
