@@ -9,7 +9,8 @@ own structure.
 - Package: `muninn`, version 1.0.0, MIT licence
 - Python: >= 3.11
 - Dependencies: none — the core is Python standard library only
-- Store: one SQLite file, WAL mode, `synchronous=FULL`
+- Store: one SQLite file, WAL mode, `synchronous=FULL`, 16 MiB page cache
+  (`PRAGMA cache_size=-16384`, RM-066 — see `docs/PRAGMA_STUDY.md`)
 
 This guide describes the code as it is. Every signature below is copied
 from `muninn/src/muninn/core.py` and `muninn/src/muninn/config.py`.

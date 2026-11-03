@@ -211,7 +211,10 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 2, "count_sql": 1}
 # interpolation is the placeholder list) minus the six
 # full-store statements they replace (decay's four,
 # consolidate's mark/unmark pair).
-EXPECTED_SITE_TOTAL = 103
+# RM-066: +1 site -- the ``PRAGMA cache_size=-16384``
+# constant in ``_db.py``'s ``_connect`` (the pragma
+# study's adopted default; docs/PRAGMA_STUDY.md).
+EXPECTED_SITE_TOTAL = 104
 
 
 def _source_dir():

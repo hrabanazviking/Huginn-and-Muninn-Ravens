@@ -224,6 +224,17 @@ def _connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # RM-066: the page-cache default grows from SQLite's
+    # compiled 2 MiB (cache_size=-2000) to 16 MiB. The
+    # RM-066 pragma study (docs/PRAGMA_STUDY.md) measured
+    # the default cache thrashing on the aggregate road
+    # at 100k edges (medians -24..-29% at -16384, both
+    # gate runs, cold and warm); 16 MiB is a ceiling, not
+    # an allocation -- the cache only grows to hold pages
+    # actually touched. mmap_size and temp_store were
+    # measured in the same study and deliberately NOT
+    # adopted (the record carries the reasoning).
+    conn.execute("PRAGMA cache_size=-16384")
     return conn
 
 

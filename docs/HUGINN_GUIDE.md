@@ -802,7 +802,8 @@ An unknown embedder name cannot reach this code from a config —
 
 The local backend uses the same store machinery discipline as Muninn:
 
-- WAL mode + `synchronous=FULL`: a `kill -9` mid-write loses at most
+- WAL mode + `synchronous=FULL` + a 16 MiB page cache
+  (`PRAGMA cache_size=-16384`, RM-066 — see `docs/PRAGMA_STUDY.md`): a `kill -9` mid-write loses at most
   the uncommitted transaction.
 - On open, `PRAGMA quick_check` verifies the store. If the main file
   fails (or is not a database at all), the newest rolling backup

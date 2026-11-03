@@ -3517,3 +3517,66 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   changed); the standing package-source sync note
   stands. Live Qdrant + sentence-transformers stay
   NOT PROVEN.
+
+## RM-066 — Connection pragmas study
+
+- **Class:** BENCH
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** The three connection pragmas the
+  packages never set — SQLite `cache_size`,
+  `mmap_size`, `temp_store` (defaults as found in both
+  packages: `-2000` / `0` / `0`) — measured per
+  package by new gate scripts
+  `muninn/scripts/pragma_study.py` and
+  `huginn/scripts/pragma_study.py`: variants baseline /
+  cache16 / cache64 / mmap / temp / all applied to the
+  live connection the package opened, read back before
+  any timing is quoted; fresh byte copy + fresh open +
+  cold and warm passes per workload, median of three;
+  every pass fingerprinted and **all fingerprints
+  identical across all variants in all runs** — a
+  pragma may change speed, never results. Muninn at
+  the RM-058 uniform store (100,000 edges): two
+  evidence runs agree the compiled 2 MiB page cache
+  thrashes the aggregate road — cache16
+  −28.5% / −24.5% (run 2) and −25.8% warm (run 1),
+  cache64 −23..−36% throughout — while Huginn (5,000
+  distinct documents) reads weakly positive on the
+  same size. **Verdict per pragma, as the roadmap
+  directed — `cache_size`: ADOPTED at `-16384`
+  (16 MiB, a ceiling not an allocation) in `_connect`
+  in both packages** (the smaller size captures the
+  win; Pi-class hosts named in the record);
+  **`mmap_size`: measured faster (Muninn −9..−31%,
+  Huginn search warm ≈ −20%) but NOT adopted** — it
+  converts the RM-030/RM-032/RM-033 truncated-file
+  fault family from typed refusals into a SIGBUS that
+  kills the host process, against the crash-proof
+  charter; named as the study's open option for Part
+  VIII fault-injection evidence or an explicit
+  deployment opt-in; **`temp_store`: no replicable
+  effect** (readings scatter, Huginn's two runs
+  contradict each other), compiled default stands.
+  RM-040 audit site totals +1 per package for the one
+  new constant statement (Muninn 103 → 104, Huginn
+  59 → 60). Human record `docs/PRAGMA_STUDY.md` with
+  both evidence runs tabled; BENCHMARKS pointer; both
+  guides' store lines updated. Committed records are
+  the final-tree confirmation runs
+  (`muninn/scripts/pragma_study.json`,
+  2026-11-03T00:43:33Z; `huginn/scripts/pragma_study.json`,
+  2026-11-03T00:43:59Z): defaults read back as found
+  now show `cache_size=-16384`, fingerprints still
+  identical; their cross-variant deltas are stated in
+  the record as load-drift-confounded (the
+  baseline-identical cache16 variant reading −18..−40%
+  warm is the built-in tripwire). New
+  `tests/test_pragma_study.py` (5 per package);
+  `test_slice_log.py` EXPECTED extended to RM-066 in
+  both. Negation, Bifröst re-verification (package
+  code changed on the open road — RM-059 precaution
+  pattern), suites, ruff and mypy are recorded in
+  `CAMPAIGN_STATE.md`. Founding tree NEEDS A SYNC for
+  the `_db.py` default (extends the standing
+  package-source sync note). Live Qdrant +
+  sentence-transformers stay NOT PROVEN.

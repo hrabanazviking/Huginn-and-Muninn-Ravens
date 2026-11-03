@@ -170,7 +170,10 @@ EXPECTED_NAME_SITES = {"schema_sql": 1, "sql": 1, "count_sql": 1}
 # vector fetch is replaced by three sites (a constant
 # COUNT, a constant capped-id select with a bound LIMIT,
 # and the survivor-only vector fetch, new template above).
-EXPECTED_SITE_TOTAL = 59
+# RM-066: +1 site -- the ``PRAGMA cache_size=-16384``
+# constant in ``_db.py``'s ``_connect`` (the pragma
+# study's adopted default; docs/PRAGMA_STUDY.md).
+EXPECTED_SITE_TOTAL = 60
 
 
 def _source_dir():

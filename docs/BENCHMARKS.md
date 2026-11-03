@@ -166,6 +166,30 @@ snapshot at RM-062's 477 MB vector-store scale, and the
 sound checkpoint-then-mtime design for the day the trigger
 is met — lives in `docs/BACKUP_COST.md`.
 
+## Connection pragmas study (RM-066)
+
+`muninn/scripts/pragma_study.py` and
+`huginn/scripts/pragma_study.py` measure SQLite's
+`cache_size`, `mmap_size` and `temp_store` on the
+store connection (Muninn: the RM-058 uniform store,
+100,000 edges; Huginn: 5,000 distinct documents),
+cold and warm passes, fingerprints asserted identical
+across every variant — a pragma may change speed,
+never results. Verdicts, recorded per pragma in
+`docs/PRAGMA_STUDY.md`: **`cache_size` adopted at
+-16384 (16 MiB)** in both packages' `_connect` (the
+aggregate road read −24..−29% at that size in both
+evidence runs; the compiled 2 MiB default thrashes);
+**`mmap_size` measured faster but NOT adopted** (it
+would convert the truncated-file fault family into
+host-process SIGBUS, against the crash-proof charter);
+**`temp_store` no replicable effect**, compiled
+default stands. Records committed as
+`muninn/scripts/pragma_study.json` and
+`huginn/scripts/pragma_study.json` (final-tree
+confirmation runs; the evidence runs and the
+load-drift tripwire are in the record doc).
+
 ## Muninn bulk remember (RM-060)
 
 `muninn/scripts/bulk_remember.py` ingests 10,000 distinct

@@ -64,11 +64,120 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060, RM-061, RM-062, RM-063, RM-064, RM-065.
-- Next: RM-066 in roadmap order (Connection pragmas
-  study: `cache_size`, `mmap_size`, `temp_store`
-  measured per package; defaults changed only on
-  evidence, recorded per pragma. Class: BENCH).
+  RM-060, RM-061, RM-062, RM-063, RM-064, RM-065, RM-066.
+- Next: RM-067 in roadmap order (Query-plan proofs:
+  `EXPLAIN QUERY PLAN` tests for the hot queries of
+  both packages, asserting index use — a schema change
+  that drops an index fails loudly. Class: UNIT).
+- **RM-066 BANKED 2026-11-02 (keeper tick ~19:16 EST):**
+  Connection pragmas study — BENCH. New gate scripts
+  `muninn/scripts/pragma_study.py` and
+  `huginn/scripts/pragma_study.py` measure SQLite's
+  `cache_size` / `mmap_size` / `temp_store` (never set
+  by either package; defaults as found in both:
+  `-2000` / `0` / `0`) on the live connection each
+  package opens — variants baseline / cache16 /
+  cache64 / mmap / temp / all, read back before any
+  timing is quoted, fresh byte copy + fresh open +
+  cold and warm passes, median of three, and every
+  pass fingerprinted: **all fingerprints identical
+  across all variants in all runs** (a pragma may
+  change speed, never results). Muninn at the RM-058
+  uniform store (100,000 edges, 19,972,096 bytes),
+  workloads read_pass + aggregate_pass; Huginn at
+  5,000 distinct documents (16,769,024 bytes, local
+  backend), search_pass + get_pass (the latter ~6 ms —
+  noise floor, no verdict rests on it). Two evidence
+  runs per package on the pre-change tree (Muninn
+  loads 1.66 / 1.77; Huginn 6.41 / 5.87): the strong
+  replicable signal is Muninn's aggregate road —
+  cache16 −28.5% / −24.5% (run 2) and −25.8% warm
+  (run 1), cache64 −23..−36% throughout — the
+  compiled 2 MiB page cache thrashes a 100k-edge
+  working set; Huginn cache16 weakly positive
+  (warm −13.1% / −7.3%), no harm anywhere. **Verdicts,
+  recorded per pragma in `docs/PRAGMA_STUDY.md`:
+  `cache_size` ADOPTED at `-16384` (16 MiB — a
+  ceiling, not an allocation; the smaller size
+  captures the win, Pi-class hosts named) in
+  `_connect` in both packages' `_db.py`** (twin
+  lockstep, as every `_db` change before it; the
+  short-lived probe/backup connections keep the
+  compiled default, stated in the record); RM-040
+  audit totals +1 per package (muninn 103 → 104,
+  huginn 59 → 60) for the one new constant statement.
+  **`mmap_size` measured faster (Muninn −9..−31%,
+  Huginn search warm ≈ −20%) but NOT adopted**: it
+  converts the RM-030/RM-032/RM-033 truncated-file
+  fault family from typed refusals into a SIGBUS
+  killing the host process — against the crash-proof
+  charter; named as the open option for Part VIII
+  fault-injection evidence or an explicit deployment
+  opt-in. **`temp_store`: no replicable effect**
+  (Muninn scatter +26..−13%; Huginn's runs contradict
+  each other), compiled default stands. No public
+  API, config field, or schema changed. Human record
+  `docs/PRAGMA_STUDY.md` (both evidence runs tabled);
+  BENCHMARKS pointer; both guides' store lines
+  updated; committed records are the final-tree
+  confirmation runs (`muninn/scripts/pragma_study.json`
+  2026-11-03T00:43:33Z, `huginn/scripts/pragma_study.json`
+  2026-11-03T00:43:59Z) — defaults read back `-16384`,
+  fingerprints identical; their cross-variant deltas
+  are stated as load-drift-confounded (load fell
+  ≈4.3 → 3.4 across each run; the baseline-identical
+  cache16 variant reading −18..−40% warm is the
+  built-in tripwire, kept by design). New
+  `tests/test_pragma_study.py` (5 per package);
+  slice-log EXPECTED to RM-066 in both. Negation vs
+  the RM-065 tree per package: pragma-study 5F/0P,
+  sql-injection 1F (site total), slice-log 2F.
+  **Bifröst re-verified** (package code changed on
+  the open road — the RM-059 precaution pattern):
+  fresh venv on /var/tmp, bifrost git-clean at the
+  pinned b66e98cc — its own suites **25 passed**;
+  BifrostBridge smoke PASS (store mimir_id=2
+  huginn_id=2; search 2 merged results; recall grew
+  the Muninn activation log exactly +1;
+  decay/consolidate reports; `decay_wall_clock()`
+  armed at 0 days; stats over all three backends;
+  `sqlite_version` 3.45.1 in both raven health dicts;
+  huginn local via auto-fallback; double close safe;
+  evidence `/var/tmp/rm066/evidence/`). Full suites
+  on the final banking tree (non-editable installs
+  from a full-repo copy, encryption + qdrant extras,
+  cryptography 50.0.2, qdrant-client 1.20.0, pytest
+  9.2.0): muninn **435 passed** (430+5), huginn
+  **344 passed** (339+5), each in one full run. Ruff
+  clean on both packages (whole-tree run shows only
+  the pre-existing repo-root `scripts/soak.py`
+  BLE001, untouched); mypy 1.20.2 clean (muninn 7
+  files, huginn 9 files — run per package so the
+  pyproject overrides apply; an earlier combined
+  invocation's two huginn findings reproduced
+  identically on the untouched RM-065 tree and are
+  an invocation artifact, not this slice). Slice-
+  internal repair, honestly: the first venv install
+  silently landed in the RM-065 venv (a copied venv's
+  `pip` script keeps its original shebang) and a
+  stale `build/` tree in the copy masked the new
+  `_db.py` once — both caught by the new default-pin
+  test failing, fixed by `python -m pip` + cleaning
+  the build dirs, and the suites above ran on the
+  corrected install. Banking provenance: the
+  home-quota EDQUOT closure was still shut the whole
+  tick (a probe `touch` in the home tree failed
+  `Disk quota exceeded`), so as RM-063/RM-064/RM-065
+  did, this slice was built, verified, committed and
+  pushed from a full-repo copy on /var/tmp struck
+  from the clean RM-065 banking copy at origin/main
+  07b1442; **the home tree still holds RM-063's
+  uncommitted partial changes on RM-062 and
+  reconciling it to origin/main remains owed,
+  blocked only by the quota**. Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding
+  tree NEEDS A SYNC for the `_db.py` pragma default
+  (extends the standing package-source sync note).
 - **RM-065 BANKED 2026-11-02 (keeper tick ~18:36 EST):**
   Backup cost — BENCH. New gate scripts
   `muninn/scripts/backup_cost.py` and
