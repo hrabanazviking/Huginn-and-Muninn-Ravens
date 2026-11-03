@@ -3580,3 +3580,45 @@ Discovered-bug fix in this slice (test harness, no package code): the RM-031 gol
   the `_db.py` default (extends the standing
   package-source sync note). Live Qdrant +
   sentence-transformers stay NOT PROVEN.
+## RM-067 — Query-plan proofs
+
+- **Class:** UNIT
+- **Commit:** this commit (hash in `CAMPAIGN_STATE.md` / `git log`)
+- **Evidence:** `EXPLAIN QUERY PLAN` pins for the hot
+  queries of both packages, in new
+  `tests/test_query_plans.py` (muninn 10, huginn 9),
+  read on a fresh raw connection to a store built
+  through the public API (the RM-058 pattern); the
+  probe plans are tabled in `docs/QUERY_PLANS.md`.
+  Every indexed hot query names its index: Muninn
+  `get_node` (nodes PK), `get_associations` and the
+  spread frontier chunk (`idx_conn_a_strength` — the
+  RM-058 covering index, its no-temp-b-tree property
+  re-pinned), pair existence (connections PK),
+  `activation_count` + the heal GROUP BY
+  (`idx_activation_memory`), forget's two-direction
+  edge delete (PK + `idx_conn_b`), decay/consolidate
+  chunk paging (rowid), the idempotent-store lookup
+  (nodes UNIQUE index); Huginn `get` + the RM-062
+  filtered fetch (documents PK), the dedupe lookup
+  (documents UNIQUE index), posting lists
+  (`idx_terms_term` — the search hot path), candidate
+  term fetch + per-document terms (doc_terms PK),
+  doc frequencies (corpus_stats PK), vector survivors
+  (doc_vectors PK). The deliberate scans are pinned
+  as scans, so an index added later is a deliberate
+  pin update: Muninn `retrieve`'s filtered scan and
+  `get_by_path` (both `max_nodes`-bounded), Huginn's
+  RM-062 vector cap (rowid-ordered, no temp b-tree)
+  and vector count. Sensitivity is proven, not
+  asserted: each suite drops its headline index in a
+  scratch copy (`idx_conn_a_strength` +
+  `idx_activation_memory`; `idx_terms_term`) and the
+  plan stops naming it — the pins can actually fail,
+  which is the roadmap's acceptance. No package
+  source, public API, or schema change (tests + docs
+  only), so no Bifröst re-verification is required.
+  `test_slice_log.py` EXPECTED extended to RM-067 in
+  both. Negation, suites, ruff and mypy are recorded
+  in `CAMPAIGN_STATE.md`. Live Qdrant +
+  sentence-transformers stay NOT PROVEN.

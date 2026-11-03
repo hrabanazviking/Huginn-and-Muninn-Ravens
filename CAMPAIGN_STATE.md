@@ -64,11 +64,82 @@ Check: 10+14+14+18+16+14+12+14+14+12+12+14+14+12+8+8+6 = 212.
   `docs/PART_IV_EVIDENCE.md`; threat model re-reviewed
   and updated at the gate.
 - Banked (Part V, in progress): RM-057, RM-058, RM-059,
-  RM-060, RM-061, RM-062, RM-063, RM-064, RM-065, RM-066.
-- Next: RM-067 in roadmap order (Query-plan proofs:
-  `EXPLAIN QUERY PLAN` tests for the hot queries of
-  both packages, asserting index use — a schema change
-  that drops an index fails loudly. Class: UNIT).
+  RM-060, RM-061, RM-062, RM-063, RM-064, RM-065, RM-066,
+  RM-067.
+- Next: RM-068 in roadmap order (Serialization cost:
+  `MemoryNode.to_dict`, JSON tags/metadata handling
+  profiled; cheap wins taken (e.g. avoiding re-parse
+  on hot paths) with parity tests. Class: BENCH).
+- **RM-067 BANKED 2026-11-02 (keeper tick ~20:06 EST):**
+  Query-plan proofs — UNIT. New
+  `tests/test_query_plans.py` (muninn 10, huginn 9)
+  pin the `EXPLAIN QUERY PLAN` shape of every hot
+  query, read on a fresh raw connection to a store
+  built through the public API (the RM-058 pattern);
+  probe plans tabled in `docs/QUERY_PLANS.md`. Every
+  indexed hot query names its index: Muninn `get_node`
+  (nodes PK), `get_associations` + the spread frontier
+  chunk (`idx_conn_a_strength`, the RM-058 covering
+  index — its no-temp-b-tree property re-pinned for
+  the single-id read; the chunk read's temp b-tree
+  for the second sort key is stated in the record),
+  pair existence (connections PK), `activation_count`
+  + the heal GROUP BY (`idx_activation_memory`),
+  forget's two-direction edge delete (PK + `idx_conn_b`),
+  RM-064 chunk paging (rowid), the idempotent-store
+  lookup (nodes UNIQUE index); Huginn `get` + the
+  RM-062 filtered fetch (documents PK), dedupe lookup
+  (documents UNIQUE index), posting lists
+  (`idx_terms_term` — the search hot path), candidate
+  term fetch + per-document terms (doc_terms PK),
+  doc frequencies (corpus_stats PK), vector survivors
+  (doc_vectors PK). The deliberate scans are pinned
+  AS scans, so an index added later is a deliberate
+  pin update: Muninn `retrieve`'s filtered scan and
+  `get_by_path` (both `max_nodes`-bounded), Huginn's
+  RM-062 vector cap (rowid-ordered, no temp b-tree)
+  and vector count. Sensitivity proven, not asserted:
+  each suite drops its headline index in a scratch
+  copy (`idx_conn_a_strength` + `idx_activation_memory`
+  in muninn, `idx_terms_term` in huginn) and the plan
+  stops naming it — the pins can actually fail, the
+  roadmap's acceptance. `test_slice_log.py` EXPECTED
+  extended to RM-067 in both. Negation vs the RM-066
+  tree (new tests + slice-log pins only): muninn
+  **3 failed / 9 passed**, huginn **3 failed / 8
+  passed** — failures exactly the record-doc pin +
+  the two slice-log pins per package; the plan pins
+  pass on both trees, as expected for a slice that
+  adds pins over indexes that already exist. No
+  package source, public API, or schema change
+  (tests + docs only), so no Bifröst re-verification
+  required (the RM-057 precedent). Full suites green
+  in a fresh venv on the final banking tree
+  (non-editable installs from a full-repo copy on
+  `/var/tmp`, encryption + qdrant extras, cryptography
+  50.0.2, qdrant-client 1.20.0, pytest 9.2.0): muninn
+  **445 passed** (435+10), huginn **353 passed**
+  (344+9); ruff clean (whole tree); mypy 1.20.2 clean
+  per package (muninn 7 files, huginn 9 files).
+  Environment, honestly: the first banking run showed
+  203 muninn failures because the 512 MB `/tmp` tmpfs
+  stood at 100% (pytest's default TMPDIR); with
+  TMPDIR on `/var/tmp` the identical tree passed in
+  full — the RM-039 environment class, not a code
+  failure. Banking provenance: the home quota EDQUOT
+  closure is STILL shut (probes in the home tree and
+  `~/memory` both refused), so this tick followed the
+  RM-063..066 pattern — built and banked from
+  `/var/tmp/rm067/repo`, struck from the clean RM-066
+  banking copy; the home tree still stands stale at
+  RM-062 + RM-063's partial uncommitted changes, and
+  its reconciliation to origin/main remains owed,
+  blocked only by the quota. Part V at 11/16 slices
+  (RM-057..RM-067). Live Qdrant +
+  sentence-transformers stay NOT PROVEN. Founding
+  tree needs no sync for this slice (no package
+  source changed); the standing package-source sync
+  note stands.
 - **RM-066 BANKED 2026-11-02 (keeper tick ~19:16 EST):**
   Connection pragmas study — BENCH. New gate scripts
   `muninn/scripts/pragma_study.py` and
